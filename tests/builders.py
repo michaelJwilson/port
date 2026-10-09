@@ -2,13 +2,15 @@
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
-
-if TYPE_CHECKING:
-    import pandas as pd
-    from scipy.sparse import csr_matrix
+import pandas as pd
+from cnaster.hmm_nophasing import hmm_nophasing
+from cnaster.hmm_phased import hmm_phased
+from port.patch import lattice
+from port.sandbox.patch.emission import emission_into
+from scipy.sparse import csr_matrix
 
 
 @dataclass(frozen=True)
@@ -72,8 +74,6 @@ def random_lattice(
 
 def cnaster_lattice(which: str, inputs: LatticeInputs, *, phased: bool) -> np.ndarray:
     """`cnaster`'s `which` lattice, phased or not, on `inputs`."""
-    from cnaster.hmm_nophasing import hmm_nophasing
-    from cnaster.hmm_phased import hmm_phased
 
     result: np.ndarray = getattr(hmm_phased if phased else hmm_nophasing, which)(
         *inputs.arguments
@@ -83,7 +83,6 @@ def cnaster_lattice(which: str, inputs: LatticeInputs, *, phased: bool) -> np.nd
 
 def unified_lattice(which: str, inputs: LatticeInputs, *, phased: bool) -> np.ndarray:
     """`port.patch.lattice`'s one recursion for `which`, on `inputs`."""
-    from port.patch import lattice
 
     result: np.ndarray = getattr(lattice, which)(
         *inputs.arguments, inputs.n_states, phased
@@ -165,8 +164,6 @@ def cnaster_emission_pair(
     inputs: EmissionInputs, *, phased: bool = False, **kwargs: Any
 ) -> tuple[np.ndarray, np.ndarray]:
     """`cnaster`'s `(rdr, baf)` emission on `inputs`, unphased or phased."""
-    from cnaster.hmm_nophasing import hmm_nophasing
-    from cnaster.hmm_phased import hmm_phased
 
     klass: Any = hmm_phased if phased else hmm_nophasing
     scored: tuple[np.ndarray, np.ndarray] = (
@@ -188,7 +185,6 @@ def buffered_emission(
     inputs: EmissionInputs, buffers: tuple[np.ndarray, np.ndarray], phased: bool
 ) -> None:
     """`port`'s buffered emission on `inputs`, written into `buffers`."""
-    from port.sandbox.patch.emission import emission_into
 
     emission_into(
         inputs.single_X[:, 0, :],
@@ -213,7 +209,6 @@ def random_graph(
     loops: bool = False,
 ) -> "csr_matrix":
     """Each node to a drawn number of distinct nodes (itself first, given `loops`), weights U[0.5, 2) or 1."""
-    from scipy.sparse import csr_matrix
 
     rows, cols, data = [], [], []
     for node in range(n_nodes):
@@ -228,7 +223,6 @@ def random_graph(
 
 def gene_snp_blocks(blocks: Iterable[tuple[int, int, int]]) -> "pd.DataFrame":
     """Per `(contig, start, width)`: a gene at `start`, a SNP in it, a gene ending at `start + width`."""
-    import pandas as pd
 
     rows = []
     for block, (contig, start, width) in enumerate(blocks):
@@ -247,7 +241,6 @@ def regular_graph(
     rng: np.random.Generator, n_nodes: int, degree: int, *, weighted: bool = False
 ) -> "csr_matrix":
     """`degree` edges from each node to nodes drawn with replacement, weights U[0.5, 2) or 1."""
-    from scipy.sparse import csr_matrix
 
     rows = np.repeat(np.arange(n_nodes), degree)
     cols = rng.integers(0, n_nodes, degree * n_nodes)

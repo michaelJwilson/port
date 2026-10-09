@@ -6,6 +6,7 @@ solution, so no tolerance is needed.
 
 from __future__ import annotations
 
+import itertools
 from typing import Any
 
 import numpy as np
@@ -13,10 +14,12 @@ import pytest
 from port.extensions.label_solver import SOLVERS, Solver, sweep_for
 from port.patch.icm.alpha_expansion import (
     alpha_expansion_sweep,
+    forbidden_as_finite,
     potts_energy,
     potts_graph_from,
 )
 from port.patch.icm.interface import CsrGraph
+from port.sandbox.extensions.label_solvers import SWEEPS
 
 from tests.fixtures import planted_blocky_field
 
@@ -73,9 +76,7 @@ def test_each_undirected_edge_is_counted_once() -> None:
 
 @pytest.mark.patch
 def test_a_negative_coupling_is_refused_rather_than_clipped() -> None:
-    """A non-metric coupling is refused by `sal`'s `from_directed_csr(scale=)` (T-
-    #777).
-    """
+    """A non-metric coupling is refused by `sal`'s `from_directed_csr(scale=)` (T- #777)."""
     field, graph, _, _ = planted_blocky_field(4, 2, seed=1, beta=1.0)
 
     with pytest.raises(ValueError, match="coupling"):
@@ -84,9 +85,7 @@ def test_a_negative_coupling_is_refused_rather_than_clipped() -> None:
 
 @pytest.mark.warning
 def test_the_icm_only_knobs_are_accepted_and_ignored() -> None:
-    """`min_clone_spots` is accepted and ignored: alpha expansion has no merge move
-    (#81).
-    """
+    """`min_clone_spots` is accepted and ignored: alpha expansion has no merge move (#81)."""
     field, graph, _, beta = planted_blocky_field(8, 3, seed=5, beta=1.0)
 
     first = np.argmax(field, axis=1).astype(np.int64)
@@ -125,9 +124,7 @@ def test_zero_coupling_recovers_the_field_argmax() -> None:
 
 @pytest.mark.patch
 def test_the_energy_is_minus_cnasters_objective_up_to_a_constant() -> None:
-    """`potts_energy` is the negation of cnaster's ICM objective plus a labelling-
-    independent offset.
-    """
+    """`potts_energy` is the negation of cnaster's ICM objective plus a labelling- independent offset."""
     field, graph, planted, beta = planted_blocky_field(8, 3, seed=5, beta=1.25)
     first, second, coupling = potts_graph_from(graph, beta).endpoints
 
@@ -143,9 +140,7 @@ def test_the_energy_is_minus_cnasters_objective_up_to_a_constant() -> None:
 def _forbidding(
     side: int, n_states: int, seed: int, scale: float
 ) -> tuple[np.ndarray, CsrGraph, np.ndarray, float]:
-    """`planted_blocky_field` with two allowed labels per site and `-inf` elsewhere
-    (#366).
-    """
+    """`planted_blocky_field` with two allowed labels per site and `-inf` elsewhere (#366)."""
     field, graph, _, beta = planted_blocky_field(side, n_states, seed, beta=1.0)
     rng = np.random.default_rng(seed)
     allowed = np.zeros(field.shape, dtype=bool)
@@ -160,12 +155,7 @@ def _forbidding(
 
 @pytest.mark.patch
 def test_a_finite_penalty_keeps_the_minimizer_of_the_forbidding_field() -> None:
-    """Brute force on a 3x3 lattice: the `-inf` and `forbidden_as_finite` minima agree
-    and avoid forbidden labels.
-    """
-    import itertools
-
-    from port.patch.icm.alpha_expansion import forbidden_as_finite
+    """Brute force on a 3x3 lattice: the `-inf` and `forbidden_as_finite` minima agree and avoid forbidden labels."""
 
     for seed in range(5):
         field, graph, _, beta = _forbidding(3, 3, seed, scale=100.0)
@@ -242,17 +232,13 @@ EXPANDING: tuple[str, ...] = (
 
 
 def _expanding(name: str) -> Any:
-    from port.sandbox.extensions.label_solvers import SWEEPS
-
     return SWEEPS[name] if name in SWEEPS else sweep_for(name)  # type: ignore[arg-type]
 
 
 @pytest.mark.analytic
 @pytest.mark.parametrize("name", EXPANDING)
 def test_every_expanding_row_ends_at_or_below_the_expansion(name: str) -> None:
-    """An expand-first row ends no higher than `alpha_expansion_sweep` from the same
-    start (#466).
-    """
+    """An expand-first row ends no higher than `alpha_expansion_sweep` from the same start (#466)."""
     field, graph, start, beta = _forbidding(20, 5, 466, 1.0)
     expanded = start.copy()
     alpha_expansion_sweep(field, graph, expanded, beta)

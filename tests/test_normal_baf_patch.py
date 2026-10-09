@@ -10,6 +10,9 @@ from typing import Any
 import numpy as np
 import pytest
 import scipy.stats
+from cnaster.normal_spot import normal_baf_bin_filter as upstream
+from port.patch.normal_spot import normal_baf_bin_filter as patched
+from port.patch.normal_spot import removal_indicator
 from port.sim.inputs import read_to_bins, written_config
 from port.sim.run_config import PlantedInstance
 from port.sim.truth import CoreInferenceTruth, balanced_clone
@@ -17,9 +20,7 @@ from port.sim.truth import CoreInferenceTruth, balanced_clone
 pytestmark = pytest.mark.preprocessing
 
 SHIPPED_CONFIDENCE = (0.01, 0.99)
-"""`zenodo_sim_config.yaml`'s confidence; `run_config.py`'s `(0.0, 1.0)` would make both
-masks empty.
-"""
+"""`zenodo_sim_config.yaml`'s confidence; `run_config.py`'s `(0.0, 1.0)` would make both masks empty."""
 
 
 @pytest.fixture(scope="module")
@@ -60,10 +61,7 @@ def _arguments(
 def test_the_quantile_test_is_a_distribution_function_comparison(
     quantile: float,
 ) -> None:
-    """`x < ppf(q)` iff `cdf(x) < q` and `x > ppf(q)` iff `cdf(x-1) >= q`, over the whole
-    support at three trial counts.
-    """
-    from port.patch.normal_spot import removal_indicator
+    """`x < ppf(q)` iff `cdf(x) < q` and `x > ppf(q)` iff `cdf(x-1) >= q`, over the whole support at three trial counts."""
 
     alpha, beta = 15.0, 15.0
 
@@ -87,7 +85,6 @@ def test_a_closed_end_removes_nothing_on_its_side_as_cnaster(
     interval: tuple[float, float],
 ) -> None:
     """`cnaster`'s `ppf` mask, bitwise, where a tail saturates (#332)."""
-    from port.patch.normal_spot import removal_indicator
 
     totals = np.array([3_000.0, 29_000.0, 29_000.0, 29_000.0, 29_000.0])
     counts = np.array([2_950.0, 17_980.0, 11_020.0, 580.0, 14_500.0])
@@ -108,8 +105,6 @@ def test_the_patched_filter_returns_what_cnasters_returns(
     binned_instance: tuple[CoreInferenceTruth, Any, Any, np.ndarray],
 ) -> None:
     """The patched filter returns `cnaster`'s arrays and renumbered `bin_id`, bitwise."""
-    from cnaster.normal_spot import normal_baf_bin_filter as upstream
-    from port.patch.normal_spot import normal_baf_bin_filter as patched
 
     _, table, binned, index_normal = binned_instance
 
@@ -138,7 +133,6 @@ def test_the_patched_filter_removes_the_planted_imbalanced_bins(
     binned_instance: tuple[CoreInferenceTruth, Any, Any, np.ndarray],
 ) -> None:
     """The patched filter removes exactly the eight planted imbalanced bins (#160)."""
-    from port.patch.normal_spot import normal_baf_bin_filter as patched
 
     truth, table, binned, index_normal = binned_instance
 

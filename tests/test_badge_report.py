@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 
 from scripts.badge_report import NO_BASE, render, rows
+from scripts.badges import load
 
 
 def _measurements(**guards: Any) -> dict[str, Any]:
@@ -133,7 +134,6 @@ def test_a_guard_absent_from_the_base_is_not_a_move_from_nothing() -> None:
 @pytest.mark.infra
 def test_the_real_measurements_render() -> None:
     """The committed `measurements.json` renders."""
-    from scripts.badges import load
 
     recorded = load()
     report = render(recorded, recorded)

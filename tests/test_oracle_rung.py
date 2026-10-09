@@ -5,8 +5,18 @@ E step only; the fit-level rung waits on upstream (last test).
 
 import numpy as np
 import pytest
+import torch
+from cnaster.hmm_nophasing import hmm_nophasing
 from port.sim.truth import CoreInferenceTruth, core_inference_truth
+from sal.emissions import (
+    BetaBinomialEmission,
+    CovariateNotSupportedError,
+    NegativeBinomialEmission,
+)
+from sal.likelihood.ragged import posteriors
 from sal.ragged import Ragged
+from sal.sim.count_pairs import IndependentCountPair
+from scipy.special import logsumexp
 
 from tests.adapters import Stacked, stacked_clones
 from tests.fixtures import circulant_transition
@@ -46,7 +56,6 @@ def planted() -> CoreInferenceTruth:
 
 def _emission(truth: CoreInferenceTruth, stacked: Stacked) -> np.ndarray:
     """`cnaster`'s per-state score over the stacked batch, `(n_obs, n_states)`."""
-    from cnaster.hmm_nophasing import hmm_nophasing
 
     n_states = truth.n_states
 
@@ -69,9 +78,6 @@ def test_the_two_recursions_agree_on_the_clone_stacked_batch(
     planted: CoreInferenceTruth,
 ) -> None:
     """Total log-likelihood: `cnaster`'s forward against upstream's ragged one, within `ATOL`."""
-    from cnaster.hmm_nophasing import hmm_nophasing
-    from sal.likelihood.ragged import posteriors
-    from scipy.special import logsumexp
 
     stacked = stacked_clones(planted)
     lengths = stacked.lengths
@@ -110,13 +116,6 @@ def test_a_covariate_carrying_its_own_channel_axis_is_refused_with_a_singleton()
     None
 ):
     """Upstream refuses an `(S, V, 2, 1)` covariate, guarding #674 (#77 item 1, #109)."""
-    import torch
-    from sal.emissions import (
-        BetaBinomialEmission,
-        CovariateNotSupportedError,
-        NegativeBinomialEmission,
-    )
-    from sal.sim.count_pairs import IndependentCountPair
 
     family = IndependentCountPair(
         NegativeBinomialEmission(dispersion=np.full(2, 6.0), mean=np.array([1.0, 3.0])),

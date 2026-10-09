@@ -5,11 +5,17 @@ upstream's evidence.
 """
 
 import itertools
+import warnings
 from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
 import torch
+from cnaster.hmm import pipeline_baum_welch
+from cnaster.hmm_nophasing import hmm_nophasing
+from sal.emissions import NegativeBinomialEmission
+from sal.likelihood.forward_backward import forward_backward
+from scipy.special import logsumexp
 
 from tests.adapters import (
     CnasterChainInputs,
@@ -37,7 +43,6 @@ def _upstream_forward_backward(
     fixture: NegativeBinomialChains, chain: int
 ) -> "ForwardBackward":
     """Upstream's two passes on one chain of the fixture."""
-    from sal.likelihood.forward_backward import forward_backward
 
     # NB upstream takes one row per chain; `cnaster` concatenates them
     density = upstream_chain_densities(fixture)[chain]
@@ -93,9 +98,6 @@ def test_the_evidence_agrees_over_a_rectangular_batch(n_sequences: int) -> None:
     )
     inputs = from_negative_binomial_chains(fixture)
 
-    from cnaster.hmm_nophasing import hmm_nophasing
-    from scipy.special import logsumexp
-
     log_alpha = hmm_nophasing.forward_lattice(*cnaster_lattice_arguments(inputs))
     ends = np.cumsum(inputs.lengths) - 1
     theirs = sum(
@@ -113,8 +115,6 @@ def _upstream_evidence_at(
     alphas: np.ndarray,
 ) -> float:
     """Return upstream's evidence at `cnaster`'s fitted parameters, summed over chains."""
-    from sal.emissions import NegativeBinomialEmission
-    from sal.likelihood.forward_backward import forward_backward
 
     family = NegativeBinomialEmission(
         torch.as_tensor(1.0 / np.asarray(alphas).ravel(), dtype=torch.float64),
@@ -177,10 +177,6 @@ def test_baum_welch_reaches_a_fixed_point(cnaster_config: None) -> None:
 @pytest.mark.bug
 def test_the_driver_cannot_initialize_itself(cnaster_config: None) -> None:
     """`pipeline_baum_welch`'s default init calls `gmm_init` with too few args (#143)."""
-    import warnings
-
-    from cnaster.hmm import pipeline_baum_welch
-    from cnaster.hmm_nophasing import hmm_nophasing
 
     fixture = negative_binomial_chains(n_states=2, sequence_length=20, n_sequences=1)
     inputs = from_negative_binomial_chains(fixture)
@@ -219,7 +215,6 @@ def _paper_transition_update(
     fixture: NegativeBinomialChains, log_transition: np.ndarray
 ) -> np.ndarray:
     """Return the paper's transition M step from upstream's pairwise posterior, row-normalized."""
-    from sal.likelihood.forward_backward import forward_backward
 
     log_initial = np.log(np.asarray(fixture.dataset.initial, dtype=float))
 
@@ -240,10 +235,6 @@ def _fit_at(  # type: ignore[no-untyped-def]
     params: str = "stp",
 ):
     """`pipeline_baum_welch` from the planted parameters, at `self_transition`."""
-    import warnings
-
-    from cnaster.hmm import pipeline_baum_welch
-    from cnaster.hmm_nophasing import hmm_nophasing
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

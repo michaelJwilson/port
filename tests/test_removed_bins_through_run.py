@@ -9,23 +9,22 @@ from __future__ import annotations
 import warnings
 from typing import Any
 
+import matplotlib as mpl
 import numpy as np
 import pandas as pd
 import pytest
 import yaml
+from port.extensions.segments import recording
+from port.scripts.run_cnaster import main
+from port.sim.inputs import write_tmp_inputs
+from port.sim.run_config import isolated_run, write_run_cnaster_config
+from port.sim.unsegment import unsegment
 
 from tests.fixtures import end_to_end_truth
 
 
 @pytest.fixture(scope="module")
 def removed(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
-    import matplotlib as mpl
-    from port.extensions.segments import recording
-    from port.scripts.run_cnaster import main
-    from port.sim.inputs import write_tmp_inputs
-    from port.sim.run_config import isolated_run, write_run_cnaster_config
-    from port.sim.unsegment import unsegment
-
     mpl.use("Agg")
     root = tmp_path_factory.mktemp("removed")
     truth = end_to_end_truth(normal_clone=False)

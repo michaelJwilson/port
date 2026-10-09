@@ -8,11 +8,21 @@ The whole-run form is `test_a_rust_run_reproduces_a_numba_one`.
 from __future__ import annotations
 
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
+import numba
 import numpy as np
 import pytest
+from cnaster.hmm_nophasing import hmm_nophasing
+from cnaster.hmm_phased import hmm_phased
+from port.patch import lattice
+from port.patch.hmm_nophasing import hmm_nophasing as shifted
+from port.patch.lattice import forward_lattice_rust, rust_lattices
+from port.sim.run_config import write_for_run
+from port.sim.truth import critical_instance
 
 from tests.builders import random_lattice
 from tests.figure_checks import compare_run_artifacts
@@ -45,9 +55,8 @@ def _inputs(
 
 def _agree(rust: np.ndarray, cnaster: np.ndarray) -> None:
     """Bitwise against compiled `cnaster`; 1e-14 when `numba` is disabled."""
-    from numba import config
 
-    if not getattr(config, "DISABLE_JIT"):  # noqa: B009 -- numba sets it at import
+    if not getattr(numba.config, "DISABLE_JIT"):  # noqa: B009 -- numba sets it at import
         np.testing.assert_array_equal(rust, cnaster)
         return
 
@@ -69,8 +78,6 @@ def test_the_unphased_lattice_is_cnasters_bitwise(
     case: tuple[Any, ...], which: str
 ) -> None:
     """Every entry equal, `-inf` included, at four shapes."""
-    from cnaster.hmm_nophasing import hmm_nophasing
-    from port.patch import lattice
 
     arguments = _inputs(*case, phased=False, seed=3)
     rust = getattr(lattice, f"{which}_rust")
@@ -86,8 +93,6 @@ def test_the_phased_lattice_is_cnasters_bitwise(
     case: tuple[Any, ...], which: str, penalize: bool
 ) -> None:
     """Both settings of `cnaster`'s phase penalty, which builds two transitions."""
-    from cnaster.hmm_phased import hmm_phased
-    from port.patch import lattice
 
     arguments = _inputs(*case, phased=True, seed=4)
     rust = getattr(lattice, which.replace("_lattice", "_lattice_phased") + "_rust")
@@ -98,8 +103,6 @@ def test_the_phased_lattice_is_cnasters_bitwise(
 @pytest.mark.patch
 def test_a_strided_emission_is_read_as_cnaster_reads_it() -> None:
     """A non-contiguous view is copied, not refused and not misread."""
-    from cnaster.hmm_nophasing import hmm_nophasing
-    from port.patch.lattice import forward_lattice_rust
 
     lengths, log_transmat, log_startprob, wide, log_sitewise = _inputs(
         3, (9, 6), 6, phased=False, seed=8
@@ -119,12 +122,7 @@ def test_a_strided_emission_is_read_as_cnaster_reads_it() -> None:
 @pytest.mark.patch
 @pytest.mark.parametrize("phased", [False, True], ids=["unphased", "phased"])
 def test_installed_every_call_form_returns_cnasters_lattice(phased: bool) -> None:
-    """`hmmclass.forward_lattice` and `self.forward_lattice` both return `cnaster`'s
-    lattice once installed.
-    """
-    from cnaster.hmm_nophasing import hmm_nophasing
-    from cnaster.hmm_phased import hmm_phased
-    from port.patch.lattice import rust_lattices
+    """`hmmclass.forward_lattice` and `self.forward_lattice` both return `cnaster`'s lattice once installed."""
 
     cls = hmm_phased if phased else hmm_nophasing
     arguments = _inputs(4, (13, 8), 3, phased=phased, seed=6)
@@ -145,7 +143,6 @@ def test_installed_every_call_form_returns_cnasters_lattice(phased: bool) -> Non
 @pytest.mark.infra
 def test_lengths_that_do_not_cover_the_emission_are_refused() -> None:
     """`cnaster` would index past the end; the binding says why instead."""
-    from port.patch.lattice import forward_lattice_rust
 
     lengths, log_transmat, log_startprob, log_emission, log_sitewise = _inputs(
         3, (5, 5), 2, phased=False, seed=1
@@ -160,10 +157,6 @@ def test_lengths_that_do_not_cover_the_emission_are_refused() -> None:
 @pytest.mark.infra
 def test_the_installer_reaches_both_classes_and_restores_them() -> None:
     """Inside the block every caller's lattice is Rust; outside, `cnaster`'s."""
-    from cnaster.hmm_nophasing import hmm_nophasing
-    from cnaster.hmm_phased import hmm_phased
-    from port.patch.hmm_nophasing import hmm_nophasing as shifted
-    from port.patch.lattice import rust_lattices
 
     before = {
         (cls, name): cls.__dict__[name]
@@ -185,11 +178,7 @@ def test_the_installer_reaches_both_classes_and_restores_them() -> None:
 def test_the_critical_instance_recovers_its_labelling_through_rust(
     cnaster_config: None,
 ) -> None:
-    """ARI 1.000 against the planted clones with every lattice call from Rust (`M = K = 2`,
-    `S = 500`).
-    """
-    from port.patch.lattice import rust_lattices
-    from port.sim.truth import critical_instance
+    """ARI 1.000 against the planted clones with every lattice call from Rust (`M = K = 2`, `S = 500`)."""
 
     truth = critical_instance()
 
@@ -205,13 +194,7 @@ def test_the_critical_instance_recovers_its_labelling_through_rust(
 @pytest.mark.patch
 @pytest.mark.release
 def test_a_rust_run_reproduces_a_numba_one(tmp_path: Path) -> None:
-    """Two whole `--no-patch` runs, one with `--rust`, equal artifact by artifact, each in
-    its own process.
-    """
-    import subprocess
-    import sys
-
-    from port.sim.run_config import write_for_run
+    """Two whole `--no-patch` runs, one with `--rust`, equal artifact by artifact, each in its own process."""
 
     written, config = write_for_run(
         end_to_end_truth(), tmp_path, max_iter_outer=1, max_iter=3

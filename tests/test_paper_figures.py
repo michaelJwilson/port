@@ -7,8 +7,12 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 import pytest
+from port.studies import paper_figures as pf
+from port.studies import potts_plot
 from port.studies.paper_figures import KEY_STUDIES, OUT, QUESTIONS, Compared
 
 from tests import ROOT
@@ -72,11 +76,8 @@ def _texts(figure: Any) -> list[str]:
 @pytest.mark.snapshot
 def test_the_compare_figures_draw_what_their_inputs_hold(tmp_path: Path) -> None:
     """Figures 14-17 draw the matching, shares and marks the tiny instance implies (T- #660, #743)."""
-    import matplotlib as mpl
 
     mpl.use("Agg")
-    import matplotlib.pyplot as plt
-    from port.studies import paper_figures as pf
 
     c = _tiny()
 
@@ -120,7 +121,6 @@ def test_the_compare_figures_draw_what_their_inputs_hold(tmp_path: Path) -> None
 @pytest.mark.infra
 def test_the_solver_panel_draws_only_the_tables_solvers() -> None:
     """T- #660: the solver panel draws only `potts_plot.TABLE`'s solvers."""
-    from port.studies import potts_plot
 
     rows = [
         {"problem": 0, "solver": solver, "seed": seed, "seconds": 1.0, "energy": 5.0,

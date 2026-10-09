@@ -7,13 +7,27 @@ the PDF creation timestamp is removed.
 import inspect
 import re
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
+import cnaster.scripts.run_cnaster  # noqa: F401  -- imported for its bindings
 import matplotlib as mpl
 import port.pipeline
 import pytest
-from port.pipeline import SWAPS, Swap, instrumented, patched, swap_sites
+from cnaster import omics
+from port.pipeline import (
+    FIGURE_SWAPS,
+    SWAPS,
+    Swap,
+    instrumented,
+    patched,
+    swap_sites,
+    with_options,
+)
+from port.scripts.run_cnaster import main
+from port.sim.run_config import write_for_run
 
 from tests.figure_checks import compare_run_artifacts
 
@@ -35,14 +49,10 @@ def _resolve(target: str) -> Any:
     module_name, _, attribute = target.partition(":")
     __import__(module_name)
 
-    import sys
-
     return getattr(sys.modules[module_name], attribute)
 
 
 def _original(swap: Any) -> Any:
-    import sys
-
     __import__(swap.module)
     return getattr(sys.modules[swap.module], swap.name)
 
@@ -111,7 +121,6 @@ def test_every_declared_departure_is_a_row() -> None:
 @pytest.mark.infra
 def test_the_swaps_reach_the_entry_point_and_not_only_the_definition() -> None:
     """Each `from cnaster.omics import ...` binding in `run_cnaster` is rebound."""
-    import cnaster.scripts.run_cnaster  # noqa: F401  -- imported for its bindings
 
     sites = swap_sites()
     entry_point = {
@@ -131,9 +140,6 @@ def test_the_swaps_reach_the_entry_point_and_not_only_the_definition() -> None:
 @pytest.mark.infra
 def test_the_context_manager_restores_every_binding() -> None:
     """`patched()` restores every original on exit."""
-    import sys
-
-    import cnaster.scripts.run_cnaster  # noqa: F401  -- imported for its bindings
 
     before = {
         (site.module, site.name): getattr(sys.modules[site.module], site.name)
@@ -163,7 +169,6 @@ def test_the_table_names_a_ticket_for_every_replacement() -> None:
 @pytest.mark.infra
 def test_listing_the_swaps_needs_no_configuration(capsys: Any) -> None:
     """`--list` is what a reader runs to find out what a patched run changes."""
-    from port.scripts.run_cnaster import main
 
     assert main(["--list"]) == 0
 
@@ -183,10 +188,6 @@ def test_a_patched_run_reproduces_an_unpatched_one(
     passes `--no-figure-swaps --no-shift --no-copy-cap`, since those change outputs by
     design (#195, #276, #313, #466).
     """
-    import subprocess
-    import sys
-
-    from port.sim.run_config import write_for_run
 
     written, config = write_for_run(
         planted_instance[0], tmp_path, max_iter_outer=1, max_iter=3
@@ -218,7 +219,6 @@ def test_a_patched_run_reproduces_an_unpatched_one(
 @pytest.mark.infra
 def test_the_timer_reports_every_swapped_name(tmp_path: Path) -> None:
     """`--time-stages` reports each replacement's cost within the run."""
-    from cnaster import omics
 
     with instrumented() as spent:
         assert set(spent) == {swap.name for swap in SWAPS}
@@ -230,7 +230,6 @@ def test_the_timer_reports_every_swapped_name(tmp_path: Path) -> None:
 @pytest.mark.infra
 def test_an_option_the_replacement_does_not_take_is_refused_at_install() -> None:
     """A typo in a bound option fails when the row installs, not at its first call."""
-    from port.pipeline import FIGURE_SWAPS, with_options
 
     rows = with_options(FIGURE_SWAPS, "port.patch.utils:write_fig", dpii=72)
 

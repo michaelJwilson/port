@@ -10,6 +10,7 @@ from port.patch._clone_paths import (
     parameter_by_path,
     state_vector,
 )
+from port.sandbox.patch.plotting.loh_density import loh_model
 
 
 def _upstream_concatenated(
@@ -121,7 +122,6 @@ def test_reading_a_parameter_along_a_path_matches_upstream() -> None:
 @pytest.mark.patch
 def test_the_loh_model_matches_upstreams_loop() -> None:
     """`loh_model` equals `cnaster`'s loop bitwise on three clones with distinct paths."""
-    from port.sandbox.patch.plotting.loh_density import loh_model
 
     rng = np.random.default_rng(11)
     n_bins, n_spots, n_clones, n_states = 30, 12, 3, 5
@@ -158,7 +158,6 @@ def test_the_loh_model_matches_upstreams_loop() -> None:
 @pytest.mark.patch
 def test_a_clone_with_no_spots_leaves_its_column_alone() -> None:
     """An empty clone's column is left alone, as upstream `continue`s."""
-    from port.sandbox.patch.plotting.loh_density import loh_model
 
     n_bins, n_spots, n_states = 10, 4, 3
 

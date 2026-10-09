@@ -76,9 +76,7 @@ def test_no_single_site_move_lowers_what_cnaster_returns(
 def test_expansion_improves_on_the_sweep_it_is_started_from(
     lattice: PottsLabels,
 ) -> None:
-    """Expansion started from `cnaster`'s labelling lowers the energy (measured -112.657 to
-    -117.274; #8).
-    """
+    """Expansion started from `cnaster`'s labelling lowers the energy (measured -112.657 to -117.274; #8)."""
     start = np.zeros(lattice.n_nodes, dtype=np.int64)
     sweep, _, _ = cnaster_icm_labelling(lattice, start)
 

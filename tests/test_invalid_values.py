@@ -8,9 +8,22 @@ from __future__ import annotations
 
 from typing import Any
 
+import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
+from cnaster import hmm_initialize
+from cnaster.hmm import compute_copy_state_posterior
+from cnaster.hmm_nophasing import betabinom_logpmf_numba, numba_logsumexp
+from cnaster.hmm_nophasing import hmm_nophasing as upstream
+from cnaster.hmrf import logsumexp
+from cnaster.spatio_genomic_counts import SpatioGenomicCounts
+from port.patch import lattice
+from port.patch.hmm_nophasing import hmm_nophasing
+from port.pipeline import with_attributes
+from port.qa.jax_hmm import emission
 from scipy.special import logsumexp as scipy_logsumexp
+from scipy.stats import betabinom
 
 # --- bug -------------------------------------------------------------------
 
@@ -18,7 +31,6 @@ from scipy.special import logsumexp as scipy_logsumexp
 @pytest.mark.bug
 def test_cnasters_zero_posterior_check_passes_an_all_minus_inf_column() -> None:
     """`cnaster`'s zero-posterior check passes an all `-inf` column, normalizing to `nan`."""
-    from cnaster.hmm import compute_copy_state_posterior
 
     rng = np.random.default_rng(0)
     log_alpha = rng.normal(-5.0, 1.0, (3, 5))
@@ -38,7 +50,6 @@ def test_cnasters_zero_posterior_check_passes_an_all_minus_inf_column() -> None:
 @pytest.mark.bug
 def test_hmrfs_logsumexp_is_nan_on_an_all_minus_inf_row() -> None:
     """`hmrf.logsumexp` is #411's `icm.logsumexp` again, unguarded; latent."""
-    from cnaster.hmrf import logsumexp
 
     finite = np.array([-1.0, 2.0, 0.5])
     assert logsumexp(finite) == pytest.approx(scipy_logsumexp(finite), abs=1e-12)
@@ -67,9 +78,6 @@ def _shifted_instance() -> dict[str, Any]:
 @pytest.mark.bug
 def test_one_minus_inf_shift_makes_every_row_of_the_shifted_emission_nan() -> None:
     """One `-inf` shift makes every centred row `nan`, unlike the uncentred formula (#292)."""
-    from cnaster.hmm_nophasing import hmm_nophasing as upstream
-    from port.patch.hmm_nophasing import hmm_nophasing
-    from port.pipeline import with_attributes
 
     shifted = with_attributes(hmm_nophasing, apply_logmu_shift=True)
     case = _shifted_instance()
@@ -126,9 +134,6 @@ def _jax_arguments() -> dict[str, np.ndarray]:
 @pytest.mark.analytic
 def test_a_zero_exposure_bin_leaves_the_jax_gradient_finite() -> None:
     """`jax.grad` with a zero-exposure bin matches a central difference to 1e-6 relative (#560)."""
-    import jax
-    import jax.numpy as jnp
-    from port.qa.jax_hmm import emission
 
     arguments = _jax_arguments()
 
@@ -154,7 +159,6 @@ def test_a_nowhere_finite_likelihood_returns_the_dispersion_fits_initial_guess(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """With nothing finite, `fit_dispersions_mle` returns its initial guess `(0.05, 100)`."""
-    from cnaster import hmm_initialize
 
     def nowhere(X: Any, *_: Any) -> tuple[np.ndarray, np.ndarray]:
         empty = np.full((2, X.shape[0]), np.nan)
@@ -180,7 +184,6 @@ def test_a_nowhere_finite_likelihood_returns_the_dispersion_fits_initial_guess(
 @pytest.mark.warning
 def test_cnasters_ratios_turn_x_over_zero_into_the_largest_float() -> None:
     """`baf()` and `rdr()` map `0/0` to the fill and `k/0` to `1.8e308`."""
-    from cnaster.spatio_genomic_counts import SpatioGenomicCounts
 
     counts = SpatioGenomicCounts(
         lengths=np.array([3]),
@@ -211,7 +214,6 @@ def test_cnasters_ratios_turn_x_over_zero_into_the_largest_float() -> None:
 )
 def test_the_lattices_logsumexp_is_scipys_at_the_edges(row: list[float]) -> None:
     """`numba_logsumexp` matches scipy at the edges."""
-    from cnaster.hmm_nophasing import numba_logsumexp
 
     values = np.asarray(row)
     expected = scipy_logsumexp(values)
@@ -229,8 +231,6 @@ def test_a_beta_binomial_with_no_trials_contributes_zero(
     parameter_terms_only: bool,
 ) -> None:
     """`n = 0` is uninformative: `log P(0 | 0) = 0`, against scipy."""
-    from cnaster.hmm_nophasing import betabinom_logpmf_numba
-    from scipy.stats import betabinom
 
     got = betabinom_logpmf_numba(0, 0, 3.0, 7.0, parameter_terms_only)
 
@@ -244,8 +244,6 @@ def test_the_rust_lattice_carries_an_all_minus_inf_site_as_cnaster_does(
     which: str,
 ) -> None:
     """The Rust lattice carries an unexplainable site as `-inf`, bitwise as `cnaster` does."""
-    from cnaster.hmm_nophasing import hmm_nophasing
-    from port.patch import lattice
 
     rng = np.random.default_rng(9)
     n_states, n_obs = 3, 20
@@ -258,7 +256,7 @@ def test_the_rust_lattice_carries_an_all_minus_inf_site_as_cnaster_does(
 
     arguments = (lengths, log_transmat, log_startprob, log_emission, log_sitewise)
     rust = getattr(lattice, f"{which}_rust")(*arguments)
-    cnaster = getattr(hmm_nophasing, which)(*arguments)
+    cnaster = getattr(upstream, which)(*arguments)
 
     assert not np.isnan(rust).any()
     assert np.isneginf(rust).any()

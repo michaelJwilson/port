@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+from cnaster.recomb import assign_centiMorgans, compute_numbat_phase_switch_prob
 
 from tests.conftest import MIN_PHASE_SWITCH_PROB
 
@@ -24,7 +25,6 @@ def one_chromosome(n_positions: int) -> list[tuple[int, int]]:
 @pytest.mark.parametrize("nu", [0.5, 1.0, 2.0])
 def test_switch_probability_is_the_mapping_function(nu: float) -> None:
     """Interior positions equal the closed form, to `TOLERANCE`."""
-    from cnaster.recomb import compute_numbat_phase_switch_prob
 
     position_cM = np.array([0.0, 0.1, 1.0, 3.0, 10.0])
     probability = compute_numbat_phase_switch_prob(
@@ -42,7 +42,6 @@ def test_switch_probability_is_the_mapping_function(nu: float) -> None:
 @pytest.mark.analytic
 def test_switch_probability_respects_the_limits() -> None:
     """Zero distance gives the floor, unbounded distance one half."""
-    from cnaster.recomb import compute_numbat_phase_switch_prob
 
     position_cM = np.array([0.0, 0.0, 1.0e6])
     probability = compute_numbat_phase_switch_prob(
@@ -58,7 +57,6 @@ def test_switch_probability_respects_the_limits() -> None:
 @pytest.mark.parametrize("nu", [0.5, 1.0, 2.0])
 def test_switch_probability_increases_with_distance(nu: float) -> None:
     """The switch probability increases with distance at every rate."""
-    from cnaster.recomb import compute_numbat_phase_switch_prob
 
     position_cM = np.cumsum(np.array([0.0, 0.2, 0.5, 1.0, 2.0, 4.0]))
     probability = compute_numbat_phase_switch_prob(
@@ -75,7 +73,6 @@ def test_switch_probability_increases_with_distance(nu: float) -> None:
 @pytest.mark.smoke
 def test_a_chromosome_boundary_carries_no_distance() -> None:
     """Across chromosomes the kernel falls to its floor."""
-    from cnaster.recomb import compute_numbat_phase_switch_prob
 
     position_cM = np.array([0.0, 1.0, 2.0, 3.0])
     across = [(1, 100), (2, 100), (2, 200), (2, 300)]
@@ -90,7 +87,6 @@ def test_a_chromosome_boundary_carries_no_distance() -> None:
 @pytest.mark.smoke
 def test_an_unknown_distance_carries_no_distance() -> None:
     """A missing centimorgan value falls to the floor, not NaN."""
-    from cnaster.recomb import compute_numbat_phase_switch_prob
 
     position_cM = np.array([0.0, np.nan, 2.0, 3.0])
     probability = compute_numbat_phase_switch_prob(
@@ -106,7 +102,6 @@ def test_an_unknown_distance_carries_no_distance() -> None:
 @pytest.mark.smoke
 def test_the_last_position_has_no_successor() -> None:
     """The final position takes the floor."""
-    from cnaster.recomb import compute_numbat_phase_switch_prob
 
     position_cM = np.array([0.0, 5.0, 10.0])
     probability = compute_numbat_phase_switch_prob(
@@ -120,7 +115,6 @@ def test_the_last_position_has_no_successor() -> None:
 @pytest.mark.usefixtures("cnaster_config")
 def test_the_floor_defaults_to_the_configured_one() -> None:
     """With no floor passed, the global configuration supplies it."""
-    from cnaster.recomb import compute_numbat_phase_switch_prob
 
     probability = compute_numbat_phase_switch_prob(
         np.array([0.0, 0.0]), one_chromosome(2), nu=1.0
@@ -144,7 +138,6 @@ def reference_table() -> pd.DataFrame:
 @pytest.mark.critical
 def test_centimorgans_are_exact_at_reference_positions() -> None:
     """A position in the table returns that row's value, to `TOLERANCE`."""
-    from cnaster.recomb import assign_centiMorgans
 
     assigned = assign_centiMorgans([(1, 200), (1, 400), (2, 300)], reference_table())
 
@@ -155,7 +148,6 @@ def test_centimorgans_are_exact_at_reference_positions() -> None:
 @pytest.mark.critical
 def test_centimorgans_interpolate_linearly_between_them() -> None:
     """Midway between two rows is midway between their values, to `TOLERANCE`."""
-    from cnaster.recomb import assign_centiMorgans
 
     assigned = assign_centiMorgans([(1, 150), (1, 300)], reference_table())
 
@@ -165,7 +157,6 @@ def test_centimorgans_interpolate_linearly_between_them() -> None:
 @pytest.mark.smoke
 def test_centimorgans_sort_their_input_in_place() -> None:
     """`assign_centiMorgans` sorts its input list in place."""
-    from cnaster.recomb import assign_centiMorgans
 
     positions = [(2, 300), (1, 200)]
     assign_centiMorgans(positions, reference_table())

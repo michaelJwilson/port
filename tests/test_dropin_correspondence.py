@@ -3,8 +3,17 @@
 from __future__ import annotations
 
 import ast
+from importlib import import_module
 
 import pytest
+from port.pipeline import (
+    COPY_SWAPS,
+    FIGURE_SWAPS,
+    LOG_SPACE_SWAPS,
+    REFINEMENT_SWAPS,
+    SHIFT_SWAPS,
+    SWAPS,
+)
 
 from tests import ROOT, TESTS
 
@@ -53,7 +62,6 @@ def _imported_by_marked_tests() -> set[str]:
 
 def _reexported_by(names: set[str]) -> set[str]:
     """Submodules a package import reaches through its re-exports."""
-    from importlib import import_module
 
     reached = set()
 
@@ -77,16 +85,6 @@ def _reexported_by(names: set[str]) -> set[str]:
 
 def _installed() -> set[str]:
     """Every module a swap installs, traced through re-exports to the definition."""
-    from importlib import import_module
-
-    from port.pipeline import (
-        COPY_SWAPS,
-        FIGURE_SWAPS,
-        LOG_SPACE_SWAPS,
-        REFINEMENT_SWAPS,
-        SHIFT_SWAPS,
-        SWAPS,
-    )
 
     reached = set()
 

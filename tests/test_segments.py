@@ -6,14 +6,10 @@ Referees: a brute-force walk over the table for what a labelling says
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import numpy as np
 import pandas as pd
 import pytest
-
-if TYPE_CHECKING:
-    from port.extensions.segments import Segmentation
+from port.extensions.segments import Segmentation
 
 
 def _table(seed: int = 3) -> pd.DataFrame:
@@ -50,8 +46,6 @@ def _table(seed: int = 3) -> pd.DataFrame:
 
 
 def _levels() -> tuple[pd.DataFrame, Segmentation, Segmentation, Segmentation]:
-    from port.extensions.segments import Segmentation
-
     table = _table()
     blocks = Segmentation.from_table(table, "block_id")
     rng = np.random.default_rng(5)
@@ -132,7 +126,6 @@ def test_a_labelling_that_would_misalign_rows_is_refused(
     defect: str, message: str
 ) -> None:
     """Refuses non-contiguous genes, cross-contig segments, out-of-order ids and gene-less segments."""
-    from port.extensions.segments import Segmentation
 
     table = _table()
     labels = table.block_id.to_numpy().copy()
@@ -159,7 +152,6 @@ def test_a_labelling_that_would_misalign_rows_is_refused(
 @pytest.mark.analytic
 def test_the_known_range_paths_minus_one_is_refused_by_name() -> None:
     """`block_id = -1` (uncovered rows) is refused by that name, not as a gap."""
-    from port.extensions.segments import Segmentation
 
     table = _table()
     labels = table.block_id.to_numpy().copy()

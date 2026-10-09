@@ -2,6 +2,13 @@
 
 import numpy as np
 import pytest
+from cnaster.hmrf_utils import (
+    cast_csr,
+    clone_stack_obs,
+    get_clone_assignment,
+    get_clone_indices,
+    validate_clone_ids,
+)
 from scipy.sparse import csr_matrix
 
 
@@ -9,7 +16,6 @@ from scipy.sparse import csr_matrix
 @pytest.mark.parametrize("n_clones", [1, 2, 4])
 def test_indices_and_assignment_invert_each_other(n_clones: int) -> None:
     """Grouping spots by clone and regrouping returns the assignment."""
-    from cnaster.hmrf_utils import get_clone_assignment, get_clone_indices
 
     rng = np.random.default_rng(3)
     n_spots = 40
@@ -24,7 +30,6 @@ def test_indices_and_assignment_invert_each_other(n_clones: int) -> None:
 @pytest.mark.smoke
 def test_indices_partition_the_spots() -> None:
     """Every spot lands in exactly one clone."""
-    from cnaster.hmrf_utils import get_clone_indices
 
     assignment = np.array([0, 1, 1, 2, 0, 2, 2])
     indices = get_clone_indices(assignment, range(3))
@@ -36,7 +41,6 @@ def test_indices_partition_the_spots() -> None:
 @pytest.mark.smoke
 def test_contiguous_clone_ids_are_accepted_and_gaps_are_not() -> None:
     """Ids `0..n-1` are accepted and a gap is refused."""
-    from cnaster.hmrf_utils import validate_clone_ids
 
     assert validate_clone_ids(np.array([0, 1, 2, 1, 0]))
 
@@ -48,7 +52,6 @@ def test_contiguous_clone_ids_are_accepted_and_gaps_are_not() -> None:
 @pytest.mark.parametrize("n_clones", [1, 3])
 def test_stacking_lays_clones_end_to_end(n_clones: int) -> None:
     """Each clone's observations form a contiguous block, in clone order."""
-    from cnaster.hmrf_utils import clone_stack_obs
 
     rng = np.random.default_rng(11)
     n_obs = 7
@@ -76,7 +79,6 @@ def test_stacking_lays_clones_end_to_end(n_clones: int) -> None:
 @pytest.mark.smoke
 def test_casting_a_sparse_matrix_keeps_its_non_zeros() -> None:
     """The row-wise form carries exactly the stored entries."""
-    from cnaster.hmrf_utils import cast_csr
 
     dense = np.array([[0.0, 2.0, 0.0], [1.0, 0.0, 3.0], [0.0, 0.0, 0.0]])
     rows = cast_csr(csr_matrix(dense))

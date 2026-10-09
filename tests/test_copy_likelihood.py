@@ -6,14 +6,27 @@ likelihood's own maximum over single-state moves (`analytic`).
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+import matplotlib as mpl
 import numpy as np
+import pandas as pd
 import pytest
-
-if TYPE_CHECKING:
-    from port.extensions.copy_likelihood import Pseudobulk
+from port.extensions.copy_likelihood import (
+    PURITY_GRID,
+    Pseudobulk,
+    _monotone,
+    candidates,
+    pair_rate_and_share,
+    pseudobulk_log_pmf,
+)
+from port.patch import integer_copy
+from port.sandbox.extensions.shared_decode import shared_decode
+from port.scripts.run_cnaster import main
+from port.sim.run_config import isolated_run, write_for_run
+from port.sim.truth import critical_instance
 
 PLANTED = np.array([(1, 1), (2, 1), (1, 3), (2, 2), (4, 6), (5, 4)], dtype=np.int64)
 """`cnaster`'s convention, `p = A / (A + B)`; state 0 is the neutral one."""
@@ -23,8 +36,6 @@ OCCUPANCY = (700, 60, 60, 60, 60, 60)
 
 
 def _draw(seed: int = 3, *, shift: bool = True) -> tuple[np.ndarray, Pseudobulk]:
-    from port.extensions.copy_likelihood import Pseudobulk
-
     rng = np.random.default_rng(seed)
     path = np.repeat(np.arange(len(OCCUPANCY)), OCCUPANCY)
     rng.shuffle(path)
@@ -69,7 +80,6 @@ def _offset(path: np.ndarray, bulk: Pseudobulk) -> float:
 @pytest.mark.parametrize("shift", [True, False], ids=["shifted", "unshifted"])
 def test_the_shared_decode_recovers_every_planted_pair(shift: bool) -> None:
     """All six states exactly, `(4, 6)` and `(5, 4)` above cnaster's cap included."""
-    from port.sandbox.extensions.shared_decode import shared_decode
 
     path, bulk = _draw(shift=shift)
     fitted = shared_decode(
@@ -86,12 +96,6 @@ def test_the_shared_decode_recovers_every_planted_pair(shift: bool) -> None:
 @pytest.mark.analytic
 def test_the_shared_decode_is_each_states_likelihood_maximum() -> None:
     """With the path held, no other pair for any one state raises the likelihood."""
-    from port.extensions.copy_likelihood import (
-        candidates,
-        pair_rate_and_share,
-        pseudobulk_log_pmf,
-    )
-    from port.sandbox.extensions.shared_decode import shared_decode
 
     path, bulk = _draw()
     shift = _offset(path, bulk)
@@ -121,8 +125,6 @@ def test_the_shared_decode_is_each_states_likelihood_maximum() -> None:
 
 @pytest.mark.infra
 def test_the_candidates_are_every_pair_under_the_cap() -> None:
-    from port.extensions.copy_likelihood import candidates
-
     lattice = candidates(12)
 
     assert len(lattice) == 90
@@ -133,17 +135,7 @@ def test_the_candidates_are_every_pair_under_the_cap() -> None:
 def _entry_point_run(
     tmp_path: Path, argv: tuple[str, ...]
 ) -> tuple[Any, list[Any], Any]:
-    """`run_cnaster_port` on the critical instance with `(1, 1)` and `(1, 2)` planted:
-    segment table, decodes, output dir.
-    """
-    import warnings
-
-    import matplotlib as mpl
-    import pandas as pd
-    from port.patch import integer_copy
-    from port.scripts.run_cnaster import main
-    from port.sim.run_config import isolated_run, write_for_run
-    from port.sim.truth import critical_instance
+    """`run_cnaster_port` on the critical instance with `(1, 1)` and `(1, 2)` planted: segment table, decodes, output dir."""
 
     mpl.use("Agg")
     truth = critical_instance(copy_lattice=True)
@@ -162,10 +154,7 @@ def _entry_point_run(
 def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
     tmp_path: Path,
 ) -> None:
-    """The default `lattice` decode (#370) writes the planted pair per clone-bin, at fitted
-    fractions 1 (#371).
-    """
-    import pandas as pd
+    """The default `lattice` decode (#370) writes the planted pair per clone-bin, at fitted fractions 1 (#371)."""
 
     copies, seen, output = _entry_point_run(tmp_path, ())
 
@@ -190,10 +179,7 @@ def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
 
 @pytest.mark.analytic
 def test_the_fraction_step_never_goes_uphill() -> None:
-    """The bounded fraction step never returns a value above its start's, on a minimum at
-    the endpoint (#371).
-    """
-    from port.extensions.copy_likelihood import PURITY_GRID, _monotone
+    """The bounded fraction step never returns a value above its start's, on a minimum at the endpoint (#371)."""
 
     def objective(x: float) -> float:
         return min((x - 0.2) ** 2 + 0.05, 1.0 - x)

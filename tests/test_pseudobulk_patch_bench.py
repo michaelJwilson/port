@@ -4,6 +4,10 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
+from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
+from port.patch.pseudobulk import (
+    merge_pseudobulk_by_index_mix as port_merge_pseudobulk_by_index_mix,
+)
 from pytest_benchmark.fixture import BenchmarkFixture
 
 from tests.fixtures import pseudobulk_inputs, tiers
@@ -13,15 +17,11 @@ STRESS = {"n_obs": 4000, "n_spots": 6000, "n_clones": 4}
 
 
 def _upstream() -> Callable[..., Any]:
-    from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
-
     return merge_pseudobulk_by_index_mix  # type: ignore[no-any-return]
 
 
 def _blocked() -> Callable[..., Any]:
-    from port.patch.pseudobulk import merge_pseudobulk_by_index_mix
-
-    return merge_pseudobulk_by_index_mix
+    return port_merge_pseudobulk_by_index_mix
 
 
 @pytest.mark.benchmark

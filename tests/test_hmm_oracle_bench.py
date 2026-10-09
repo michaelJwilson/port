@@ -10,7 +10,9 @@ from typing import Any
 
 import numpy as np
 import pytest
+from cnaster.hmm_nophasing import hmm_nophasing
 from pytest_benchmark.fixture import BenchmarkFixture
+from sal.likelihood.forward_backward import forward_backward
 
 from tests.adapters import (
     CnasterChainInputs,
@@ -30,8 +32,6 @@ STRESS = {"n_states": 7, "sequence_length": 3_000, "n_sequences": 8}
 
 
 def _cnaster_forward(inputs: CnasterChainInputs, emission: np.ndarray) -> np.ndarray:
-    from cnaster.hmm_nophasing import hmm_nophasing
-
     forward: np.ndarray = hmm_nophasing.forward_lattice(
         *cnaster_lattice_arguments(inputs, emission)
     )
@@ -44,8 +44,6 @@ _cnaster_both = cnaster_posterior
 def _upstream_both(
     densities: list[np.ndarray], initial: np.ndarray, transition: np.ndarray
 ) -> float:
-    from sal.likelihood.forward_backward import forward_backward
-
     return sum(
         float(forward_backward(density, initial, transition).log_evidence)
         for density in densities

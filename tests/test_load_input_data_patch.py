@@ -6,12 +6,32 @@ End-to-end tests also check the loaded counts against the planted fixture.
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
+import anndata
+import anndata as ad
 import numpy as np
+import pandas as pd
 import pytest
+import scipy.sparse as sp
+import yaml
+from cnaster.filter import get_filter_ranges
+from cnaster.io import get_spaceranger_counts
+from cnaster.io import load_input_data as upstream
+from port.patch.io import (
+    _range_mask,
+    _scaled_columns,
+    _spaceranger_counts,
+    filter_ranges,
+    load_input_data,
+)
+from port.patch.io import load_input_data as patched
+from port.qa.audit import drawn_config
+from port.sim.draw import main as draw
+from port.sim.fixtures import load_simulated, references
 from port.sim.inputs import WrittenInputs, written_config
-from port.sim.run_config import PlantedInstance
+from port.sim.run_config import PlantedInstance, run_cnaster_config
 from port.sim.truth import balanced_clone
 
 from tests import ROOT
@@ -24,8 +44,6 @@ pytestmark = pytest.mark.preprocessing
 @pytest.fixture(scope="module")
 def both_loaders(gate_config: Any) -> tuple[Any, Any]:
     """Both loaders run once on the same instance."""
-    from cnaster.io import load_input_data as upstream
-    from port.patch.io import load_input_data as patched
 
     return upstream(gate_config), patched(gate_config)
 
@@ -131,8 +149,6 @@ def test_the_loader_drops_exactly_the_genes_too_few_spots_express(
 @pytest.mark.backend
 def test_the_sparse_return_carries_the_same_matrix(gate_config: Any) -> None:
     """`sparse_counts=True` returns the dense return's allele matrices, bitwise."""
-    import scipy.sparse as sp
-    from port.patch.io import load_input_data as patched
 
     dense = patched(gate_config)
     sparse = patched(gate_config, sparse_counts=True)
@@ -154,7 +170,6 @@ def test_the_vectorized_range_filter_drops_the_snps_the_loop_drops(
     n_snps: int, n_ranges: int
 ) -> None:
     """The vectorized range mask equals `cnaster`'s loop, element for element."""
-    from port.patch.io import _range_mask
 
     snp_ids, ranges = synthetic_ranges(n_snps, n_ranges)
 
@@ -169,8 +184,6 @@ def test_the_vectorized_range_filter_drops_the_snps_the_loop_drops(
 
 def _loaders() -> list[tuple[str, Any]]:
     """Return `cnaster`'s and the patch's loaders, for claims that hold of either."""
-    from cnaster.io import load_input_data as upstream
-    from port.patch.io import load_input_data as patched
 
     return [("cnaster", upstream), ("patch", patched)]
 
@@ -264,9 +277,6 @@ def test_a_range_file_reads_the_same_with_or_without_the_chr_prefix(
     tmp_path: Path,
 ) -> None:
     """`filter_ranges` equals `cnaster`'s on `chrN`, and reads bare `N` (#176)."""
-    import pandas as pd
-    from cnaster.filter import get_filter_ranges
-    from port.patch.io import filter_ranges
 
     rows = [(2, 500, 900), (1, 100, 300), (10, 5, 50), (1, 50, 80)]
     prefixed = tmp_path / "prefixed.tsv"
@@ -325,12 +335,6 @@ def test_the_dense_count_layer_is_cnasters_for_either_storage(
     tmp_path: Path, layout: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The count layer equals `cnaster`'s on a sparse `.h5ad`; dense does not raise (#88)."""
-    from types import SimpleNamespace
-
-    import anndata as ad
-    import scipy.sparse as sp
-    from cnaster.io import get_spaceranger_counts
-    from port.patch.io import _spaceranger_counts
 
     name = "filtered_feature_bc_matrix"
     config = SimpleNamespace(visium=SimpleNamespace(filtered_feature_name=name))
@@ -357,8 +361,6 @@ def outlier_configs(
     planted_instance: PlantedInstance,
 ) -> dict[str, Path]:
     """Return configurations with each outlier branch turned on, written per test module."""
-    import yaml
-    from port.sim.run_config import run_cnaster_config
 
     truth, _, written, _ = planted_instance
     paths = {}
@@ -386,7 +388,6 @@ def test_the_outlier_filter_leaves_every_planted_count_alone(
     installed: Any,
 ) -> None:
     """`local_outlier_filter` flags no gene here: counts equal the planted ones, bitwise."""
-    from port.patch.io import load_input_data
 
     _, pre_image, written, _ = planted_instance
 
@@ -404,7 +405,6 @@ def test_the_downsampler_misses_its_own_threshold_by_two_per_cent(
     installed: Any,
 ) -> None:
     """`normalize_gene_outliers` scales nothing: the top gene sits 2.5% under target."""
-    from port.patch.io import load_input_data
 
     _, pre_image, written, _ = planted_instance
 
@@ -430,7 +430,6 @@ def test_the_gene_filter_counts_the_path_rather_than_the_genes(
     gate_config: Any,
 ) -> None:
     """`cnaster` takes `len(filter_gene_file)`, so a `Path` raises (`io.py:725`)."""
-    from cnaster.io import load_input_data as upstream
 
     _, _, written, _ = planted_instance
 
@@ -450,9 +449,6 @@ def test_the_gene_filter_counts_the_path_rather_than_the_genes(
 @pytest.mark.parametrize("sparse", [False, True])
 def test_scaling_a_viewed_layer_is_cnasters_column_write(sparse: bool) -> None:
     """`_scaled_columns` on an AnnData view equals `cnaster`'s per-column write (#466)."""
-    import anndata
-    import scipy.sparse as sp
-    from port.patch.io import _scaled_columns
 
     counts = np.arange(1, 25, dtype=np.float64).reshape(6, 4)
     factors = np.array([1.0, 0.0, 0.5, 1.0])
@@ -486,10 +482,6 @@ def test_the_range_filter_follows_the_pointer_over_nested_ranges(
     shuffled: bool,
 ) -> None:
     """The range mask equals `range_filter_loop` over nested and unsorted ranges."""
-    from port.patch.io import _range_mask
-
-    from tests.adapters import range_filter_loop
-    from tests.fixtures import synthetic_ranges
 
     snp_ids, ranges = synthetic_ranges(20_000, 300, seed=5)
     widths = np.random.default_rng(6).integers(50_000, 5_000_000, len(ranges))
@@ -512,11 +504,6 @@ def test_the_range_filter_follows_the_pointer_over_nested_ranges(
 @pytest.mark.patch
 def test_the_range_filter_matches_the_loop_on_the_shipped_hla_file() -> None:
     """GRCh38's `HLA_regions.bed`, as `get_filter_ranges` reads it, over chr6 SNPs."""
-    from cnaster.filter import get_filter_ranges
-    from port.patch.io import _range_mask
-    from port.sim.fixtures import references
-
-    from tests.adapters import range_filter_loop
 
     resources = references()
 
@@ -538,8 +525,6 @@ def test_the_range_filter_matches_the_loop_on_the_shipped_hla_file() -> None:
 @pytest.mark.patch
 def test_scaling_a_views_layer_keeps_the_scaled_values() -> None:
     """A zeroed column stays zeroed on a view, against `(counts * factors)` cast."""
-    import anndata
-    from port.patch.io import _scaled_columns
 
     counts = np.random.default_rng(0).integers(0, 20, (30, 8))
     adata = anndata.AnnData(np.zeros((30, 8)), layers={"count": counts.copy()})
@@ -558,13 +543,6 @@ def test_scaling_a_views_layer_keeps_the_scaled_values() -> None:
 @pytest.mark.cnaster
 def test_the_patched_loader_is_cnasters_on_a_drawn_sample(tmp_path: Path) -> None:
     """Every return equals `cnaster.io.load_input_data`'s on `dev_tree` as drawn."""
-    import yaml
-    from cnaster.io import load_input_data as theirs
-    from port.patch.io import load_input_data as ours
-    from port.qa.audit import drawn_config
-    from port.sim.draw import main as draw
-    from port.sim.fixtures import load_simulated
-    from port.sim.inputs import written_config
 
     manifests = ROOT / "sim" / "manifests"
     manifest = tmp_path / "dev_tree.toml"
@@ -588,8 +566,8 @@ def test_the_patched_loader_is_cnasters_on_a_drawn_sample(tmp_path: Path) -> Non
             "min_percent_expressed_spots": config.quality.min_percent_expressed_spots,
         }
 
-        their = theirs(config, **arguments)
-        our = ours(config, **arguments)
+        their = upstream(config, **arguments)
+        our = patched(config, **arguments)
 
         assert config.quality.local_outlier_filter
         for name in ("cell_snp_Aallele", "cell_snp_Ballele", "unique_snp_ids"):

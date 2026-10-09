@@ -5,6 +5,7 @@ from typing import Any
 import numpy as np
 import pytest
 import scipy.sparse as sp
+from port.patch.io import _gene_umis, _scaled_columns, load_input_data
 from port.sim.run_config import PlantedInstance
 
 pytestmark = pytest.mark.preprocessing
@@ -29,7 +30,6 @@ def test_the_gene_totals_agree_across_the_container(
     rows: int, columns: int, density: float
 ) -> None:
     """`_gene_umis` returns the same per-gene totals from sparse and dense."""
-    from port.patch.io import _gene_umis
 
     dense = _counts(rows, columns, density, seed=3)
 
@@ -42,7 +42,6 @@ def test_scaling_a_column_truncates_the_same_way_in_both_forms(
     rows: int, columns: int, density: float
 ) -> None:
     """`_scaled_columns` truncates entry for entry alike in both forms, keeping the int dtype."""
-    from port.patch.io import _scaled_columns
 
     dense = _counts(rows, columns, density, seed=5)
     generator = np.random.default_rng(7)
@@ -63,7 +62,6 @@ def test_scaling_a_column_truncates_the_same_way_in_both_forms(
 @pytest.mark.patch
 def test_zeroing_a_column_removes_it_from_the_stored_values() -> None:
     """Zeroing a column removes it from the sparse `.data`, in place."""
-    from port.patch.io import _gene_umis, _scaled_columns
 
     dense = _counts(80, 12, 0.5, seed=11)
     sparse = sp.csr_matrix(dense)
@@ -86,7 +84,6 @@ def test_zeroing_a_column_removes_it_from_the_stored_values() -> None:
 @pytest.fixture(scope="module")
 def both_returns(gate_config: Any) -> tuple[Any, Any]:
     """Run the loader once dense and once sparse on one instance."""
-    from port.patch.io import load_input_data
 
     return load_input_data(gate_config), load_input_data(
         gate_config, sparse_counts=True

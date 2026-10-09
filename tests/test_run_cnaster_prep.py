@@ -16,15 +16,11 @@ pytestmark = [pytest.mark.preprocessing]
 
 INITIAL_MIN_UMI = 1
 SECONDARY_MIN_UMI = 1
-"""The floors `assign_initial_blocks` and `create_bin_ranges` apply, at one so no block
-merges.
-"""
+"""The floors `assign_initial_blocks` and `create_bin_ranges` apply, at one so no block merges."""
 
 
 def _prepared(tmp_path: Path, n_obs: int = 20) -> tuple[CoreInferenceTruth, Binned]:
-    """Drive `run_cnaster`'s prep chain in order under one global config, and bin at the
-    end.
-    """
+    """Drive `run_cnaster`'s prep chain in order under one global config, and bin at the end."""
     truth = core_inference_truth(
         n_clones=2, n_states=3, lattice=(6, 6), n_obs=n_obs, n_segments=2
     )

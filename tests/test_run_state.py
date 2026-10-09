@@ -9,11 +9,16 @@ from __future__ import annotations
 
 import copy
 import importlib
+import json
 import pickle
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Literal
 
+import port.scripts.run_cnaster as entry_point
 import pytest
+from port.sim.run_config import write_for_run
 
 from tests import ROOT
 from tests.source_graph import state_writes
@@ -102,7 +107,6 @@ def _same(before: Any, after: Any) -> bool:
 
 def changed_by_a_run(argv: list[str]) -> list[str]:
     """Run the entry point on `argv` in this process; the declared names it changed."""
-    import port.scripts.run_cnaster as entry_point
 
     before = {name: copy.deepcopy(_value(name)) for name in STATE}
 
@@ -119,14 +123,7 @@ def changed_by_a_run(argv: list[str]) -> list[str]:
 def test_a_run_leaves_only_the_declared_state_behind(
     planted_instance: Any, tmp_path: Path, flags: tuple[str, ...]
 ) -> None:
-    """After one run, every declared name but `OUTLIVES` is back at its import-time
-    value.
-    """
-    import json
-    import subprocess
-    import sys
-
-    from port.sim.run_config import write_for_run
+    """After one run, every declared name but `OUTLIVES` is back at its import-time value."""
 
     _, config = write_for_run(
         planted_instance[0], tmp_path, max_iter_outer=1, max_iter=3
@@ -150,9 +147,6 @@ def test_a_run_leaves_only_the_declared_state_behind(
 
 
 if __name__ == "__main__":
-    import json
-    import sys
-
     import matplotlib as mpl
 
     mpl.use("Agg")

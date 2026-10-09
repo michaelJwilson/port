@@ -4,14 +4,35 @@ A constant exposure is exact, absorbed as `log_mu - log(c)`; a zero `total_bb_RD
 silences the beta-binomial channel. Tests pin both.
 """
 
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import torch
+from cnaster.hmm import compute_copy_state_posterior
+from cnaster.hmm_emission import (
+    Weighted_BetaBinom_mix,
+    betabinom_logpmf_zp,
+    compute_bb_ab,
+)
+from cnaster.hmm_nophasing import get_log_transmat, hmm_nophasing
+from cnaster.hmm_phased import hmm_phased
+from cnaster.hmm_utils import get_em_solver_params
+from cnaster.hmrf_utils import cast_csr, clone_stack_obs
+from cnaster.icm import calc_assignment_cost, icm_sweep_deque, unpack_adjacency
+from cnaster.phasing import initial_phase_given_partition
+from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
 from port.sim.truth import CoreInferenceTruth
+from sal.backend import Backend
 from sal.emissions import BetaBinomialEmission
 from sal.opt.hmm import forward_log_likelihood_from_density
+from sal.search.alpha_expansion import alpha_expansion
+from sal.search.icm import iterated_conditional_modes
+from sal.sim.potts import energy
+from scipy.sparse import coo_matrix
+from scipy.sparse import eye as sparse_eye
+from scipy.special import logsumexp
 
 from tests.fixtures import (
     BetaBinomialChains,
@@ -35,9 +56,7 @@ BAF_CHANNEL = 1
 
 @dataclass(frozen=True)
 class CnasterChainInputs:
-    """`cnaster`'s arguments for chains laid end to end, split by `lengths`, and the
-    parameters to score at.
-    """
+    """`cnaster`'s arguments for chains laid end to end, split by `lengths`, and the parameters to score at."""
 
     single_X: np.ndarray
     lengths: np.ndarray
@@ -67,9 +86,7 @@ def from_negative_binomial_chains(
     *,
     exposure: float = 1.0,
 ) -> CnasterChainInputs:
-    """Lay the fixture's chains out as `cnaster` expects; a constant `exposure` > 0 is
-    absorbed into `log_mu`.
-    """
+    """Lay the fixture's chains out as `cnaster` expects; a constant `exposure` > 0 is absorbed into `log_mu`."""
     if exposure <= 0.0:
         msg = f"exposure must be strictly positive, got {exposure}"
         raise ValueError(msg)
@@ -110,7 +127,6 @@ def from_negative_binomial_chains(
 
 def cnaster_log_emission(inputs: CnasterChainInputs) -> np.ndarray:
     """`cnaster`'s per-state emission, both channels summed, `(n_states, n_obs, 1)`."""
-    from cnaster.hmm_nophasing import hmm_nophasing
 
     log_emit_rdr, log_emit_baf = (
         hmm_nophasing.compute_emission_probability_nb_betabinom(
@@ -149,8 +165,6 @@ def cnaster_posterior(
     inputs: CnasterChainInputs, emission: np.ndarray | None = None
 ) -> np.ndarray:
     """`log gamma` over the concatenated axis via `compute_copy_state_posterior`."""
-    from cnaster.hmm import compute_copy_state_posterior
-    from cnaster.hmm_nophasing import hmm_nophasing
 
     arguments = cnaster_lattice_arguments(inputs, emission)
     posterior: np.ndarray = compute_copy_state_posterior(
@@ -162,8 +176,6 @@ def cnaster_posterior(
 
 def cnaster_total_log_likelihood(inputs: CnasterChainInputs) -> float:
     """The summed forward log-likelihood: `log alpha` at each chain's last position."""
-    from cnaster.hmm_nophasing import hmm_nophasing
-    from scipy.special import logsumexp
 
     log_alpha = hmm_nophasing.forward_lattice(*cnaster_lattice_arguments(inputs))
 
@@ -200,9 +212,7 @@ def upstream_total_log_likelihood(fixture: NegativeBinomialChains) -> float:
 
 @dataclass(frozen=True)
 class CnasterPhasedInputs:
-    """`cnaster`'s phased-lattice arguments; the emission is an array because `cnaster`'s
-    phased emission raises (issue #9).
-    """
+    """`cnaster`'s phased-lattice arguments; the emission is an array because `cnaster`'s phased emission raises (issue #9)."""
 
     log_emission: np.ndarray
     lengths: np.ndarray
@@ -222,10 +232,7 @@ def from_phased_chains(
     *,
     switch: float | None = None,
 ) -> CnasterPhasedInputs:
-    """Lay a phased fixture out for `hmm_phased.forward_lattice`; `switch` overrides the
-    phase kernel.
-    """
-    import torch
+    """Lay a phased fixture out for `hmm_phased.forward_lattice`; `switch` overrides the phase kernel."""
 
     observations = fixture.dataset.observations
     n_sequences, sequence_length = observations.shape
@@ -250,8 +257,6 @@ def from_phased_chains(
 
 def cnaster_phased_total_log_likelihood(inputs: CnasterPhasedInputs) -> float:
     """The summed forward log-likelihood from `cnaster`'s phased lattice."""
-    from cnaster.hmm_phased import hmm_phased
-    from scipy.special import logsumexp
 
     log_alpha = hmm_phased.forward_lattice(
         inputs.lengths,
@@ -268,9 +273,7 @@ def cnaster_phased_total_log_likelihood(inputs: CnasterPhasedInputs) -> float:
 def upstream_phased_total_log_likelihood(
     fixture: PhasedChains, inputs: CnasterPhasedInputs
 ) -> float:
-    """The same total from upstream, with the paired start the initial halved across
-    phases.
-    """
+    """The same total from upstream, with the paired start the initial halved across phases."""
     n_sequences = inputs.lengths.size
     sequence_length = int(inputs.lengths[0])
     density = torch.as_tensor(
@@ -318,9 +321,6 @@ def upstream_beta_binomial_m_step(
     fixture: BetaBinomialChains, posterior: np.ndarray
 ) -> MStepResult:
     """`BetaBinomialEmission.reestimate`, the referee, rebuilt at the planted parameters."""
-    import time
-
-    import torch
 
     family = BetaBinomialEmission(
         trials=np.full(fixture.n_states, float(fixture.trials), dtype=np.float64),
@@ -346,9 +346,7 @@ def upstream_beta_binomial_m_step(
 def cnaster_beta_binomial_design(
     fixture: BetaBinomialChains, posterior: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """`(endog, exog, weights, exposure)` for `Weighted_BetaBinom_mix`: one row per
-    `(observation, state)`, C order.
-    """
+    """`(endog, exog, weights, exposure)` for `Weighted_BetaBinom_mix`: one row per `(observation, state)`, C order."""
     observations = np.asarray(fixture.dataset.observations).reshape(-1)
     n_obs, n_states = observations.size, fixture.n_states
 
@@ -372,10 +370,6 @@ def cnaster_beta_binomial_m_step(
     `fit`'s own defaults pass `ftol=None` to `L-BFGS-B`. `shared_dispersion=False`
     matches the upstream shape.
     """
-    import time
-
-    from cnaster.hmm_emission import Weighted_BetaBinom_mix, compute_bb_ab
-    from cnaster.hmm_utils import get_em_solver_params
 
     endog, exog, weights, exposure = cnaster_beta_binomial_design(fixture, posterior)
 
@@ -410,10 +404,7 @@ def cnaster_beta_binomial_objective(
     alpha: np.ndarray,
     beta: np.ndarray,
 ) -> float:
-    """`cnaster`'s weighted negative log-likelihood at `(alpha, beta)`, through its own
-    `nloglikeobs`.
-    """
-    from cnaster.hmm_emission import Weighted_BetaBinom_mix, betabinom_logpmf_zp
+    """`cnaster`'s weighted negative log-likelihood at `(alpha, beta)`, through its own `nloglikeobs`."""
 
     endog, exog, weights, exposure = cnaster_beta_binomial_design(fixture, posterior)
 
@@ -477,8 +468,6 @@ def cnaster_adjacency_triple(
     matrix: "csr_matrix",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """`cnaster`'s `unpack_adjacency(cast_csr(matrix))`: spots, neighbours, weights."""
-    from cnaster.hmrf_utils import cast_csr
-    from cnaster.icm import unpack_adjacency
 
     spots, neighbors, weights = unpack_adjacency(cast_csr(matrix))
     return spots, neighbors, weights
@@ -492,10 +481,7 @@ def square_coords(rows: int, columns: int) -> np.ndarray:
 
 
 def lattice_adjacency(lattice: tuple[int, int]) -> "csr_matrix":
-    """Four-neighbour symmetric CSR adjacency with unit weights; `spatial_weight` stays the
-    caller's (#44).
-    """
-    from scipy.sparse import coo_matrix
+    """Four-neighbour symmetric CSR adjacency with unit weights; `spatial_weight` stays the caller's (#44)."""
 
     rows, columns = lattice
     edges: list[tuple[int, int]] = []
@@ -517,10 +503,7 @@ def lattice_adjacency(lattice: tuple[int, int]) -> "csr_matrix":
 
 
 def from_core_inference_truth(truth: CoreInferenceTruth) -> CnasterCoreInputs:
-    """Convert a `CoreInferenceTruth` with counts, exposure and trial count handed over as
-    drawn.
-    """
-    from scipy.sparse import eye as sparse_eye
+    """Convert a `CoreInferenceTruth` with counts, exposure and trial count handed over as drawn."""
 
     single_X = np.stack([truth.counts_nb, truth.counts_bb], axis=1)
 
@@ -546,8 +529,6 @@ def cnaster_potts_adjacency(fixture: PottsLabels) -> "csr_matrix":
     `calc_assignment_cost` halves its pairwise term to compensate; `spatial_weight`
     stays outside.
     """
-    import numpy as np
-    from scipy.sparse import coo_matrix
 
     rows: list[int] = []
     cols: list[int] = []
@@ -570,10 +551,7 @@ def cnaster_potts_adjacency(fixture: PottsLabels) -> "csr_matrix":
 def cnaster_potts_coo(
     fixture: PottsLabels,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """`(adj_spots, adj_neighbors, adj_weights)` for `calc_assignment_cost`, derived from
-    the CSR.
-    """
-    import numpy as np
+    """`(adj_spots, adj_neighbors, adj_weights)` for `calc_assignment_cost`, derived from the CSR."""
 
     matrix = cnaster_potts_adjacency(fixture).tocoo()
     return (
@@ -584,11 +562,7 @@ def cnaster_potts_coo(
 
 
 def cnaster_assignment_cost(fixture: PottsLabels, labelling: np.ndarray) -> float:
-    """`cnaster`'s maximised objective at a labelling, through its own
-    `calc_assignment_cost`.
-    """
-    import numpy as np
-    from cnaster.icm import calc_assignment_cost
+    """`cnaster`'s maximised objective at a labelling, through its own `calc_assignment_cost`."""
 
     spots, neighbors, weights = cnaster_potts_coo(fixture)
 
@@ -605,13 +579,7 @@ def cnaster_assignment_cost(fixture: PottsLabels, labelling: np.ndarray) -> floa
 
 
 def upstream_potts_energy(fixture: PottsLabels, labelling: np.ndarray) -> float:
-    """Upstream's `energy` at a labelling with `spatial_weight` folded in; the negation of
-    `cnaster`'s cost.
-    """
-    import numpy as np
-    from sal.sim.potts import energy
-
-    from tests.fixtures import scaled_graph
+    """Upstream's `energy` at a labelling with `spatial_weight` folded in; the negation of `cnaster`'s cost."""
 
     return float(
         energy(
@@ -633,7 +601,6 @@ def cnaster_sweep(
     **kwargs: object,
 ) -> tuple[np.ndarray, int, float]:
     """The fifteen-argument call on a copy of `assignment`, as `hmrf.py:307` makes it."""
-    from cnaster.icm import icm_sweep_deque
 
     # NB `icm_sweep_deque` calls `np.random.shuffle`, so only the legacy global seed reaches it.
     np.random.seed(seed)  # noqa: NPY002
@@ -678,7 +645,6 @@ def cnaster_icm_labelling(
 
 def upstream_icm(fixture: PottsLabels, graph: Any = None, seed: int = 0) -> Any:
     """`sal`'s ICM on `fixture`'s field from `seed`, over `graph` or the fixture's own."""
-    from sal.search.icm import iterated_conditional_modes
 
     graph = scaled_graph(fixture) if graph is None else graph
     return iterated_conditional_modes(graph, fixture.field, np.random.default_rng(seed))
@@ -688,8 +654,6 @@ def upstream_expansion(
     fixture: PottsLabels, graph: Any = None, start: np.ndarray | None = None
 ) -> "ExpansionResult":
     """`sal`'s alpha expansion on `fixture`'s field, over `graph` or the fixture's own."""
-    from sal.backend import Backend
-    from sal.search.alpha_expansion import alpha_expansion
 
     # NB PYTHON was the default before e0aeb19 made it RUST (#410).
     return alpha_expansion(
@@ -702,8 +666,6 @@ def upstream_expansion(
 
 def cnaster_initial_phase(truth: CoreInferenceTruth, blocks: Any, t: float) -> Any:
     """`run_cnaster:360`'s `initial_phase_given_partition` call on `blocks`, at `t`."""
-    from cnaster.hmm_nophasing import get_log_transmat
-    from cnaster.phasing import initial_phase_given_partition
 
     return initial_phase_given_partition(
         blocks.X,
@@ -731,9 +693,7 @@ def cnaster_initial_phase(truth: CoreInferenceTruth, blocks: Any, t: float) -> A
 
 
 def range_filter_loop(unique_snp_ids: np.ndarray, ranges: Any) -> np.ndarray:
-    """`cnaster.io.load_input_data`'s range filter (`io.py` lines 740-772), transcribed
-    verbatim.
-    """
+    """`cnaster.io.load_input_data`'s range filter (`io.py` lines 740-772), transcribed verbatim."""
     num_ranges = ranges.shape[0]
     indicator_filter = np.array([True] * len(unique_snp_ids))
     j = 0
@@ -763,9 +723,7 @@ def range_filter_loop(unique_snp_ids: np.ndarray, ranges: Any) -> np.ndarray:
 
 
 def drawn(figure: Any, *, colours: bool = True) -> list[np.ndarray]:
-    """Every scatter point (with face colours unless `colours` is off) and segment a figure
-    drew, in order.
-    """
+    """Every scatter point (with face colours unless `colours` is off) and segment a figure drew, in order."""
     out: list[np.ndarray] = []
 
     for axis in figure.axes:
@@ -787,7 +745,6 @@ def drawn(figure: Any, *, colours: bool = True) -> list[np.ndarray]:
 
 def grid_adjacency(n_spots: int, width: int) -> Any:
     """A four-neighbour grid, as `construct_multislice_lattice_adjacency` builds."""
-    from scipy.sparse import coo_matrix
 
     rows: list[int] = []
     columns: list[int] = []
@@ -819,7 +776,6 @@ def clone_assignment_call(
     function: Any, arguments: dict[str, Any], **keywords: Any
 ) -> Any:
     """`function` called as `run_core_inference` calls it, on a copy of `prev_assignment`."""
-    from cnaster.hmm_nophasing import hmm_nophasing
 
     given = arguments | {"prev_assignment": arguments["prev_assignment"].copy()}
     given |= {k: keywords.pop(k) for k in CLONE_ASSIGNMENT_POSITIONAL if k in keywords}
@@ -828,9 +784,7 @@ def clone_assignment_call(
 
 
 def clone_assignment_arguments(fixture: SpotCloneField, width: int) -> dict[str, Any]:
-    """`pipeline_clone_assignment`'s arguments at `(n_states, 1)`, built once so two arms
-    cannot differ (#278).
-    """
+    """`pipeline_clone_assignment`'s arguments at `(n_states, 1)`, built once so two arms cannot differ (#278)."""
     n_obs, n_spots = fixture.counts_nb.shape
 
     single_X = np.zeros((n_obs, 2, n_spots))
@@ -872,8 +826,6 @@ class Stacked:
 
 def stacked_clones(truth: CoreInferenceTruth) -> Stacked:
     """Aggregate to pseudobulk and stack the clones along the genomic axis."""
-    from cnaster.hmrf_utils import clone_stack_obs
-    from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
 
     counts = np.stack([truth.counts_nb, truth.counts_bb], axis=1)
     X, base, total, _ = merge_pseudobulk_by_index_mix(

@@ -8,6 +8,8 @@ from pathlib import Path
 import matplotlib as mpl
 import numpy as np
 import pytest
+import yaml
+from cnaster.plot_loh_density import nan_gaussian_filter1d
 
 mpl.use("Agg")
 
@@ -21,7 +23,6 @@ SAMPLES = 4
 @pytest.mark.deprecate
 def test_the_smoother_fills_where_there_is_no_coverage() -> None:
     """`nan_gaussian_filter1d` fills a NaN with the valid Gaussian-weighted mean, to 1e-12."""
-    from cnaster.plot_loh_density import nan_gaussian_filter1d
 
     data = np.array([[0.4, np.nan, 0.6, 0.5]])
     smoothed = nan_gaussian_filter1d(data, sigma=1.0, fill_value=0.5)
@@ -48,7 +49,6 @@ def test_the_validation_metrics_load_and_render(
 ) -> None:
     """`load_validation_stats` reads synthesized YAMLs; `plot_metrics` writes to the cwd."""
     monkeypatch.chdir(tmp_path)
-    import yaml
     from cnaster.plot_validation_stats import load_validation_stats, plot_metrics
 
     rng = np.random.default_rng(2)

@@ -7,10 +7,13 @@ covered separately. The HMM's joint M step has no upstream counterpart and is no
 compared.
 """
 
+import warnings
+
 import numpy as np
 import pytest
 
 from tests.adapters import (
+    cnaster_beta_binomial_design,
     cnaster_beta_binomial_m_step,
     cnaster_beta_binomial_objective,
     upstream_beta_binomial_m_step,
@@ -18,14 +21,10 @@ from tests.adapters import (
 from tests.fixtures import BetaBinomialChains, beta_binomial_chains, planted_posterior
 
 SOLVER_AGREEMENT = 1e-3
-"""Relative tolerance between the two M steps' `(alpha, beta)` at `CONVERGED_EM_FTOL`: 20x
-the measured 5e-5.
-"""
+"""Relative tolerance between the two M steps' `(alpha, beta)` at `CONVERGED_EM_FTOL`: 20x the measured 5e-5."""
 
 RECOVERY_TOLERANCE = 0.12
-"""Relative tolerance on recovering the planted `(alpha, beta)`: sampling error, set by the
-concentration.
-"""
+"""Relative tolerance on recovering the planted `(alpha, beta)`: sampling error, set by the concentration."""
 
 
 @pytest.fixture
@@ -38,9 +37,7 @@ def chains() -> BetaBinomialChains:
 @pytest.mark.critical
 @pytest.mark.usefixtures("cnaster_converged_config", "cnaster_perf_sink")
 def test_m_step_agrees_with_upstream(chains: BetaBinomialChains) -> None:
-    """Both M steps reach the same `(alpha, beta)` from a planted smoothed posterior, to
-    `SOLVER_AGREEMENT`.
-    """
+    """Both M steps reach the same `(alpha, beta)` from a planted smoothed posterior, to `SOLVER_AGREEMENT`."""
     posterior = planted_posterior(chains, smoothing=0.1)
 
     upstream = upstream_beta_binomial_m_step(chains, posterior)
@@ -85,9 +82,7 @@ def test_m_step_agrees_on_the_success_probability_more_tightly(
 @pytest.mark.end2end
 @pytest.mark.usefixtures("cnaster_converged_config", "cnaster_perf_sink")
 def test_m_step_recovers_the_planted_family(chains: BetaBinomialChains) -> None:
-    """At the planted posterior (`smoothing = 0`) both recover the planted family, to
-    `RECOVERY_TOLERANCE`.
-    """
+    """At the planted posterior (`smoothing = 0`) both recover the planted family, to `RECOVERY_TOLERANCE`."""
     posterior = planted_posterior(chains, smoothing=0.0)
 
     upstream = upstream_beta_binomial_m_step(chains, posterior)
@@ -132,9 +127,7 @@ def test_m_step_does_not_increase_its_own_objective(chains: BetaBinomialChains) 
 @pytest.mark.critical
 @pytest.mark.usefixtures("cnaster_converged_config", "cnaster_perf_sink")
 def test_the_two_dispersion_branches_coincide_at_one_state() -> None:
-    """At `K = 1` (the live shape) both `shared_dispersion` branches reach upstream's
-    answer.
-    """
+    """At `K = 1` (the live shape) both `shared_dispersion` branches reach upstream's answer."""
     single = beta_binomial_chains(n_states=1, success_probability=np.array([0.35]))
     posterior = planted_posterior(single, smoothing=0.0)
 
@@ -152,13 +145,9 @@ def test_the_two_dispersion_branches_coincide_at_one_state() -> None:
 def test_the_design_carries_the_posterior_to_the_right_state(
     chains: BetaBinomialChains,
 ) -> None:
-    """Every design row's weight is the posterior for the observation and state its one-hot
-    `exog` names.
-    """
+    """Every design row's weight is the posterior for the observation and state its one-hot `exog` names."""
     posterior = planted_posterior(chains, smoothing=0.1)
     observations = np.asarray(chains.dataset.observations).reshape(-1)
-
-    from tests.adapters import cnaster_beta_binomial_design
 
     endog, exog, weights, exposure = cnaster_beta_binomial_design(chains, posterior)
 
@@ -193,9 +182,7 @@ def test_the_design_carries_the_posterior_to_the_right_state(
 def test_m_step_agrees_with_upstream_at_cnaster_s_own_settings(
     chains: BetaBinomialChains,
 ) -> None:
-    """Agreement with upstream at `cnaster`'s shipped `em_ftol = 1e-6`; strict xfail until
-    #30 is fixed.
-    """
+    """Agreement with upstream at `cnaster`'s shipped `em_ftol = 1e-6`; strict xfail until #30 is fixed."""
     posterior = planted_posterior(chains, smoothing=0.1)
 
     upstream = upstream_beta_binomial_m_step(chains, posterior)
@@ -215,10 +202,7 @@ def test_m_step_agrees_with_upstream_at_cnaster_s_own_settings(
 def test_the_shipped_solver_options_carry_a_key_scipy_rejects(
     chains: BetaBinomialChains,
 ) -> None:
-    """`get_em_solver_params` passes `disp`, which `scipy`'s `L-BFGS-B` rejects with
-    `OptimizeWarning`.
-    """
-    import warnings
+    """`get_em_solver_params` passes `disp`, which `scipy`'s `L-BFGS-B` rejects with `OptimizeWarning`."""
 
     posterior = planted_posterior(chains, smoothing=0.1)
 

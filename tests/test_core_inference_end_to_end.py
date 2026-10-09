@@ -6,9 +6,11 @@ not fit in memory (#90).
 """
 
 import warnings
+from itertools import permutations
 
 import numpy as np
 import pytest
+from cnaster.hmrf import run_core_inference
 from port.sim.truth import (
     core_inference_truth,
     critical_instance,
@@ -23,14 +25,11 @@ DECLARED_SPOTS = 5_000
 """`S` at the scale #87 names, which the inference does not fit in."""
 
 MIN_CLONE_SPOTS = 200
-"""`icm_sweep_deque`'s default `min_clone_spots`, which `run_core_inference` does not
-expose.
-"""
+"""`icm_sweep_deque`'s default `min_clone_spots`, which `run_core_inference` does not expose."""
 
 
 def _best_permutation_accuracy(fitted: np.ndarray, planted: np.ndarray) -> float:
     """Labelling accuracy up to a permutation of clone names."""
-    from itertools import permutations
 
     classes = int(planted.max()) + 1
     return max(
@@ -43,10 +42,7 @@ def _best_permutation_accuracy(fitted: np.ndarray, planted: np.ndarray) -> float
 def test_the_default_hmm_class_cannot_complete_an_outer_iteration(
     cnaster_config: None,
 ) -> None:
-    """The default `hmm_phased` indexes `log_mu` past its shape and raises
-    (`hmm_phased.py:118-145`).
-    """
-    from cnaster.hmrf import run_core_inference
+    """The default `hmm_phased` indexes `log_mu` past its shape and raises (`hmm_phased.py:118-145`)."""
 
     truth = core_inference_truth(
         n_clones=2, n_states=3, lattice=(6, 6), n_obs=60, n_segments=2
@@ -65,9 +61,7 @@ def test_the_default_hmm_class_cannot_complete_an_outer_iteration(
 @pytest.mark.warning
 @pytest.mark.merge
 def test_a_clone_below_the_solver_s_floor_is_merged_away(cnaster_config: None) -> None:
-    """A separable clone under 200 spots is merged away, on equal bands at 6 x 5 (#298,
-    #417).
-    """
+    """A separable clone under 200 spots is merged away, on equal bands at 6 x 5 (#298, #417)."""
     truth = core_inference_truth(
         n_clones=2,
         n_states=3,
@@ -105,9 +99,7 @@ def test_the_run_recovers_the_planted_labelling(cnaster_config: None) -> None:
 def test_the_run_recovers_every_planted_state_on_a_mostly_neutral_genome(
     cnaster_config: None,
 ) -> None:
-    """On a mostly neutral genome all planted `p` and `mu` are recovered, worst relative
-    error 0.026 (#82, #86, #120).
-    """
+    """On a mostly neutral genome all planted `p` and `mu` are recovered, worst relative error 0.026 (#82, #86, #120)."""
     truth = core_inference_truth(
         n_clones=2, n_states=3, lattice=(30, 20), n_obs=300, n_segments=4
     )
@@ -127,9 +119,7 @@ def test_the_run_recovers_every_planted_state_on_a_mostly_neutral_genome(
 @pytest.mark.end2end
 @pytest.mark.release
 def test_the_declared_scale_plants_and_recovers_its_parameters() -> None:
-    """At `M = K = 10`, `G = 10,000`, `S = 5,000` the fixture recovers its planted
-    parameters by moments.
-    """
+    """At `M = K = 10`, `G = 10,000`, `S = 5,000` the fixture recovers its planted parameters by moments."""
     truth = key_instance(n_segments=20)
 
     assert (truth.n_clones, truth.n_states) == (10, 10)
@@ -151,9 +141,7 @@ def test_the_declared_scale_plants_and_recovers_its_parameters() -> None:
 
 @pytest.mark.smoke
 def test_the_declared_scale_is_out_of_reach_of_a_single_run_here() -> None:
-    """At the declared scale `cnaster`'s two `(n_states, n_obs, n_spots)` arrays need 8.00
-    GB.
-    """
+    """At the declared scale `cnaster`'s two `(n_states, n_obs, n_spots)` arrays need 8.00 GB."""
     truth = core_inference_truth(
         n_clones=10, n_states=10, lattice=(20, 5), n_obs=100, n_segments=2
     )
@@ -166,9 +154,7 @@ def test_the_declared_scale_is_out_of_reach_of_a_single_run_here() -> None:
 @pytest.mark.end2end
 @pytest.mark.release
 def test_the_dev_instance_recovers_its_labelling(cnaster_config: None) -> None:
-    """The dev instance (`M = 4`, `K = 10`, `G = 1,000`, `S = 1,600`) recovers its
-    labelling at ARI 1.000 (#137).
-    """
+    """The dev instance (`M = 4`, `K = 10`, `G = 1,000`, `S = 1,600`) recovers its labelling at ARI 1.000 (#137)."""
     truth = dev_instance()
 
     assert (truth.n_clones, truth.n_states) == (4, 10)
@@ -185,9 +171,7 @@ def test_the_dev_instance_recovers_its_labelling(cnaster_config: None) -> None:
 @pytest.mark.end2end
 @pytest.mark.critical
 def test_the_critical_instance_recovers_its_labelling(cnaster_config: None) -> None:
-    """The critical instance (`M = K = 2`, `G = 1,000`, `S = 500`) recovers its labelling
-    at ARI 1.000.
-    """
+    """The critical instance (`M = K = 2`, `G = 1,000`, `S = 500`) recovers its labelling at ARI 1.000."""
     truth = critical_instance()
 
     assert (truth.n_clones, truth.n_states) == (2, 2)

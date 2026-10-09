@@ -9,9 +9,12 @@ from __future__ import annotations
 import warnings
 from pathlib import Path
 
+import matplotlib as mpl
 import numpy as np
 import pandas as pd
 import pytest
+from port.scripts.run_cnaster import main
+from port.sim.run_config import isolated_run, write_for_run
 
 from tests.fixtures import end_to_end_truth, partition_ari
 
@@ -22,9 +25,6 @@ from tests.fixtures import end_to_end_truth, partition_ari
 @pytest.mark.xdist_group("pipeline")
 def test_the_entry_point_recovers_the_planted_clones(tmp_path: Path) -> None:
     """Both planted clones, at most 2 of 1,000 spots misplaced, through `run_cnaster_port`."""
-    import matplotlib as mpl
-    from port.scripts.run_cnaster import main
-    from port.sim.run_config import isolated_run, write_for_run
 
     mpl.use("Agg")
     truth = end_to_end_truth()

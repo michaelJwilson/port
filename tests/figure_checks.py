@@ -6,16 +6,21 @@ import re
 from pathlib import Path
 from typing import Any
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+from cnaster.he import get_he_image
+from port.patch.plot_copy_number_profile import MIRROR, TITLE
+from port.qa.combined_figure import Call, Recorded
+from port.sim.he_slide import mock_he, write_he_slide
+from port.sim.truth import clone_bands
 
 from tests.fixtures import genomic_plot_instance, integer_copies
 
 
 def mirror_key_holds(legend_ax: Any, edge_ax: Any) -> None:
     """Mirror key geometry on `legend_ax` within 0.5 px (#715)."""
-    from port.patch.plot_copy_number_profile import MIRROR, TITLE
 
     renderer = legend_ax.figure.canvas.get_renderer()
     upper, lower = sorted(
@@ -44,7 +49,6 @@ CREATION_DATE = re.compile(rb"/CreationDate \(D:\d+Z?\)")
 
 def wide_rasterized_figure() -> Any:
     """A wide rasterized panel, the shape the genomic plots write."""
-    import matplotlib.pyplot as plt
 
     generator = np.random.default_rng(7)
     figure, axes = plt.subplots(figsize=(20, 4), dpi=300, facecolor="white")
@@ -77,10 +81,6 @@ def recorded_combined_calls(
     tmp_path: Path, n_clones: int = 3, tall: float = 1.0
 ) -> tuple[Any, Any]:
     """A run's three recorded calls on the 3 by 3 fixture, rows `tall` times apart, and its slide."""
-    from cnaster.he import get_he_image
-    from port.qa.combined_figure import Call, Recorded
-    from port.sim.he_slide import mock_he, write_he_slide
-    from port.sim.truth import clone_bands
 
     arguments, keywords = genomic_plot_arguments()
     n_spots = arguments[1].shape[2]

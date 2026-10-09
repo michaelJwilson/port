@@ -6,24 +6,53 @@ Profile rows keep the planted breakpoints and states; barcodes are the path even
 from __future__ import annotations
 
 import itertools
+import re
 from pathlib import Path
 from typing import Any
 
+import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
 import numpy as np
 import pytest
+from matplotlib.markers import TICKDOWN
+from matplotlib.patches import Rectangle
+from matplotlib.text import Text
+from port.extensions.figure_style import (
+    CAPTION_ROOM,
+    PAPER_WIDTH,
+    TEXT_HEIGHT,
+    TRACK_FONT_SIZE,
+)
+from port.extensions.genomic_axis import CONTIG_PAD, STAGGERED
+from port.qa.combined_figure import FONT_SIZE, PANELS, clone_symbol
+from port.sim import analysis
 from port.sim.analysis import (
+    BARCODE_SHOWN,
+    MANY_EVENTS,
     PLOTS,
     STATISTICS,
+    Population,
     _runs,
+    binned_axis,
     common_region,
+    draw_tree,
     outline,
     plot,
     read,
+    shown,
+    stream,
     tree,
 )
 from port.sim.draw import Drawn, draw
 from port.sim.fixtures import references
-from port.sim.truth_figure import NAME_GAP
+from port.sim.truth_figure import (
+    NAME_GAP,
+    _symbol,
+    simulated_tree_figure,
+    truth_combined_figure,
+    write_truth_combined,
+)
+from port.studies.paper_figures import he_slices_figure
 
 from tests.figure_checks import mirror_key_holds, panels_in_order
 from tests.fixtures import draw_manifest
@@ -113,7 +142,6 @@ def test_the_shared_region_bounds_the_spots_both_slices_image(drawn: Drawn) -> N
 
 def _panels_of(figure: Any) -> list[tuple[Any, ...]]:
     """Each panel's size in inches, limits, title and dashed boxes, left to right."""
-    from matplotlib.patches import Rectangle
 
     figure.canvas.draw()
     dpi = figure.dpi
@@ -135,10 +163,6 @@ def test_the_spatial_and_h_and_e_pages_share_one_format(
     drawn: Drawn, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """T- #791: spatial and H&E pages share one panel format; (c) spans (b) to 1 px."""
-    import matplotlib.pyplot as plt
-    from port.sim import analysis
-    from port.sim.truth_figure import truth_combined_figure
-    from port.studies.paper_figures import he_slices_figure
 
     r = read(drawn.path)
     caught: dict[str, Any] = {}
@@ -177,8 +201,6 @@ def test_the_spatial_variant_carries_the_phase_track_and_the_genomes_marks(
     drawn: Drawn,
 ) -> None:
     """T- #794: the spatial variant's phase track equals the flat one's, to 0.01 in."""
-    import matplotlib.pyplot as plt
-    from port.sim.truth_figure import truth_combined_figure
 
     r = read(drawn.path)
     pages = [truth_combined_figure(r, metric=True, spatial=s) for s in (False, True)]
@@ -222,8 +244,6 @@ def test_a_streamed_population_holds_each_statistics_mean_and_sd(
     tmp_path: Path,
 ) -> None:
     """Two realizations streamed: the running mean and sd are those of the two values."""
-    from port.sim.analysis import Population, stream
-    from port.sim.draw import draw
 
     resources = references()
     if resources is None:
@@ -255,8 +275,6 @@ def test_every_figure_is_written(drawn: Drawn) -> None:
 
 
 def _visible_texts(figure: Any) -> list[Any]:
-    from matplotlib.text import Text
-
     return [t for t in figure.findobj(Text) if t.get_visible() and t.get_text().strip()]
 
 
@@ -266,14 +284,6 @@ def test_the_truth_page_is_combined_pdfs_page_with_everything_on_it(
     drawn: Drawn,
 ) -> None:
     """Page is the text block less `CAPTION_ROOM`; fonts and texts on it to 0.5 px (#743)."""
-    from port.extensions.figure_style import (
-        CAPTION_ROOM,
-        PAPER_WIDTH,
-        TEXT_HEIGHT,
-        TRACK_FONT_SIZE,
-    )
-    from port.qa.combined_figure import FONT_SIZE
-    from port.sim.truth_figure import truth_combined_figure
 
     figure = truth_combined_figure(read(drawn.path))
     renderer = figure.canvas.get_renderer()
@@ -306,7 +316,6 @@ def test_the_truth_page_is_combined_pdfs_page_with_everything_on_it(
 @pytest.mark.merge
 def test_the_genome_panels_share_one_left_and_one_right_edge(drawn: Drawn) -> None:
     """(b)'s and (c)'s axes share one left and right edge, to 0.5 px."""
-    from port.sim.truth_figure import truth_combined_figure
 
     figure = truth_combined_figure(read(drawn.path))
     renderer = figure.canvas.get_renderer()
@@ -325,7 +334,6 @@ def test_the_genome_panels_share_one_left_and_one_right_edge(drawn: Drawn) -> No
 @pytest.mark.merge
 def test_the_tree_spans_the_genome_panels_between_its_barcodes(drawn: Drawn) -> None:
     """(a) spans (c): root `NAME_GAP` in, barcodes on the right edge, to 0.5 px."""
-    from port.sim.truth_figure import truth_combined_figure
 
     figure = truth_combined_figure(read(drawn.path))
     renderer = figure.canvas.get_renderer()
@@ -372,9 +380,6 @@ def test_the_truth_page_writes_byte_for_byte_at_its_size(
     drawn: Drawn, tmp_path: Path
 ) -> None:
     """Two writes are byte-equal (#452); MediaBox is the page, to 0.1 pt (T- #733, #740)."""
-    import re
-
-    from port.sim.truth_figure import write_truth_combined
 
     r = read(drawn.path)
     first = write_truth_combined(r, tmp_path / "a.pdf").read_bytes()
@@ -403,7 +408,6 @@ def dense(tmp_path_factory: pytest.TempPathFactory) -> Drawn:
 @pytest.mark.infra
 def test_a_barcode_over_10_bits_keeps_4_bits_at_each_end() -> None:
     """`shown` keeps up to 10 bits whole, else 4 bits each side of "..." (PR- #701)."""
-    from port.sim.analysis import BARCODE_SHOWN, MANY_EVENTS, shown
 
     assert (MANY_EVENTS, BARCODE_SHOWN) == (10, 8)
     assert shown("10110") == "10110"
@@ -415,8 +419,6 @@ def test_a_barcode_over_10_bits_keeps_4_bits_at_each_end() -> None:
 
 
 def _panels(r: Any) -> tuple[Any, Any, Any]:
-    from port.sim.truth_figure import truth_combined_figure
-
     figure = truth_combined_figure(r)
     tree_panel, _, genomic = figure.subfigs
     (tree_ax,) = tree_panel.axes
@@ -444,10 +446,6 @@ def _headed(genomic: Any) -> set[str]:
 
 def _a_is_the_tree(r: Any) -> Any:
     """Assert (a) equals `draw_tree(edges=True)` and (c) heads each clone with its barcode."""
-    import matplotlib.pyplot as plt
-    from port.qa.combined_figure import FONT_SIZE
-    from port.sim.analysis import draw_tree, shown
-    from port.sim.truth_figure import _symbol
 
     t = tree(r)
     _, tree_ax, genomic = _panels(r)
@@ -474,7 +472,6 @@ def _a_is_the_tree(r: Any) -> Any:
 @pytest.mark.merge
 def test_at_10_events_or_fewer_a_is_the_tree(drawn: Drawn) -> None:
     """At <= `MANY_EVENTS`, (a) is `draw_tree`'s tree with events (PR- #701)."""
-    from port.sim.analysis import MANY_EVENTS
 
     r = read(drawn.path)
     t = tree(r)
@@ -495,8 +492,6 @@ def _marks(ax: Any) -> list[Any]:
 @pytest.mark.merge
 def test_only_the_last_track_marks_every_10_mb_at_paper_width(drawn: Drawn) -> None:
     """Only the last track marks every 10 Mb, 2 pt x 0.5 pt (PR- #701, PR- #715)."""
-    import matplotlib.pyplot as plt
-    from matplotlib.markers import TICKDOWN
 
     r = read(drawn.path)
     expected = int(np.sum(np.asarray(r.lengths) // 10_000_000))
@@ -522,10 +517,6 @@ def test_no_mb_label_is_drawn_and_every_contig_is_named_once_clear(
     which: str, request: pytest.FixtureRequest
 ) -> None:
     """No Mb labels; each contig named once under the last track (#743, #745, PR- #715)."""
-    import re
-
-    import matplotlib.pyplot as plt
-    from port.sim.analysis import binned_axis
 
     r = read(request.getfixturevalue(which).path)
     figure, _, genomic = _panels(r)
@@ -552,7 +543,6 @@ def test_no_mb_label_is_drawn_and_every_contig_is_named_once_clear(
         assert float(text.get_position()[0]) == pytest.approx(a)
         assert text.get_horizontalalignment() == "left"
         assert re.fullmatch(r"\w+", text.get_text())
-    from port.extensions.genomic_axis import CONTIG_PAD, STAGGERED
 
     boxes = [t.get_window_extent(renderer) for t in names]
     # NB rows step half a line (#743): neighbours may meet within `CONTIG_PAD`
@@ -588,7 +578,6 @@ def test_no_mb_label_is_drawn_and_every_contig_is_named_once_clear(
 @pytest.mark.merge
 def test_above_10_events_a_is_the_tree_without_events(dense: Drawn) -> None:
     """Above `MANY_EVENTS`, (a) has no events and (c) cuts barcodes by `shown` (PR- #701)."""
-    from port.sim.analysis import MANY_EVENTS, shown
 
     r = read(dense.path)
     t = tree(r)
@@ -628,11 +617,6 @@ def test_clones_read_n_1_2_down_the_tree_and_alike_in_every_truth_figure(
     fixture: str, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Clones read $m_N$, $m_1$, ... top down and match by colour in every figure (PR- #701)."""
-    import matplotlib.colors as mcolors
-    import matplotlib.pyplot as plt
-    from port.qa.combined_figure import clone_symbol
-    from port.sim import analysis
-    from port.sim.truth_figure import simulated_tree_figure
 
     r = read(request.getfixturevalue(fixture).path)
     symbols = [r"$m_N$", *(rf"$m_{k}$" for k in range(1, len(r.clones)))]
@@ -691,8 +675,6 @@ def test_the_tree_s_edges_carry_events_up_to_10_and_none_above(
     drawn: Drawn, dense: Drawn
 ) -> None:
     """`draw_tree` puts events on edges at <= `MANY_EVENTS`, none above (PR- #701)."""
-    import matplotlib.pyplot as plt
-    from port.sim.analysis import MANY_EVENTS, draw_tree
 
     for fixture, many in ((drawn, False), (dense, True)):
         r = read(fixture.path)
@@ -725,8 +707,6 @@ def test_the_mirror_key_starts_on_b_s_left_edge_and_is_labelled_on_its_right(
 @pytest.mark.merge
 def test_truth_combined_reads_clones_profile_tracks(drawn: Drawn) -> None:
     """The truth page's panels follow `PANELS`, the run page's order (PR- #715)."""
-    import matplotlib.pyplot as plt
-    from port.qa.combined_figure import PANELS
 
     figure, tree_ax, genomic = _panels(read(drawn.path))
     _, profile, _ = figure.subfigs

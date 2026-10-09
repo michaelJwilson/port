@@ -2,13 +2,15 @@
 
 import numpy as np
 import pytest
+from cnaster.hmm_nophasing import _nb_logpmf_1d
+from cnaster.omics import summarize_counts_for_bins
 from port.sim.truth import core_inference_truth, weierstrass_exposure
+from port.sim.unsegment import unsegment
 
 
 @pytest.mark.bug
 def test_a_non_positive_rate_scores_as_certain_rather_than_excluded() -> None:
     """`_nb_logpmf_1d` scores a non-positive rate as log-density 0 rather than excluding it."""
-    from cnaster.hmm_nophasing import _nb_logpmf_1d
 
     counts = np.array([3.0, 3.0, 3.0])
     exposure = np.array([1.0, 0.0, -1.0])
@@ -49,7 +51,6 @@ def test_the_exposure_varies_on_the_axis_that_survives_aggregation() -> None:
 @pytest.mark.snapshot
 def test_a_constant_exposure_is_absorbed_and_a_varying_one_is_not() -> None:
     """A constant exposure is absorbed into `mu` bitwise; the planted one is not."""
-    from cnaster.hmm_nophasing import _nb_logpmf_1d
 
     truth = core_inference_truth(n_obs=240)
     counts = truth.counts_nb[:, 0]
@@ -76,8 +77,6 @@ def test_a_constant_exposure_is_absorbed_and_a_varying_one_is_not() -> None:
 @pytest.mark.warning
 def test_the_binner_does_not_carry_the_exposure() -> None:
     """`summarize_counts_for_bins` returns `base_nb_mean` as zeros, dropping the exposure (#68)."""
-    from cnaster.omics import summarize_counts_for_bins
-    from port.sim.unsegment import unsegment
 
     truth = core_inference_truth(
         n_clones=2, n_states=3, lattice=(6, 6), n_obs=20, n_segments=2

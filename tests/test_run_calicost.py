@@ -7,13 +7,34 @@ recovery (`end2end`).
 from __future__ import annotations
 
 import math
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
+import matplotlib as mpl
 import numpy as np
 import pandas as pd
 import pytest
+import scipy.sparse
 import yaml
+from port.qa.audit import audit_truth, planted_rows
+from port.qa.scoring import integer_clones
+from port.scripts.run_calicost import (
+    PATHS,
+    UnterminatedInitialization,
+    _palette,
+    aligned,
+    calicost_config,
+    compatible,
+    input_filelist,
+    shipped_config,
+    terminating,
+    write_calicost_config,
+)
+from port.sim.inputs import GENE_LENGTH, GENE_SPACING
+from port.sim.run_config import write_for_run
+from port.sim.truth import core_inference_truth, dev_instance
 
 SHARED = {
     "n_clones": ("hmrf", "n_clones"),
@@ -48,9 +69,6 @@ SHARED = {
 
 
 def _document(tmp_path: Path) -> tuple[dict[str, Any], Path]:
-    from port.sim.run_config import write_for_run
-    from port.sim.truth import core_inference_truth
-
     truth = core_inference_truth(n_obs=40, lattice=(6, 6), seed=3)
     _, config = write_for_run(truth, tmp_path)
     return yaml.safe_load(config.read_text()), config
@@ -59,7 +77,6 @@ def _document(tmp_path: Path) -> tuple[dict[str, Any], Path]:
 @pytest.mark.infra
 def test_every_shared_key_carries_the_run_cnaster_value(tmp_path: Path) -> None:
     """27 keys equal, the inputs are the sample's, and one initialization runs."""
-    from port.scripts.run_calicost import calicost_config
 
     document, _ = _document(tmp_path)
     config = calicost_config(document)
@@ -82,11 +99,6 @@ def test_every_shared_key_carries_the_run_cnaster_value(tmp_path: Path) -> None:
 def test_calicost_reads_back_the_written_configuration(tmp_path: Path) -> None:
     """CalicoST's own parser returns every translated value, typed."""
     pytest.importorskip("calicost")
-    from port.scripts.run_calicost import (
-        calicost_config,
-        compatible,
-        write_calicost_config,
-    )
 
     document, _ = _document(tmp_path)
     config = calicost_config(document)
@@ -104,7 +116,6 @@ def test_calicost_reads_back_the_written_configuration(tmp_path: Path) -> None:
 @pytest.mark.infra
 def test_a_colon_in_a_value_is_refused(tmp_path: Path) -> None:
     """A value containing `:` is refused, since CalicoST splits lines on it."""
-    from port.scripts.run_calicost import write_calicost_config
 
     with pytest.raises(ValueError, match="cannot read a ':'"):
         write_calicost_config({"output_dir": "C:/run"}, tmp_path / "c.txt")
@@ -113,8 +124,6 @@ def test_a_colon_in_a_value_is_refused(tmp_path: Path) -> None:
 @pytest.mark.infra
 def test_the_shims_are_put_back(tmp_path: Path) -> None:
     """`compatible()` leaves numpy, scipy and pandas as it found them."""
-    import scipy.sparse
-    from port.scripts.run_calicost import compatible
 
     before = (
         hasattr(np, "NAN"),
@@ -136,9 +145,6 @@ def test_the_shims_are_put_back(tmp_path: Path) -> None:
 @pytest.mark.analytic
 def test_a_merged_bin_maps_back_to_each_planted_bin_it_covers() -> None:
     """Rows spanning two planted genes cover both; a gene no row spans is -1."""
-    from port.qa.audit import planted_rows
-    from port.sim.inputs import GENE_LENGTH, GENE_SPACING
-    from port.sim.truth import core_inference_truth
 
     truth = core_inference_truth(n_obs=40, lattice=(6, 6), seed=3)
     first = int(truth.lengths[0])
@@ -161,7 +167,6 @@ def test_a_merged_bin_maps_back_to_each_planted_bin_it_covers() -> None:
 @pytest.mark.analytic
 def test_clones_of_one_integer_profile_merge_to_the_smallest() -> None:
     """Equal `(A, B)` at every bin is one clone; one differing B keeps two."""
-    from port.qa.scoring import integer_clones
 
     a = np.array([[1, 1, 1, 2], [1, 1, 1, 2], [2, 2, 2, 2]])
     b = np.array([[1, 1, 1, 1], [1, 0, 1, 1], [1, 1, 1, 1]])
@@ -174,9 +179,6 @@ def test_clones_of_one_integer_profile_merge_to_the_smallest() -> None:
 def test_calicost_recovers_the_planted_clones_of_the_dev_instance() -> None:
     """CalicoST, aligned, recovers the dev instance's planted clones (tolerances from #347's PR)."""
     pytest.importorskip("calicost")
-    import matplotlib as mpl
-    from port.qa.audit import audit_truth
-    from port.sim.truth import dev_instance
 
     mpl.use("Agg")
     recovery, _ = audit_truth(dev_instance(), ["--no-figures"], calicost=True)
@@ -195,8 +197,6 @@ def _l_shaped() -> np.ndarray:
 @pytest.mark.release
 def test_calicosts_initializer_does_not_terminate_on_an_l_shaped_clone() -> None:
     """CalicoST's initializer does not return on a 300-spot L within 20 s; fails when fixed."""
-    import subprocess
-    import sys
 
     pytest.importorskip("calicost")
     script = (
@@ -218,11 +218,6 @@ def test_calicosts_initializer_does_not_terminate_on_an_l_shaped_clone() -> None
 def test_the_guard_refuses_the_l_and_passes_a_square_through() -> None:
     """The refusal names the block and the floor; a square grid is CalicoST's."""
     pytest.importorskip("calicost")
-    from port.scripts.run_calicost import (
-        UnterminatedInitialization,
-        compatible,
-        terminating,
-    )
 
     xs, ys = np.meshgrid(np.arange(20), np.arange(20))
     square = np.column_stack([xs.ravel(), ys.ravel()])
@@ -251,7 +246,6 @@ def test_the_guard_refuses_the_l_and_passes_a_square_through() -> None:
 def test_the_aligned_palette_colours_every_pair_up_to_the_cap() -> None:
     """CalicoST's own colours kept; `(5, 2)`, which failed a run, now has one."""
     pytest.importorskip("calicost")
-    from port.scripts.run_calicost import _palette, compatible
 
     with compatible():
         from calicost.utils_plotting import get_full_palette
@@ -273,7 +267,6 @@ def test_the_aligned_palette_colours_every_pair_up_to_the_cap() -> None:
 def test_the_aligned_palette_is_callable_while_installed(tmp_path: Path) -> None:
     """Called through CalicoST's module inside `aligned`, it returns, not recurses."""
     pytest.importorskip("calicost")
-    from port.scripts.run_calicost import aligned, compatible
 
     document, _ = _document(tmp_path)
     document["int_copy_num"]["max_total_copy"] = 12
@@ -292,7 +285,6 @@ def test_the_shipped_configuration_keeps_every_value_but_the_paths(
     tmp_path: Path,
 ) -> None:
     """`--shipped`: CalicoST's own file, with the run's inputs and output (#494)."""
-    from port.scripts.run_calicost import PATHS, calicost_config, shipped_config
 
     document, _ = _document(tmp_path)
     shipped = tmp_path / "configuration_cna"
@@ -321,7 +313,6 @@ def test_the_shipped_configuration_keeps_every_value_but_the_paths(
 @pytest.mark.infra
 def test_a_sheet_of_several_slices_takes_the_joint_file(tmp_path: Path) -> None:
     """Two slices take the joint `input_filelist`; each file is refused on the other's sheet (#494)."""
-    from port.scripts.run_calicost import input_filelist, shipped_config
 
     document, _ = _document(tmp_path)
     single = Path(document["paths"]["sample_sheet"])

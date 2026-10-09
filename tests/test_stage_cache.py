@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+import port.sim.draw as d
 import pytest
+from port.qa import stage as at
+from port.sim.fixtures import realization_hash
+from port.studies import copy_state_stream, potts_stream
 
 from tests import ROOT
 
@@ -29,9 +34,6 @@ def test_the_streams_share_one_draw_and_one_run_per_realization(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """On dev_tree_1s_hard r0, r1 the shared cache matches each stream alone, bitwise."""
-    import port.sim.draw as d
-    from port.qa import stage as at
-    from port.studies import copy_state_stream, potts_stream
 
     monkeypatch.chdir(ROOT)
 
@@ -76,12 +78,9 @@ def test_realize_draws_only_what_is_wanted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`realize(wanted={2})` yields realization 2 alone, its hash the full stream's."""
-    import port.sim.draw as d
-    from port.sim.fixtures import realization_hash
 
     monkeypatch.chdir(ROOT)
     manifest = d.read_manifest(MANIFEST)
-    from dataclasses import replace
 
     manifest = replace(
         manifest,

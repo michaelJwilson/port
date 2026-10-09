@@ -15,9 +15,7 @@ ADMITTED: dict[tuple[str, str], str] = {
         "_nb_logpmf_1d",
     ): "cnaster's own name, which the row replaces",
 }
-"""Admitted cross-module private imports, each with why (`docs/port-forward.md`); only
-shrinks.
-"""
+"""Admitted cross-module private imports, each with why (`docs/port-forward.md`); only shrinks."""
 
 
 def _private_imports() -> set[tuple[str, str, str]]:

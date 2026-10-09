@@ -6,6 +6,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pytest
+from cnaster.reference import get_reference_genes as upstream
+from port.patch.reference import get_reference_genes as patched
 from port.sim.run_config import PlantedInstance
 
 pytestmark = pytest.mark.preprocessing
@@ -17,8 +19,6 @@ def test_the_reference_table_is_cnasters_table(
     gate_config: Any,
 ) -> None:
     """Every column, dtype and the index equal `cnaster`'s frame."""
-    from cnaster.reference import get_reference_genes as upstream
-    from port.patch.reference import get_reference_genes as patched
 
     _, _, written, _ = planted_instance
 
@@ -33,8 +33,6 @@ def test_the_reader_drops_what_cnaster_drops(
     gate_config: Any,
 ) -> None:
     """Drops chrX, chrY and chrM as `cnaster` does, with contigs parsed as integers."""
-    from cnaster.reference import get_reference_genes as upstream
-    from port.patch.reference import get_reference_genes as patched
 
     path = tmp_path / "hgtable.tsv"
     contigs = ["chr1", "chr7", "chr22", "chrX", "chrY", "chrM", "chr2"]

@@ -7,6 +7,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pytest
+from cnaster.annotation import assign_clone_ranges, load_clone_labels, load_clone_ranges
+from cnaster.io import load_input_data
+from cnaster.omics import form_gene_snp_table
 from port.sim.inputs import GENE_SPACING, WrittenInputs, written_config
 from port.sim.run_config import PlantedInstance, run_cnaster_config
 from port.sim.truth import CoreInferenceTruth, balanced_clone
@@ -60,7 +63,6 @@ def annotated(
     planted: CoreInferenceTruth, annotated_config: Any
 ) -> tuple[list[np.ndarray], np.ndarray]:
     """`load_clone_labels` run once, with the planted counts."""
-    from cnaster.annotation import load_clone_labels
 
     single_X = np.stack([planted.counts_nb, planted.counts_bb], axis=1)
     index, base_nb_mean = load_clone_labels(single_X, annotated_config)
@@ -75,7 +77,6 @@ def test_the_clone_label_file_returns_the_planted_partition(
     annotated_config: Any,
 ) -> None:
     """`load_clone_labels` returns the planted partition, normal first (#160)."""
-    from cnaster.annotation import load_clone_labels
 
     index, _ = annotated
     balanced = balanced_clone(planted)
@@ -154,9 +155,6 @@ def assigned_ranges(
     planted_instance: PlantedInstance, written: WrittenInputs, clone_range_file: Path
 ) -> tuple[Any, np.ndarray, np.ndarray]:
     """Run `load_clone_ranges` then `assign_clone_ranges` on `form_gene_snp_table`'s table."""
-    from cnaster.annotation import assign_clone_ranges, load_clone_ranges
-    from cnaster.io import load_input_data
-    from cnaster.omics import form_gene_snp_table
 
     with written_config(planted_instance[3]) as config:
         loaded = load_input_data(config)

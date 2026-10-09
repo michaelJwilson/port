@@ -5,10 +5,27 @@ One negative binomial per `(segment, spot)` and one beta-binomial, through
 families (#66): pinned as that draw, scored as upstream does, and recoverable.
 """
 
+from typing import Any
+
 import numpy as np
 import pytest
+import torch
+from cnaster.hmm_nophasing import (
+    _bb_logpmf_1d,
+    _dense_bb_logpmf,
+    _dense_nb_logpmf,
+    _nb_logpmf_1d,
+)
+from cnaster.hmrf import compute_loglike_spot_assignment
+from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
 from port.qa.statistics import chi_square_pvalue
-from port.sim.truth import CoreInferenceTruth, core_inference_truth
+from port.sim.truth import (
+    NORMAL_SHARE,
+    CoreInferenceTruth,
+    core_inference_truth,
+    emission_family,
+)
+from sal.emissions import BetaBinomialEmission, NegativeBinomialEmission
 from scipy import stats
 
 from tests.adapters import from_core_inference_truth
@@ -18,9 +35,7 @@ CHI_SQUARE_ALPHA = 0.001
 
 
 def _recover(truth: CoreInferenceTruth) -> dict[str, np.ndarray]:
-    """Moment estimates of the planted parameters per state, by inverting the NB and beta-
-    binomial variances.
-    """
+    """Moment estimates of the planted parameters per state, by inverting the NB and beta- binomial variances."""
     per_spot = truth.states[truth.labels].T  # (n_obs, n_spots)
     mu = np.empty(truth.n_states)
     alpha = np.empty(truth.n_states)
@@ -59,19 +74,8 @@ def test_the_draw_recovers_the_planted_parameters() -> None:
     np.testing.assert_allclose(got["rho"], 1.0 / (truth.taus + 1.0), rtol=0.15)
 
 
-@pytest.mark.smoke
-def test_each_entry_is_a_negative_binomial_draw() -> None:
-    """Pooled counts per state against `nbinom(r, r / (r + lambda mu))` by goodness of fit
-    (#78).
-    """
-    truth = core_inference_truth(
-        n_obs=3000,
-        lattice=(20, 20),
-        n_segments=6,
-        exposure="constant",
-        depth=(1.0, 1.0),
-        reads=(40, 41),
-    )
+def _negative_binomial_bins(truth: Any) -> tuple[np.ndarray, np.ndarray]:
+    """State 1's pooled counts, and `nbinom(r, r / (r + lambda mu))`'s expected bins (#78)."""
     per_spot = truth.states[truth.labels].T
     state = 1
     counts = truth.counts_nb[per_spot == state]
@@ -85,23 +89,11 @@ def test_each_entry_is_a_negative_binomial_draw() -> None:
     )[: edges.size]
     expected = stats.nbinom.pmf(edges, r, r / (r + rate)) * counts.size
     expected[-1] += counts.size - expected.sum()
-
-    chi, pvalue = chi_square_pvalue(observed, expected)
-
-    assert pvalue > CHI_SQUARE_ALPHA, f"chi2 = {chi:.1f}, p = {pvalue:.2e}"
+    return observed, expected
 
 
-@pytest.mark.smoke
-def test_each_entry_is_a_beta_binomial_draw() -> None:
-    """Pooled successes per state against `betabinom(n, a, b)` by goodness of fit."""
-    truth = core_inference_truth(
-        n_obs=3000,
-        lattice=(20, 20),
-        n_segments=6,
-        exposure="constant",
-        depth=(1.0, 1.0),
-        reads=(40, 41),
-    )
+def _beta_binomial_bins(truth: Any) -> tuple[np.ndarray, np.ndarray]:
+    """State 2's pooled successes, and `betabinom(n, a, b)`'s expected bins."""
     per_spot = truth.states[truth.labels].T
     state = 2
     successes = truth.counts_bb[per_spot == state].astype(int)
@@ -112,6 +104,26 @@ def test_each_entry_is_a_beta_binomial_draw() -> None:
 
     observed = np.bincount(successes, minlength=trials + 1)[: trials + 1]
     expected = stats.betabinom.pmf(np.arange(trials + 1), trials, a, b) * successes.size
+    return observed, expected
+
+
+@pytest.mark.smoke
+@pytest.mark.parametrize(
+    "binned",
+    [_negative_binomial_bins, _beta_binomial_bins],
+    ids=["negative-binomial", "beta-binomial"],
+)
+def test_each_entry_is_a_draw_of_its_family(binned: Any) -> None:
+    """Pooled counts (successes) per state against their family by goodness of fit."""
+    truth = core_inference_truth(
+        n_obs=3000,
+        lattice=(20, 20),
+        n_segments=6,
+        exposure="constant",
+        depth=(1.0, 1.0),
+        reads=(40, 41),
+    )
+    observed, expected = binned(truth)
 
     chi, pvalue = chi_square_pvalue(observed, expected)
 
@@ -121,15 +133,7 @@ def test_each_entry_is_a_beta_binomial_draw() -> None:
 @pytest.mark.oracle
 @pytest.mark.critical
 def test_cnaster_scores_the_fixture_as_upstream_does() -> None:
-    """`cnaster` and upstream score the fixture at the planted parameters to the realized
-    agreement.
-    """
-    import torch
-    from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
-    from sal.emissions import (
-        BetaBinomialEmission,
-        NegativeBinomialEmission,
-    )
+    """`cnaster` and upstream score the fixture at the planted parameters to the realized agreement."""
 
     truth = core_inference_truth()
     spot, state = 7, 2
@@ -183,11 +187,7 @@ def test_cnaster_scores_the_fixture_as_upstream_does() -> None:
 
 @pytest.mark.end2end
 def test_the_field_recovers_the_planted_clone_assignment() -> None:
-    """At the planted states every spot's own clone wins its
-    `compute_loglike_spot_assignment` row.
-    """
-    from cnaster.hmm_nophasing import _dense_bb_logpmf, _dense_nb_logpmf
-    from cnaster.hmrf import compute_loglike_spot_assignment
+    """At the planted states every spot's own clone wins its `compute_loglike_spot_assignment` row."""
 
     truth = core_inference_truth(n_obs=600, lattice=(12, 10), n_segments=6)
 
@@ -223,7 +223,6 @@ def test_the_field_recovers_the_planted_clone_assignment() -> None:
 @pytest.mark.end2end
 def test_the_pseudobulk_recovers_the_mean_and_not_the_dispersion() -> None:
     """The pseudobulk fit recovers the planted `mu` but not the per-spot dispersion (#78)."""
-    from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
 
     truth = core_inference_truth(n_obs=3000, lattice=(20, 20), n_segments=6)
     inputs = from_core_inference_truth(truth)
@@ -259,8 +258,6 @@ def test_the_pseudobulk_recovers_the_mean_and_not_the_dispersion() -> None:
 @pytest.mark.smoke
 def test_a_spot_s_counts_come_from_its_own_stream() -> None:
     """Column `s` equals a direct draw from `default_rng([seed, s])`."""
-    import torch
-    from port.sim.truth import emission_family
 
     truth = core_inference_truth()
     spot = 13
@@ -296,7 +293,6 @@ def test_every_size_plants_a_normal_clone_of_at_least_thirty_per_cent(
     lattice: tuple[int, int], n_clones: int
 ) -> None:
     """Clone 0 is all state 0 and holds at least 30% of the spots, at three sizes (#298)."""
-    from port.sim.truth import NORMAL_SHARE
 
     truth = core_inference_truth(
         n_clones=n_clones, n_states=4, lattice=lattice, n_obs=60, n_segments=2

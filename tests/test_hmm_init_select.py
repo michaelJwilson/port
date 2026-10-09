@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+import torch
+from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
 from port.qa.emission_family import count_pair_family
 from port.sandbox.patch.hmm_initialize.backends import (
     DEFAULT_ALPHA,
@@ -18,6 +20,7 @@ from port.sandbox.patch.hmm_initialize.backends import (
     sal_emission_backend,
     select,
 )
+from sal.emissions import CountPairEmission
 
 EXPOSURE, TRIALS = 40.0, 60.0
 N_OBS = 400
@@ -174,9 +177,6 @@ def test_the_sal_backend_beats_a_deliberately_wrong_start(
 @pytest.mark.oracle
 def test_sals_density_with_a_covariate_is_cnasters() -> None:
     """sal's covariate density equals `cnaster`'s NB and BB bin for bin, within 1e-10 (sal #1083)."""
-    import torch
-    from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
-    from sal.emissions import CountPairEmission
 
     rng = np.random.default_rng(0)
     n = 400

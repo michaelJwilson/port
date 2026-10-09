@@ -38,9 +38,7 @@ def test_field(
     arm: Callable[[SpotCloneField, np.ndarray], np.ndarray],
     size: dict[str, int],
 ) -> None:
-    """Producer plus reordered field, against one pass holding no emission (0.9 GB at
-    stress).
-    """
+    """Producer plus reordered field, against one pass holding no emission (0.9 GB at stress)."""
     fixture = spot_clone_field(**size)
     weight = np.ones(fixture.n_spots)
     arm(fixture, weight)

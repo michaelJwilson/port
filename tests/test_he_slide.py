@@ -8,9 +8,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import cnaster.scripts.run_cnaster as script
 import numpy as np
 import pandas as pd
 import pytest
+from cnaster.he import get_he_image
+from port.patch.he import he_image
+from port.pipeline import SWAPS, patched, swap_sites
+from port.qa.combined_figure import he_classes
 from port.sim.he_slide import mock_he, write_he_slide
 from port.sim.truth import clone_bands
 
@@ -19,8 +24,6 @@ N_CLONES = 4
 
 
 def _read(tmp_path: Path) -> tuple[pd.DataFrame, np.ndarray]:
-    from cnaster.he import get_he_image
-
     labels = clone_bands(*LATTICE, N_CLONES)
     write_he_slide(mock_he(labels, LATTICE, seed=5), tmp_path)
 
@@ -41,10 +44,7 @@ def _read(tmp_path: Path) -> tuple[pd.DataFrame, np.ndarray]:
 def test_each_spot_reads_its_own_clone_and_darker_away_from_normal(
     tmp_path: Path,
 ) -> None:
-    """All 320 spots join a pixel of their own clone; mean gray strictly falls with
-    clone.
-    """
-    from cnaster.he import get_he_image
+    """All 320 spots join a pixel of their own clone; mean gray strictly falls with clone."""
 
     frame, labels = _read(tmp_path)
     slide = mock_he(labels, LATTICE, seed=5)
@@ -66,10 +66,7 @@ def test_each_spot_reads_its_own_clone_and_darker_away_from_normal(
 
 @pytest.mark.bug
 def test_the_brightest_pixel_takes_a_label_past_num_labels(tmp_path: Path) -> None:
-    """`get_he_image(num_labels=4)` labels the brightest pixel 5 (`np.digitize` on the
-    100th percentile).
-    """
-    from cnaster.he import get_he_image
+    """`get_he_image(num_labels=4)` labels the brightest pixel 5 (`np.digitize` on the 100th percentile)."""
 
     _read(tmp_path)
     pixels = get_he_image(str(tmp_path), pos=None, num_labels=4)
@@ -81,11 +78,7 @@ def test_the_brightest_pixel_takes_a_label_past_num_labels(tmp_path: Path) -> No
 
 @pytest.mark.patch
 def test_ports_labels_are_the_num_labels_asked_for(tmp_path: Path) -> None:
-    """`port.patch.he.he_image(num_labels=4)` matches cnaster's labels bitwise on
-    `1..4`; label 5 becomes 4 (#311, T- #771).
-    """
-    from cnaster.he import get_he_image
-    from port.patch.he import he_image
+    """`port.patch.he.he_image(num_labels=4)` matches cnaster's labels bitwise on `1..4`; label 5 becomes 4 (#311, T- #771)."""
 
     _read(tmp_path)
     upstream = get_he_image(str(tmp_path), pos=None, num_labels=4)["label"].to_numpy()
@@ -100,12 +93,7 @@ def test_ports_labels_are_the_num_labels_asked_for(tmp_path: Path) -> None:
 def test_patched_every_cnaster_caller_reads_labels_one_to_num_labels(
     tmp_path: Path,
 ) -> None:
-    """Patched, every `get_he_image` binding is port's and labels `1..4`; cnaster's
-    returns on exit (T- #771).
-    """
-    import cnaster.scripts.run_cnaster as script
-    from cnaster.he import get_he_image
-    from port.pipeline import SWAPS, patched, swap_sites
+    """Patched, every `get_he_image` binding is port's and labels `1..4`; cnaster's returns on exit (T- #771)."""
 
     _read(tmp_path)
     sites = {site.module for site in swap_sites(SWAPS) if site.name == "get_he_image"}
@@ -120,10 +108,7 @@ def test_patched_every_cnaster_caller_reads_labels_one_to_num_labels(
 
 @pytest.mark.end2end
 def test_the_spots_h_and_e_class_darkens_away_from_normal(tmp_path: Path) -> None:
-    """`he_classes` lie in `1..4` and each planted clone's mean class falls with clone
-    index (T- #771).
-    """
-    from port.qa.combined_figure import he_classes
+    """`he_classes` lie in `1..4` and each planted clone's mean class falls with clone index (T- #771)."""
 
     frame, labels = _read(tmp_path)
     coords = frame[["x", "y"]].to_numpy(dtype=np.float64)

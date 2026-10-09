@@ -157,7 +157,5 @@ def test_reference_read(
     arm: Callable[[str], object],
     rows: int,
 ) -> None:
-    """`pd.read_csv` against `pl.read_csv` via Arrow, at 1,213 and 250,000 transcripts,
-    warm (#185).
-    """
+    """`pd.read_csv` against `pl.read_csv` via Arrow, at 1,213 and 250,000 transcripts, warm (#185)."""
     benchmark(arm, str(hgtable(rows)))

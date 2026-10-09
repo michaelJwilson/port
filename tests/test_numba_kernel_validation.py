@@ -6,7 +6,9 @@ Coverage cannot see `numba` kernels, so the registry carries the claim.
 
 import ast
 import pathlib
+import re
 
+import cnaster
 import pytest
 
 SUBJECT = "cnaster"
@@ -99,10 +101,7 @@ UNVALIDATED: dict[str, str] = {
 
 
 def _installed_kernels() -> dict[str, str]:
-    """Every `@njit` function the installed package ships, by `module:name`, read with
-    `ast`.
-    """
-    import cnaster
+    """Every `@njit` function the installed package ships, by `module:name`, read with `ast`."""
 
     root = pathlib.Path(next(iter(cnaster.__path__)))
     kernels: dict[str, str] = {}
@@ -156,7 +155,6 @@ def test_every_named_validation_test_exists(
 @pytest.mark.infra
 def test_every_gap_names_a_ticket() -> None:
     """An excuse without a ticket is a decision nobody will revisit."""
-    import re
 
     unticketed = {
         kernel: reason

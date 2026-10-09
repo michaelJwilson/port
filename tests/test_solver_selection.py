@@ -2,6 +2,10 @@
 
 import numpy as np
 import pytest
+from cnaster.hmm import compute_copy_state_posterior
+from cnaster.hmm_nophasing import hmm_nophasing
+from cnaster.hmm_utils import get_em_solver_params, get_solver
+from port.sim.inputs import written_config
 from scipy.special import logsumexp
 
 from tests.adapters import cnaster_lattice_arguments, from_negative_binomial_chains
@@ -12,7 +16,6 @@ from tests.fixtures import negative_binomial_chains
 @pytest.mark.usefixtures("cnaster_config")
 def test_solver_options_are_the_ones_that_solver_takes() -> None:
     """Each solver gets its own keywords, `em_` prefix stripped, against the expected sets."""
-    from cnaster.hmm_utils import get_em_solver_params
 
     params = get_em_solver_params()
 
@@ -23,8 +26,6 @@ def test_solver_options_are_the_ones_that_solver_takes() -> None:
 @pytest.mark.smoke
 def test_an_unknown_solver_is_refused() -> None:
     """A name outside the supported set stops the fit rather than starting one."""
-    from cnaster.hmm_utils import get_solver
-    from port.sim.inputs import written_config
 
     with written_config({"hmm": {"solver": "Powell"}}), pytest.raises(AssertionError):
         get_solver()
@@ -34,8 +35,6 @@ def test_an_unknown_solver_is_refused() -> None:
 @pytest.mark.parametrize("n_states", [2, 4])
 def test_copy_state_posterior_normalises_the_lattice(n_states: int) -> None:
     """`compute_copy_state_posterior` normalises and equals `get_state_posteriors` within 1e-9."""
-    from cnaster.hmm import compute_copy_state_posterior
-    from cnaster.hmm_nophasing import hmm_nophasing
 
     fixture = negative_binomial_chains(n_states=n_states, sequence_length=30)
     inputs = from_negative_binomial_chains(fixture)

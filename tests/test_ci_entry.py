@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 from _pytest.mark.expression import Expression
+from port.qa.provenance import inputs_hash
 
 from scripts import ci
 from tests import ROOT
@@ -97,7 +98,6 @@ def test_no_png_is_tracked_under_docs() -> None:
 @pytest.mark.infra
 def test_the_input_hash_moves_with_an_input_and_not_otherwise(tmp_path: Path) -> None:
     """An edit moves the input digest; a badge write does not."""
-    from port.qa.provenance import inputs_hash
 
     (tmp_path / "python").mkdir()
     (tmp_path / "python" / "a.py").write_text("x = 1\n")

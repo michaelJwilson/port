@@ -5,6 +5,7 @@ Stress (`release`): K = 7, G = 3,000, S = 2,000; bitwise evidence in
 """
 
 import pytest
+from port.sandbox.patch.emission import emission_buffers
 from pytest_benchmark.fixture import BenchmarkFixture
 
 from tests.builders import (
@@ -34,7 +35,6 @@ def test_the_emission(
     benchmark: BenchmarkFixture, implementation: str, size: dict[str, int]
 ) -> None:
     """Both arms, warm, at gate and stress sizes (#204)."""
-    from port.sandbox.patch.emission import emission_buffers
 
     inputs = _inputs(**size)
 

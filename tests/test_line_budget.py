@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import cnaster
 import pytest
 from port.extensions.repository import ROOT
 
@@ -22,7 +23,7 @@ TREES = {
 }
 """Each budgeted tree's paths under `python/port`; `tests` is the repository's `tests/`."""
 
-BUDGET = {"run": 13_996, "qa": 18_473, "sandbox": 7_827, "tests": 30404}
+BUDGET = {"run": 13_996, "qa": 18_473, "sandbox": 7_827, "tests": 29433}
 """Non-blank lines per tree (T- #831), lowered as packages land; a move between trees transfers its lines."""
 
 SLACK = 0.02
@@ -68,7 +69,6 @@ def test_the_tests_are_within_twice_port() -> None:
 @pytest.mark.infra
 def test_the_run_path_is_at_most_cnasters_size() -> None:
     """The run path at most `TARGET` x cnaster's non-blank lines, its `sandbox/` and `deprecated/` excluded."""
-    import cnaster
 
     upstream = [p for p in Path(next(iter(cnaster.__path__))).rglob("*.py")
                 if not {"sandbox", "deprecated"} & set(p.parts)]  # fmt: skip

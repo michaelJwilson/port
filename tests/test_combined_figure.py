@@ -6,14 +6,57 @@ call through and are removed on exit. Page-layout checks are `smoke`.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
+import cnaster.scripts.run_cnaster as script
+import matplotlib as mpl
+import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import port.patch.plot_genomic as genomic
+import port.patch.plotting as spatial
 import pytest
+from matplotlib.collections import PathCollection, PolyCollection
+from matplotlib.text import Text
+from port.extensions.figure_style import (
+    CAPTION_ROOM,
+    FIT_MARGIN,
+    PAPER_WIDTH,
+    STAMP_ROOM,
+    TEXT_HEIGHT,
+    TRACK_FONT_SIZE,
+    page_size,
+)
+from port.patch.plot_copy_number_profile import (
+    HATCH_ANGLE,
+    HATCH_LINEWIDTH,
+    HATCH_SPACING,
+)
+from port.patch.plot_genomic import plot_clones_genomic
+from port.patch.plotting.spatial import plot_clones_spatial, spot_colours
+from port.patch.utils import write_fig
+from port.qa.combined_figure import (
+    FONT_SIZE,
+    HE_PALETTE,
+    LABEL_GAP,
+    NAME_INSET,
+    PANELS,
+    Call,
+    clone_order,
+    clone_symbol,
+    combined_figure,
+    genomic_figure,
+    plot_clones_genomic_he,
+    recording,
+    spatial_figure,
+)
+from port.sim.inputs import written_config
 
 from tests.adapters import drawn
+from tests.conftest import SHIPPED_EM_FTOL, cnaster_test_config
 from tests.figure_checks import (
     genomic_plot_arguments,
     mirror_key_holds,
@@ -25,11 +68,8 @@ from tests.figure_checks import (
 @pytest.mark.patch
 def test_a_subfigure_draws_what_the_standalone_page_draws(cnaster_config: None) -> None:
     """Every array of (a), bitwise, against the page `clones_genomic.pdf` is."""
-    import matplotlib as mpl
 
     mpl.use("Agg")
-    import matplotlib.pyplot as plt
-    from port.patch.plot_genomic import plot_clones_genomic
 
     arguments, keywords = genomic_plot_arguments()
     page = plot_clones_genomic(*arguments, **keywords)
@@ -50,13 +90,8 @@ def test_a_subfigure_draws_what_the_standalone_page_draws(cnaster_config: None) 
 @pytest.mark.smoke
 def test_recording_calls_through_and_restores() -> None:
     """A recorded call returns the wrapped function's figure; the names return."""
-    import matplotlib as mpl
 
     mpl.use("Agg")
-    import cnaster.scripts.run_cnaster as script
-    import port.patch.plot_genomic as genomic
-    import port.patch.plotting as spatial
-    from port.qa.combined_figure import recording
 
     before = (
         genomic.plot_clones_genomic,
@@ -81,10 +116,7 @@ def test_recording_calls_through_and_restores() -> None:
 
 
 def _figures(tmp_path: Path) -> tuple[Any, Any]:
-    import matplotlib as mpl
-
     mpl.use("Agg")
-    from port.qa.combined_figure import genomic_figure, spatial_figure
 
     recorded, frame = recorded_combined_calls(tmp_path)
     genomic, spatial = genomic_figure(recorded), spatial_figure(recorded, frame)
@@ -96,8 +128,6 @@ def _figures(tmp_path: Path) -> tuple[Any, Any]:
 
 
 def _texts(figure: Any) -> list[Any]:
-    from matplotlib.text import Text
-
     return [
         t
         for t in figure.findobj(Text)
@@ -110,17 +140,7 @@ def _texts(figure: Any) -> list[Any]:
 def test_each_figure_is_a_column_wide_with_one_text_size(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """Text-column width, genomic height to 0.005 in, letters (a)/(b), fonts at
-    `FONT_SIZE` (#743).
-    """
-    from port.extensions.figure_style import (
-        CAPTION_ROOM,
-        PAPER_WIDTH,
-        TEXT_HEIGHT,
-        TRACK_FONT_SIZE,
-        page_size,
-    )
-    from port.qa.combined_figure import FONT_SIZE
+    """Text-column width, genomic height to 0.005 in, letters (a)/(b), fonts at `FONT_SIZE` (#743)."""
 
     genomic, spatial = _figures(tmp_path)
 
@@ -144,12 +164,7 @@ def test_each_figure_is_a_column_wide_with_one_text_size(
 def test_each_page_is_written_at_its_size_with_nothing_past_it(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """Each PDF's MediaBox is its figure size to 0.1 pt; all text on the page to 0.5 px
-    (#339).
-    """
-    import re
-
-    from port.patch.utils import write_fig
+    """Each PDF's MediaBox is its figure size to 0.1 pt; all text on the page to 0.5 px (#339)."""
 
     for name, figure in zip(("genomic", "spatial"), _figures(tmp_path), strict=True):
         renderer = figure.canvas.get_renderer()
@@ -185,10 +200,7 @@ def test_each_page_is_written_at_its_size_with_nothing_past_it(
 def test_the_profile_spans_the_tracks_on_one_left_column(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """(a) and (b) share left/right edges to 1.5 px; labels on the `NAME_INSET` column
-    (PR- #701).
-    """
-    from port.qa.combined_figure import LABEL_GAP, NAME_INSET
+    """(a) and (b) share left/right edges to 1.5 px; labels on the `NAME_INSET` column (PR- #701)."""
 
     figure, _ = _figures(tmp_path)
     renderer = figure.canvas.get_renderer()
@@ -233,10 +245,7 @@ def test_the_profile_spans_the_tracks_on_one_left_column(
 def test_the_spatial_panels_are_square_keyed_on_the_right_and_centred(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """(a) slide and (b) clones are equal squares at one scale to 1%; key and margins to
-    2 px (T- #740).
-    """
-    from port.qa.combined_figure import LABEL_GAP, NAME_INSET
+    """(a) slide and (b) clones are equal squares at one scale to 1%; key and margins to 2 px (T- #740)."""
 
     _, figure = _figures(tmp_path)
     renderer = figure.canvas.get_renderer()
@@ -291,13 +300,9 @@ def test_the_spatial_panels_are_square_keyed_on_the_right_and_centred(
 def test_the_spatial_labels_are_integer_by_default_or_continuous(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """Clones decoding alike merge under "integer" labels (#745) and stay two under
-    "continuous" (#344).
-    """
-    import matplotlib as mpl
+    """Clones decoding alike merge under "integer" labels (#745) and stay two under "continuous" (#344)."""
 
     mpl.use("Agg")
-    from port.qa.combined_figure import Call, spatial_figure
 
     recorded, frame = recorded_combined_calls(tmp_path)
     assert recorded.profile is not None
@@ -321,16 +326,9 @@ def test_the_spatial_labels_are_integer_by_default_or_continuous(
 
 @pytest.mark.bug
 def test_the_figure_merges_clones_at_the_runs_agreement(tmp_path: Path) -> None:
-    """Clones agreeing at 23/24 bins merge at `merge_agreement=0.9`, not at 0.99 (#749
-    WP0).
-    """
-    import matplotlib as mpl
+    """Clones agreeing at 23/24 bins merge at `merge_agreement=0.9`, not at 0.99 (#749 WP0)."""
 
     mpl.use("Agg")
-    from port.qa.combined_figure import Call, spatial_figure
-    from port.sim.inputs import written_config
-
-    from tests.conftest import SHIPPED_EM_FTOL, cnaster_test_config
 
     recorded, frame = recorded_combined_calls(tmp_path)
     assert recorded.profile is not None
@@ -361,12 +359,7 @@ def test_the_figure_merges_clones_at_the_runs_agreement(tmp_path: Path) -> None:
 def test_the_combined_page_is_the_two_figures_stacked(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """One page, text block less `CAPTION_ROOM` to 0.005 in, (a)-(c); (a) placed as in
-    the spatial figure to 1 px (#745).
-    """
-    import matplotlib.pyplot as plt
-    from port.extensions.figure_style import CAPTION_ROOM, PAPER_WIDTH, TEXT_HEIGHT
-    from port.qa.combined_figure import combined_figure, spatial_figure
+    """One page, text block less `CAPTION_ROOM` to 0.005 in, (a)-(c); (a) placed as in the spatial figure to 1 px (#745)."""
 
     recorded, frame = recorded_combined_calls(tmp_path)
     combined = combined_figure(recorded, frame)
@@ -403,11 +396,6 @@ def test_the_combined_page_is_the_two_figures_stacked(
 @pytest.mark.analytic
 def test_the_hatch_stripes_are_one_width() -> None:
     """B's lines are half the hatch period apart: 2.065 pt at 0.10 in and 35 degrees."""
-    from port.patch.plot_copy_number_profile import (
-        HATCH_ANGLE,
-        HATCH_LINEWIDTH,
-        HATCH_SPACING,
-    )
 
     period = 72.0 * HATCH_SPACING * np.sin(np.radians(HATCH_ANGLE))
 
@@ -420,11 +408,7 @@ def test_the_hatch_stripes_are_one_width() -> None:
 def test_the_combined_page_reads_clones_profile_tracks(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """The run's page is (a) slide and clones, (b) profile, (c) tracks, in `PANELS`
-    order (PR- #715).
-    """
-    import matplotlib.pyplot as plt
-    from port.qa.combined_figure import PANELS, combined_figure
+    """The run's page is (a) slide and clones, (b) profile, (c) tracks, in `PANELS` order (PR- #715)."""
 
     recorded, frame = recorded_combined_calls(tmp_path)
     figure = combined_figure(recorded, frame)
@@ -448,15 +432,9 @@ def test_the_combined_page_reads_clones_profile_tracks(
 
 @pytest.mark.infra
 def test_a_spatial_page_is_cut_to_its_axes() -> None:
-    """`plot_clones_spatial` on a 4x10 section: equal scale, box aspect to 1%, margins
-    to 1 px (PR- #715).
-    """
-    import matplotlib as mpl
+    """`plot_clones_spatial` on a 4x10 section: equal scale, box aspect to 1%, margins to 1 px (PR- #715)."""
 
     mpl.use("Agg")
-    import matplotlib.pyplot as plt
-    from port.extensions.figure_style import FIT_MARGIN, STAMP_ROOM
-    from port.patch.plotting.spatial import plot_clones_spatial
 
     rows, columns = np.meshgrid(np.arange(4.0), np.arange(10.0))
     coords = np.column_stack([rows.ravel(), columns.ravel()])
@@ -486,15 +464,7 @@ def test_a_spatial_page_is_cut_to_its_axes() -> None:
 def test_the_combined_page_s_spatial_panels_are_square_keyed_clear_and_in_order(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """3:1 section: square footprints to 1 px, frame within the spots, one clone order
-    across panels (PR- #715).
-    """
-    import matplotlib.pyplot as plt
-    from port.qa.combined_figure import (
-        clone_order,
-        clone_symbol,
-        combined_figure,
-    )
+    """3:1 section: square footprints to 1 px, frame within the spots, one clone order across panels (PR- #715)."""
 
     recorded, frame = recorded_combined_calls(tmp_path, tall=3.0)
     figure = combined_figure(recorded, frame)
@@ -562,14 +532,9 @@ def test_the_combined_page_s_spatial_panels_are_square_keyed_clear_and_in_order(
 def test_each_h_and_e_class_is_its_spots_pseudobulk(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """`plot_clones_genomic_he`: class RDR equals summed counts over summed baseline to
-    1e-12 vs NumPy (T- #771).
-    """
-    import matplotlib as mpl
+    """`plot_clones_genomic_he`: class RDR equals summed counts over summed baseline to 1e-12 vs NumPy (T- #771)."""
 
     mpl.use("Agg")
-    from matplotlib.collections import PathCollection
-    from port.qa.combined_figure import plot_clones_genomic_he
 
     recorded, _ = recorded_combined_calls(tmp_path)
     counts, baseline = recorded.genomic.args[1][:, 0, :], recorded.genomic.args[2]
@@ -596,16 +561,9 @@ def test_each_h_and_e_class_is_its_spots_pseudobulk(
 def test_the_h_and_e_page_tiles_each_spot_by_its_class(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """`spatial_figure(he_labels=)`: (b) tiles spots in `HE_PALETTE`, keyed `H&E 1..4`
-    (T- #771).
-    """
-    import matplotlib as mpl
+    """`spatial_figure(he_labels=)`: (b) tiles spots in `HE_PALETTE`, keyed `H&E 1..4` (T- #771)."""
 
     mpl.use("Agg")
-    import matplotlib.colors as mcolors
-    from matplotlib.collections import PolyCollection
-    from port.patch.plotting.spatial import spot_colours
-    from port.qa.combined_figure import HE_PALETTE, spatial_figure
 
     recorded, frame = recorded_combined_calls(tmp_path)
     classes = np.array([1, 1, 2, 2, 2, 3, 4, 4, 1])

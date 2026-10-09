@@ -8,6 +8,10 @@ from typing import Any
 
 import numpy as np
 import pytest
+from cnaster.integer_copy import (
+    hill_climbing_integer_copynumber_fixdiploid_milp,
+    hill_climbing_integer_copynumber_oneclone,
+)
 from port.extensions.integer_copy import acn_observables
 
 pytestmark = pytest.mark.preprocessing
@@ -20,9 +24,7 @@ N_OBS = 40
 
 
 def _planted_parameters() -> tuple[np.ndarray, np.ndarray]:
-    """`(log_mu, p_binom)` implied by `PLANTED`, converted to `cnaster`'s major allele
-    fraction `1 - p`.
-    """
+    """`(log_mu, p_binom)` implied by `PLANTED`, converted to `cnaster`'s major allele fraction `1 - p`."""
     observables = acn_observables(list(PLANTED))
 
     return np.log(observables[:, 0]), 1.0 - observables[:, 1]
@@ -39,10 +41,6 @@ def _occupancy(seed: int = 11) -> np.ndarray:
 
 def _decoders() -> list[tuple[str, Any]]:
     """The two `run_cnaster` chooses between on `max_medploidy`."""
-    from cnaster.integer_copy import (
-        hill_climbing_integer_copynumber_fixdiploid_milp,
-        hill_climbing_integer_copynumber_oneclone,
-    )
 
     return [
         ("oneclone", hill_climbing_integer_copynumber_oneclone),

@@ -10,11 +10,14 @@ from typing import Any
 
 import numpy as np
 import pytest
+from cnaster.count_encoder import CountEncoder
+from cnaster.hmm_phased import hmm_phased
+from port.patch.hmm_phased import (
+    compute_emission_probability_nb_betabinom_coded as replacement,
+)
 
 
 def _encoders(n_obs: int, n_spots: int, seed: int) -> tuple[Any, Any, dict[str, Any]]:
-    from cnaster.count_encoder import CountEncoder
-
     rng = np.random.default_rng(seed)
 
     counts = rng.poisson(60, size=(n_obs, n_spots)).astype(float)
@@ -38,7 +41,6 @@ def test_upstream_cannot_score_a_one_column_parameter_over_many_spots(
     cnaster_config: None,
 ) -> None:
     """`cnaster.hmm_phased` raises on many spots; written to fail when fixed."""
-    from cnaster.hmm_phased import hmm_phased
 
     nb, bb, parameters = _encoders(n_obs=20, n_spots=4, seed=0)
 
@@ -51,10 +53,6 @@ def test_the_replacement_matches_upstream_where_upstream_runs(
     cnaster_config: None,
 ) -> None:
     """Bitwise equal to upstream at one spot, the only width upstream runs."""
-    from cnaster.hmm_phased import hmm_phased
-    from port.patch.hmm_phased import (
-        compute_emission_probability_nb_betabinom_coded as replacement,
-    )
 
     nb, bb, parameters = _encoders(n_obs=25, n_spots=1, seed=1)
 
@@ -72,9 +70,6 @@ def test_the_replacement_broadcasts_the_one_column_over_many_spots(
     cnaster_config: None,
 ) -> None:
     """Over many spots, matches scoring each spot alone (broadcast semantics)."""
-    from port.patch.hmm_phased import (
-        compute_emission_probability_nb_betabinom_coded as replacement,
-    )
 
     n_obs, n_spots = 20, 4
     nb, bb, parameters = _encoders(n_obs, n_spots, seed=2)
@@ -83,8 +78,6 @@ def test_the_replacement_broadcasts_the_one_column_over_many_spots(
 
     assert rdr.shape[2] == n_spots
     assert baf.shape[2] == n_spots
-
-    from cnaster.count_encoder import CountEncoder
 
     for spot in range(n_spots):
         one_nb = CountEncoder(
@@ -105,9 +98,6 @@ def test_the_replacement_broadcasts_the_one_column_over_many_spots(
 @pytest.mark.bug
 def test_a_second_parameter_column_is_refused(cnaster_config: None) -> None:
     """The shape upstream indexes for, which the fit cannot produce (#267)."""
-    from port.patch.hmm_phased import (
-        compute_emission_probability_nb_betabinom_coded as replacement,
-    )
 
     nb, bb, parameters = _encoders(n_obs=10, n_spots=2, seed=3)
     parameters["log_mu"] = np.zeros((3, 2))

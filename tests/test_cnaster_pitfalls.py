@@ -7,13 +7,12 @@ The ICM's global RNG is #45, in `tests/test_icm_interface.py`.
 
 import numpy as np
 import pytest
+from cnaster.icm import logsumexp
 from scipy.special import logsumexp as scipy_logsumexp
 
 
 @pytest.mark.bug
 def test_icm_logsumexp_is_the_redefinition_and_is_nan_on_an_all_minus_inf_row() -> None:
-    from cnaster.icm import logsumexp
-
     finite = np.array([-1.0, 2.0, 0.5])
     assert logsumexp(finite) == pytest.approx(scipy_logsumexp(finite), abs=1e-12)
 

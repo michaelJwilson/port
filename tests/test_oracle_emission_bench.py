@@ -11,6 +11,7 @@ from typing import Any
 import numpy as np
 import pytest
 import torch
+from cnaster.hmm_nophasing import hmm_nophasing
 from port.sim.truth import dev_instance, emission_family
 from pytest_benchmark.fixture import BenchmarkFixture
 
@@ -36,9 +37,7 @@ def _cnaster_inputs(truth: Any) -> dict[str, Any]:
 
 
 def _upstream_inputs(truth: Any) -> tuple[Any, torch.Tensor, torch.Tensor]:
-    """The same instance as upstream's two-channel family, exposure and trials as the
-    covariate.
-    """
+    """The same instance as upstream's two-channel family, exposure and trials as the covariate."""
     kwargs = from_core_inference_truth(truth).as_kwargs()
     single_X = np.asarray(kwargs["single_X"])
     exposure = np.asarray(kwargs["single_base_nb_mean"])
@@ -54,8 +53,6 @@ def _upstream_inputs(truth: Any) -> tuple[Any, torch.Tensor, torch.Tensor]:
 
 
 def _cnaster_emission(inputs: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
-    from cnaster.hmm_nophasing import hmm_nophasing
-
     scored: tuple[np.ndarray, np.ndarray] = (
         hmm_nophasing.compute_emission_probability_nb_betabinom(
             inputs["X"],
@@ -104,7 +101,5 @@ def test_emission(
     arm: Callable[[Any], Callable[[], Any]],
     size: str,
 ) -> None:
-    """`cnaster`'s two matched families against upstream's at the same parameters
-    (agreement: #9).
-    """
+    """`cnaster`'s two matched families against upstream's at the same parameters (agreement: #9)."""
     benchmark(arm(request.getfixturevalue(size)))

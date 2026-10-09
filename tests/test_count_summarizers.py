@@ -9,6 +9,15 @@ from typing import Any
 import numpy as np
 import pytest
 import scipy.sparse as sp
+from cnaster.omics import create_bin_ranges
+from cnaster.omics import summarize_counts_for_bins as cnaster_summarize_counts_for_bins
+from cnaster.omics import summarize_counts_for_blocks as upstream
+from port.patch.omics import summarize_counts_for_blocks
+from port.patch.omics.blocks import _group_indicator, _grouped_column_sums
+from port.patch.omics.blocks import (
+    summarize_counts_for_bins as port_summarize_counts_for_bins,
+)
+from port.patch.omics.blocks import summarize_counts_for_blocks as patched
 from port.sim.inputs import read_to_bins
 from port.sim.run_config import PlantedInstance
 
@@ -40,8 +49,6 @@ def _fields_equal(realized: Any, reference: Any) -> None:
 @pytest.mark.patch
 def test_the_block_counts_are_cnasters(blocked: tuple[Any, Any, Any]) -> None:
     """Every field of the block summary equals `cnaster`'s, bitwise."""
-    from cnaster.omics import summarize_counts_for_blocks as upstream
-    from port.patch.omics.blocks import summarize_counts_for_blocks as patched
 
     loaded, table, _ = blocked
     alleles = (loaded.cell_snp_Aallele, loaded.cell_snp_Ballele)
@@ -54,9 +61,6 @@ def test_the_block_counts_are_cnasters(blocked: tuple[Any, Any, Any]) -> None:
 @pytest.mark.parametrize("phase", PHASES)
 def test_the_bin_counts_are_cnasters(blocked: tuple[Any, Any, Any], phase: str) -> None:
     """Every field of the bin summary equals `cnaster`'s, bitwise, under three phases."""
-    from cnaster.omics import create_bin_ranges
-    from cnaster.omics import summarize_counts_for_bins as upstream
-    from port.patch.omics.blocks import summarize_counts_for_bins as patched
 
     loaded, table, counts = blocked
     alleles = (loaded.cell_snp_Aallele, loaded.cell_snp_Ballele)
@@ -93,13 +97,14 @@ def test_the_bin_counts_are_cnasters(blocked: tuple[Any, Any, Any], phase: str) 
             geneticmap_file=None,
         )
 
-    _fields_equal(call(patched), call(upstream))
+    _fields_equal(
+        call(port_summarize_counts_for_bins), call(cnaster_summarize_counts_for_bins)
+    )
 
 
 @pytest.mark.analytic
 def test_the_indicator_sums_each_group_and_nothing_else() -> None:
     """The grouped sum equals an explicit loop with a duplicate, an orphan and an empty group."""
-    from port.patch.omics.blocks import _group_indicator, _grouped_column_sums
 
     matrix = np.arange(12, dtype=np.int64).reshape(3, 4)
     rows = np.array([0, 0, 1, 2])
@@ -123,7 +128,6 @@ def test_the_indicator_sums_each_group_and_nothing_else() -> None:
 @pytest.mark.analytic
 def test_the_grouped_sum_agrees_sparse_and_dense() -> None:
     """The grouped sum is the same on sparse and dense counts (#186)."""
-    from port.patch.omics.blocks import _group_indicator, _grouped_column_sums
 
     dense = np.arange(40, dtype=np.int64).reshape(5, 8)
     dense[dense % 3 == 0] = 0
@@ -144,7 +148,6 @@ def test_the_block_counts_are_the_planted_counts(
     implementation: str,
 ) -> None:
     """Both implementations' block counts equal the planted counts summed per block."""
-    from port.patch.omics import summarize_counts_for_blocks
 
     _, pre_image, written, _ = planted_instance
     loaded, table, counts = blocked

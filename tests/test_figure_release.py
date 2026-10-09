@@ -14,6 +14,9 @@ from typing import Any
 
 import matplotlib as mpl
 import pytest
+from cnaster.utils import write_fig
+from cnaster.utils import write_fig as upstream
+from matplotlib.backends.backend_pdf import PdfFile
 
 from tests.figure_checks import CREATION_DATE, wide_rasterized_figure
 
@@ -22,7 +25,6 @@ mpl.use("Agg")
 
 def _pinned(writer: Callable[..., None], path: Path, **keywords: Any) -> int:
     """Bytes of raster buffer held by the `PdfFile`s `writer` created."""
-    from matplotlib.backends.backend_pdf import PdfFile
 
     gc.collect()
     gc.disable()
@@ -48,10 +50,7 @@ def _pinned(writer: Callable[..., None], path: Path, **keywords: Any) -> int:
 
 @pytest.mark.bug
 def test_cnasters_write_fig_leaves_the_rasters_resident(tmp_path: Path) -> None:
-    """cnaster pins one full-page RGBA buffer (22,602,720 bytes) for four rasterized
-    scatters.
-    """
-    from cnaster.utils import write_fig
+    """cnaster pins one full-page RGBA buffer (22,602,720 bytes) for four rasterized scatters."""
 
     assert _pinned(write_fig, tmp_path / "theirs.pdf") > 20_000_000
 
@@ -65,10 +64,7 @@ def test_cnasters_write_fig_leaves_the_rasters_resident(tmp_path: Path) -> None:
 def test_ports_write_fig_releases_them_and_writes_the_same_file(
     tmp_path: Path, keywords: dict[str, Any]
 ) -> None:
-    """Zero bytes pinned, at cnaster's defaults and `FIGURE_SWAPS`' options; cnaster's
-    file byte for byte.
-    """
-    from cnaster.utils import write_fig as upstream
+    """Zero bytes pinned, at cnaster's defaults and `FIGURE_SWAPS`' options; cnaster's file byte for byte."""
     from port.patch.utils import write_fig
 
     assert _pinned(write_fig, tmp_path / "ours.pdf", **keywords) == 0

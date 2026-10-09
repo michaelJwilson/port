@@ -36,9 +36,7 @@ def nb_logpmf(k: int, mean: float, alpha: float) -> float:
 
 
 def nb_partials(k: int, mean: float, alpha: float) -> tuple[float, float]:
-    """`d log NB / d log mean` and `d / d log alpha`, by central differences (step
-    1e-20) at 50 digits.
-    """
+    """`d log NB / d log mean` and `d / d log alpha`, by central differences (step 1e-20) at 50 digits."""
     with localcontext() as context:
         context.prec = DIGITS
         step = Decimal("1e-20")

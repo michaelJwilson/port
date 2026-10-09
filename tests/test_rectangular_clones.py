@@ -11,6 +11,14 @@ from typing import Any
 
 import numpy as np
 import pytest
+from cnaster.spatial import initialize_rectangular_clones as upstream
+from port.patch.spatial import (
+    RECTANGLE_REDRAWS,
+    admits_assignment,
+    initialize_rectangular_clones,
+)
+from port.patch.spatial import initialize_rectangular_clones as replacement
+from sal.opt.termination import Stop
 
 from tests import TESTS
 from tests.adapters import square_coords
@@ -50,7 +58,6 @@ def _upstream_capped(
     monkeypatch: pytest.MonkeyPatch, coords: np.ndarray, n_clones: int, seed: int
 ) -> Any:
     """`cnaster`'s call, or `None` past `TRY_CAP` draws; delegates each draw unchanged."""
-    from cnaster.spatial import initialize_rectangular_clones as upstream
 
     original = np.random.randint
     calls = [0]
@@ -85,8 +92,6 @@ def test_where_cnaster_returns_it_returns_the_same(
     coords: str, n_clones: int, seed: int
 ) -> None:
     """Bitwise equal to `cnaster` where it returns: the dev first call and a 12 x 40 band."""
-    from cnaster.spatial import initialize_rectangular_clones as upstream
-    from port.patch.spatial import initialize_rectangular_clones as replacement
 
     points = (
         _coords("rectangular_returns") if coords == "returns" else square_coords(12, 40)
@@ -105,8 +110,6 @@ def test_bitwise_on_every_seed_cnaster_returns(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """1,800 seeds: bitwise where `cnaster` returns, a redraw exactly where it cannot."""
-    from port.patch.spatial import initialize_rectangular_clones as replacement
-    from sal.opt.termination import Stop
 
     inputs = {
         "hang": _coords("rectangular_hang"),
@@ -140,7 +143,6 @@ def test_bitwise_on_every_seed_cnaster_returns(
 @pytest.mark.parametrize("n_clones", [2, 3, 4, 5])
 def test_feasibility_agrees_with_enumerating_every_assignment(n_clones: int) -> None:
     """`admits_assignment` against enumerating every surjection of blocks onto clones."""
-    from port.patch.spatial import admits_assignment
 
     p = int(np.ceil(np.sqrt(n_clones)))
     maps = np.stack(
@@ -191,7 +193,6 @@ def _within(seconds: int, call: Any) -> bool:
 @pytest.mark.merge
 def test_cnaster_does_not_return_on_the_captured_input() -> None:
     """`cnaster` runs past 5 s on the third captured call; fails when fixed."""
-    from cnaster.spatial import initialize_rectangular_clones as upstream
 
     points = _coords("rectangular_hang")
 
@@ -201,8 +202,6 @@ def test_cnaster_does_not_return_on_the_captured_input() -> None:
 @pytest.mark.analytic
 def test_the_dev_blocks_are_refused_and_a_redraw_passes() -> None:
     """On that input [194, 3, 77, 23] is refused and one redraw passes `cnaster`'s acceptance test."""
-    from port.patch.spatial import admits_assignment, initialize_rectangular_clones
-    from sal.opt.termination import Stop
 
     assert not admits_assignment(np.array([194, 3, 77, 23]), 4, 0.2 * 297 / 4)
 
@@ -228,8 +227,6 @@ def test_the_dev_blocks_are_refused_and_a_redraw_passes() -> None:
 @pytest.mark.analytic
 def test_a_one_row_strip_returns_bands_and_says_infeasible() -> None:
     """A one-row strip falls back to bands of 50 and reports `Stop.INFEASIBLE` (#248)."""
-    from port.patch.spatial import RECTANGLE_REDRAWS, initialize_rectangular_clones
-    from sal.opt.termination import Stop
 
     points = square_coords(1, 200)
     returned: list[Any] = []

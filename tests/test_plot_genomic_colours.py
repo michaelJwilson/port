@@ -7,9 +7,15 @@ from __future__ import annotations
 
 from typing import Any
 
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+from matplotlib.collections import PathCollection
+from port.patch import plot_genomic
+from port.patch.plot_genomic import bin_colours
+from port.scripts.run_cnaster import main
 
 from tests.fixtures import genomic_plot_instance
 
@@ -42,8 +48,6 @@ def _instance() -> dict[str, Any]:
 
 
 def _colours(colour_by: str | None) -> tuple[np.ndarray, list[str]]:
-    from port.patch.plot_genomic import bin_colours
-
     instance = _instance()
     colours, legend = bin_colours(
         df_cnv=instance["df_cnv"],
@@ -96,8 +100,6 @@ def test_unset_is_upstreams_choice() -> None:
 
 @pytest.mark.infra
 def test_a_mode_without_its_input_is_refused() -> None:
-    from port.patch.plot_genomic import bin_colours
-
     instance = _instance()
     common: dict[str, Any] = {
         "label": "0",
@@ -123,11 +125,8 @@ def test_a_mode_without_its_input_is_refused() -> None:
 @pytest.mark.infra
 def test_the_preference_reaches_a_figure_and_falls_back_where_it_cannot() -> None:
     """Preferring "states" recolours the figure; "integer" without `df_cnv` falls back to states."""
-    import matplotlib as mpl
 
     mpl.use("Agg")
-    import matplotlib.pyplot as plt
-    from port.patch import plot_genomic
 
     instance = _instance()
     lengths, X, base, total = instance["arguments"]
@@ -142,7 +141,6 @@ def test_the_preference_reaches_a_figure_and_falls_back_where_it_cannot() -> Non
             phased_integer_copies=True,
             **keywords,
         )
-        from matplotlib.collections import PathCollection
 
         (points,) = (
             c for c in figure.axes[0].collections if isinstance(c, PathCollection)
@@ -161,7 +159,5 @@ def test_the_preference_reaches_a_figure_and_falls_back_where_it_cannot() -> Non
 
 @pytest.mark.infra
 def test_run_cnaster_port_refuses_the_colours_without_the_figure_swaps() -> None:
-    from port.scripts.run_cnaster import main
-
     with pytest.raises(SystemExit):
         main(["config.yaml", "--no-figure-swaps", "--genomic-colours", "states"])

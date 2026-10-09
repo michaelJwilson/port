@@ -8,9 +8,32 @@ from __future__ import annotations
 from typing import Any
 
 import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+from cnaster.palette import get_full_palette
+from cnaster.plot_copy_number_profile import (
+    plot_ascn_legend as cnaster_plot_ascn_legend,
+)
+from cnaster.plot_copy_number_profile import (
+    plot_copy_number_profile as cnaster_plot_copy_number_profile,
+)
+from matplotlib.collections import LineCollection
+from matplotlib.colors import to_rgb, to_rgba
+from matplotlib.patches import Rectangle
+from matplotlib.transforms import TransformedPath
+from port.patch.plot_copy_number_profile import (
+    COPY_COLOURS,
+    HATCH,
+    HATCH_ANGLE,
+    HATCH_SPACING,
+    NORMAL_OPACITY,
+    TITLE,
+    hatch_of,
+    plot_ascn_legend,
+    plot_copy_number_profile,
+)
 
 from tests.figure_checks import mirror_key_holds
 
@@ -40,9 +63,6 @@ def _profile() -> pd.DataFrame:
 
 def _alleles(ax: Any, *, halves: bool) -> dict[tuple[int, int, str], tuple[float, ...]]:
     """Return `(row, bin, allele) -> RGB` from rectangles, upstream halves or patch hatch."""
-    from matplotlib.colors import to_rgba
-    from matplotlib.patches import Rectangle
-    from port.patch.plot_copy_number_profile import NORMAL_OPACITY, hatch_of
 
     def seen(colour: Any) -> tuple[float, ...]:
         # NB translucent faces read over white: upstream fades copy 1 by 0.25
@@ -81,20 +101,14 @@ def _alleles(ax: Any, *, halves: bool) -> dict[tuple[int, int, str], tuple[float
 @pytest.mark.patch
 def test_every_bin_has_upstreams_alleles_in_upstreams_row() -> None:
     """A's and B's colour at every (clone, bin) equal upstream's, to 1e-6, seen over white."""
-    from cnaster.plot_copy_number_profile import plot_copy_number_profile as upstream
-    from port.patch.plot_copy_number_profile import plot_copy_number_profile
 
     frame = _profile()
-    theirs = upstream(frame).axes[0]
+    theirs = cnaster_plot_copy_number_profile(frame).axes[0]
     ours = plot_copy_number_profile(frame).axes[0]
 
     assert [t.get_text() for t in ours.get_yticklabels()] == [
         t.get_text() for t in theirs.get_yticklabels()
     ]
-
-    from cnaster.palette import get_full_palette
-    from matplotlib.colors import to_rgb
-    from port.patch.plot_copy_number_profile import COPY_COLOURS
 
     upstream, _ = get_full_palette("chisel_single")
     recolour = {
@@ -115,11 +129,6 @@ def test_every_bin_has_upstreams_alleles_in_upstreams_row() -> None:
 @pytest.mark.patch
 def test_the_hatch_turns_with_the_major_allele_and_normal_is_plain() -> None:
     """(2, 1) rising right (`h=0`), its mirror (1, 2) rising left (`h=1`), (1, 1) plain."""
-    from port.patch.plot_copy_number_profile import (
-        HATCH,
-        hatch_of,
-        plot_copy_number_profile,
-    )
 
     ours = plot_copy_number_profile(_profile()).axes[0]
     turns = [
@@ -137,13 +146,6 @@ def test_the_hatch_turns_with_the_major_allele_and_normal_is_plain() -> None:
 @pytest.mark.infra
 def test_the_hatch_is_clipped_to_its_segment_at_its_angle_and_spacing() -> None:
     """Hatch lines are clipped to their segment, at `HATCH_ANGLE`, `HATCH_SPACING` apart."""
-    from matplotlib.collections import LineCollection
-    from matplotlib.transforms import TransformedPath
-    from port.patch.plot_copy_number_profile import (
-        HATCH_ANGLE,
-        HATCH_SPACING,
-        plot_copy_number_profile,
-    )
 
     figure = plot_copy_number_profile(_profile())
     ax = figure.axes[0]
@@ -180,11 +182,6 @@ def test_the_mirror_key_starts_on_the_axis_and_is_labelled_on_its_right(
     span: float | None,
 ) -> None:
     """The mirror key sits on the axis's left edge, labelled right, to 0.5 px (PR- #715)."""
-    import matplotlib.pyplot as plt
-    from port.patch.plot_copy_number_profile import (
-        plot_ascn_legend,
-        plot_copy_number_profile,
-    )
 
     figure: Any = plt.figure(figsize=(5.0, 0.6), dpi=100)
     ax = figure.add_axes((0.1, 0.1, 0.8, 0.8))
@@ -202,12 +199,9 @@ def test_the_mirror_key_starts_on_the_axis_and_is_labelled_on_its_right(
 @pytest.mark.patch
 def test_the_colour_bars_title_is_upstreams() -> None:
     """T- #794: the colour bar's title equals `cnaster`'s."""
-    import matplotlib.pyplot as plt
-    from cnaster.plot_copy_number_profile import plot_ascn_legend as upstream
-    from port.patch.plot_copy_number_profile import TITLE, plot_ascn_legend
 
     figure, (theirs, ours) = plt.subplots(2)
-    upstream(theirs)
+    cnaster_plot_ascn_legend(theirs)
     plot_ascn_legend(ours)
     (title,) = [t.get_text() for t in theirs.texts if "CNA" in t.get_text()]
 

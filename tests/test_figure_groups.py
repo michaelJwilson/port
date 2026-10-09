@@ -8,8 +8,11 @@ from pathlib import Path
 from typing import Any
 
 import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 import pytest
+from matplotlib.backends.backend_mixed import MixedModeRenderer
+from port.patch.utils import collapse_rasterizing_groups
 
 mpl.use("Agg")
 
@@ -17,16 +20,11 @@ TICKS = (0.0, 1.0, 2.0, 3.0)
 """Where `_format_track_axis` puts a gridline, at the RDR track's limits."""
 
 CHANNEL_TOLERANCE = 1
-"""Max per-channel gap, of 255, between one-buffer and two-buffer composites (realized 1,
-on edges).
-"""
+"""Max per-channel gap, of 255, between one-buffer and two-buffer composites (realized 1, on edges)."""
 
 
 def _panel(n_clones: int = 2, n_obs: int = 400, *, gridlines: bool = True) -> Any:
-    """`plot_acns_genomic`'s shape: per clone an RDR and a BAF axes, gridlines optional as
-    the control.
-    """
-    import matplotlib.pyplot as plt
+    """`plot_acns_genomic`'s shape: per clone an RDR and a BAF axes, gridlines optional as the control."""
 
     generator = np.random.default_rng(11)
     figure, axes = plt.subplots(
@@ -59,10 +57,7 @@ def _panel(n_clones: int = 2, n_obs: int = 400, *, gridlines: bool = True) -> An
 
 
 def _layers(figure: Any, path: Path) -> list[np.ndarray]:
-    """Every rasterizing group's full-figure buffer in draw order, captured before
-    cropping.
-    """
-    from matplotlib.backends.backend_mixed import MixedModeRenderer
+    """Every rasterizing group's full-figure buffer in draw order, captured before cropping."""
 
     captured: list[np.ndarray] = []
     original = MixedModeRenderer.stop_rasterizing
@@ -110,9 +105,7 @@ def _composite(layers: list[np.ndarray]) -> np.ndarray:
 
 @pytest.mark.bug
 def test_a_gridline_is_what_splits_the_rasterizing_run(tmp_path: Path) -> None:
-    """With gridlines each rasterized artist gets its own group; without, one per axes
-    (fails when `cnaster` fixes it).
-    """
+    """With gridlines each rasterized artist gets its own group; without, one per axes (fails when `cnaster` fixes it)."""
     with_lines = _panel(gridlines=True)
     axes = len(with_lines.axes)
     split = len(_layers(with_lines, tmp_path / "split.pdf"))
@@ -127,10 +120,7 @@ def test_a_gridline_is_what_splits_the_rasterizing_run(tmp_path: Path) -> None:
 # NB one figure's form (#403): reruns when this module or the lock changes, and at release.
 @pytest.mark.deprecate
 def test_sink_collapses_the_run_without_touching_the_raster(tmp_path: Path) -> None:
-    """`sink` gives one group per axes; the composite matches the per-artist raster to
-    `CHANNEL_TOLERANCE`.
-    """
-    from port.patch.utils import collapse_rasterizing_groups
+    """`sink` gives one group per axes; the composite matches the per-artist raster to `CHANNEL_TOLERANCE`."""
 
     reference = _panel()
     axes = len(reference.axes)
@@ -159,8 +149,6 @@ def test_sink_collapses_the_run_without_touching_the_raster(tmp_path: Path) -> N
 @pytest.mark.snapshot
 def test_sink_moves_the_gridlines_under_the_rasterized_run() -> None:
     """`sink` paints the gridlines under the rasterized run rather than over it."""
-    import matplotlib.pyplot as plt
-    from port.patch.utils import collapse_rasterizing_groups
 
     figure = _panel(n_clones=1)
     axis = figure.axes[0]
@@ -191,10 +179,7 @@ def test_sink_moves_the_gridlines_under_the_rasterized_run() -> None:
 def test_sweep_collapses_the_run_by_rasterizing_the_gridlines(
     tmp_path: Path,
 ) -> None:
-    """`sweep` gives one group per axes by rasterizing the gridlines, so the raster differs
-    from per-artist.
-    """
-    from port.patch.utils import collapse_rasterizing_groups
+    """`sweep` gives one group per axes by rasterizing the gridlines, so the raster differs from per-artist."""
 
     reference = _panel()
     axes = len(reference.axes)
@@ -219,7 +204,6 @@ def test_sweep_collapses_the_run_by_rasterizing_the_gridlines(
 @pytest.mark.deprecate
 def test_strict_refuses_the_figures_cnaster_writes(tmp_path: Path) -> None:
     """`strict` leaves panels with gridlines unchanged."""
-    from port.patch.utils import collapse_rasterizing_groups
 
     figure = _panel()
     axes = len(figure.axes)
@@ -237,8 +221,6 @@ def test_strict_refuses_the_figures_cnaster_writes(tmp_path: Path) -> None:
 @pytest.mark.deprecate
 def test_an_axes_with_one_rasterized_artist_is_left_alone() -> None:
     """A run of one rasterized artist is left as one group."""
-    import matplotlib.pyplot as plt
-    from port.patch.utils import collapse_rasterizing_groups
 
     figure, axis = plt.subplots()
     axis.scatter([0.0, 1.0], [0.0, 1.0], rasterized=True)
@@ -252,8 +234,6 @@ def test_an_axes_with_one_rasterized_artist_is_left_alone() -> None:
 @pytest.mark.smoke
 def test_an_unknown_strategy_is_refused() -> None:
     """An unknown strategy is refused."""
-    import matplotlib.pyplot as plt
-    from port.patch.utils import collapse_rasterizing_groups
 
     figure = plt.figure()
 

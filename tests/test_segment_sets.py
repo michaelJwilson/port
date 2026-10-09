@@ -6,6 +6,20 @@ from typing import Any, NamedTuple
 
 import numpy as np
 import pytest
+from port.extensions.copy_likelihood import (
+    Pseudobulk,
+    candidates,
+    pair_rate_and_share,
+    pseudobulk_log_pmf,
+    with_dispersions,
+)
+from port.sandbox.extensions.segment_sets import (
+    FRACTION_STEPS,
+    SHIFT_STEPS,
+    bin_loglik,
+    segment_sets,
+    segments,
+)
 
 
 class _Decode(NamedTuple):
@@ -19,7 +33,6 @@ class _Decode(NamedTuple):
 
 def _clone(pairs: np.ndarray, depth: float, rho: float = 1.0) -> tuple[Any, Any]:
     """A pseudobulk whose counts are their expectation under `pairs` at `rho`."""
-    from port.extensions.copy_likelihood import Pseudobulk, pair_rate_and_share
 
     log_mu, p = pair_rate_and_share(pairs, rho)
     base = np.full(pairs.shape[0], depth)
@@ -37,8 +50,6 @@ def _clone(pairs: np.ndarray, depth: float, rho: float = 1.0) -> tuple[Any, Any]
 
 
 def _decode(pairs: np.ndarray, rho: float = 1.0) -> _Decode:
-    from port.extensions.copy_likelihood import candidates
-
     states = candidates(6, 6)
     index = {tuple(row): k for k, row in enumerate(states.tolist())}
     path = np.array([index[tuple(row)] for row in pairs.tolist()])
@@ -48,7 +59,6 @@ def _decode(pairs: np.ndarray, rho: float = 1.0) -> _Decode:
 @pytest.mark.analytic
 def test_segments_are_runs_of_one_pair_split_at_contigs() -> None:
     """Path [0 0 1 1 1 0] over contigs of 4 and 2 is [0, 2), [2, 4), [4, 5), [5, 6)."""
-    from port.sandbox.extensions.segment_sets import segments
 
     found = segments(np.array([0, 0, 1, 1, 1, 0]), np.array([4, 2]))
 
@@ -68,7 +78,6 @@ def test_counts_at_their_expectation_recover_the_planted_pair_alone(
     cnaster_config: None,
 ) -> None:
     """At 1e4 reads a bin only (1, 2) is admitted; at 10 reads the set widens but holds it."""
-    from port.sandbox.extensions.segment_sets import segment_sets
 
     pairs = _planted()
     sets = {}
@@ -93,16 +102,6 @@ def test_counts_at_their_expectation_recover_the_planted_pair_alone(
 @pytest.mark.oracle
 def test_each_deviance_is_the_brute_force_refit_s(cnaster_config: None) -> None:
     """Clone 1 at 0.8: every candidate's deviance against a plain loop over the grid."""
-    from port.extensions.copy_likelihood import (
-        pair_rate_and_share,
-        pseudobulk_log_pmf,
-        with_dispersions,
-    )
-    from port.sandbox.extensions.segment_sets import (
-        FRACTION_STEPS,
-        SHIFT_STEPS,
-        segment_sets,
-    )
 
     pairs = _planted()
     bulk, _ = _clone(pairs, 50.0, rho=0.8)
@@ -144,12 +143,6 @@ def test_each_deviance_is_the_brute_force_refit_s(cnaster_config: None) -> None:
 @pytest.mark.oracle
 def test_the_per_bin_table_is_each_bin_s_emission(cnaster_config: None) -> None:
     """`bin_loglik` at clone 1's 0.8, bin by bin, against `pseudobulk_log_pmf` per pair."""
-    from port.extensions.copy_likelihood import (
-        pair_rate_and_share,
-        pseudobulk_log_pmf,
-        with_dispersions,
-    )
-    from port.sandbox.extensions.segment_sets import bin_loglik
 
     pairs = _planted()
     bulk, _ = _clone(pairs, 50.0, rho=0.8)

@@ -7,8 +7,12 @@ from __future__ import annotations
 
 from typing import Any
 
+import matplotlib as mpl
 import numpy as np
 import pytest
+from cnaster.plot_genomic import plot_clones_genomic as upstream
+from port.patch.plot_genomic import fitted_levels
+from port.patch.plot_genomic import plot_clones_genomic as replacement
 
 from tests.adapters import drawn
 from tests.fixtures import genomic_plot_instance, integer_copies
@@ -21,12 +25,8 @@ def test_unshifted_it_draws_what_upstream_draws(
     cnaster_config: None, branch: str
 ) -> None:
     """Every drawn array equals upstream's, bitwise, on each of the three branches."""
-    import matplotlib as mpl
 
     mpl.use("Agg")
-
-    from cnaster.plot_genomic import plot_clones_genomic as upstream
-    from port.patch.plot_genomic import plot_clones_genomic as replacement
 
     instance = genomic_plot_instance()
     arguments = instance["arguments"]
@@ -102,11 +102,8 @@ def _planted(seed: int = 3) -> dict[str, Any]:
 @pytest.mark.oracle
 def test_shifted_the_rdr_line_sits_on_the_normal_bins() -> None:
     """Shifted, each neutral line is at its normal bins' median RDR (2%) and `1 / Z_c` (1e-12)."""
-    import matplotlib as mpl
 
     mpl.use("Agg")
-
-    from port.patch.plot_genomic import fitted_levels
 
     planted = _planted()
     _, X, base, _ = planted["arguments"]

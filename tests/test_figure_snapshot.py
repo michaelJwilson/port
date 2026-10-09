@@ -5,14 +5,26 @@ Re-freeze with `python -m tests.test_figure_snapshot`.
 
 from __future__ import annotations
 
+import io
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
+import matplotlib as mpl
+import matplotlib.image as mimage
 import numpy as np
 import pytest
+from port.qa.combined_figure import (
+    combined_figure,
+    genomic_figure,
+    page_style,
+    spatial_figure,
+)
+from port.sim.inputs import written_config
 
 from tests import TESTS
+from tests.conftest import SHIPPED_EM_FTOL, cnaster_test_config
 from tests.figure_checks import recorded_combined_calls
 
 FROZEN = TESTS / "data" / "figures"
@@ -21,10 +33,6 @@ DPI = 100
 
 def _pixels(figure: Any) -> np.ndarray:
     """Return `figure` drawn at `DPI` as RGBA bytes."""
-    import io
-
-    import matplotlib.image as mimage
-    from port.qa.combined_figure import page_style
 
     buffer = io.BytesIO()
 
@@ -35,8 +43,6 @@ def _pixels(figure: Any) -> np.ndarray:
 
 
 def _drawn(tmp_path: Path) -> dict[str, np.ndarray]:
-    import matplotlib as mpl
-
     mpl.use("Agg")
     # NB a run's state: `cnaster.plotting` sets a serif face, its plots seaborn's style
     import cnaster.plotting  # noqa: F401
@@ -45,11 +51,6 @@ def _drawn(tmp_path: Path) -> dict[str, np.ndarray]:
     # NB as `cnaster.plot_validation_stats` sets it
     sns.set_context("paper", font_scale=0.9)
     sns.set_style("ticks")
-    from port.qa.combined_figure import (
-        combined_figure,
-        genomic_figure,
-        spatial_figure,
-    )
 
     recorded, frame = recorded_combined_calls(tmp_path)
     return {
@@ -64,7 +65,6 @@ def _drawn(tmp_path: Path) -> dict[str, np.ndarray]:
 @pytest.mark.deprecate
 def test_the_figures_are_the_frozen_ones(cnaster_config: None, tmp_path: Path) -> None:
     """Every figure equals `tests/data/figures/`, every channel of every pixel."""
-    import matplotlib.image as mimage
 
     for name, drawn in _drawn(tmp_path).items():
         frozen = np.asarray(
@@ -78,13 +78,6 @@ def test_the_figures_are_the_frozen_ones(cnaster_config: None, tmp_path: Path) -
 
 def main() -> None:
     """Re-freeze: draw the figures and write them over `tests/data/figures/`."""
-    import tempfile
-
-    import matplotlib.image as mimage
-    from port.sim.inputs import written_config
-
-    from tests.conftest import SHIPPED_EM_FTOL, cnaster_test_config
-
     FROZEN.mkdir(parents=True, exist_ok=True)
 
     with (

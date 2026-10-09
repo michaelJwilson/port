@@ -8,6 +8,7 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
+from port.patch.lattice import is_phased, spot_sums_agree
 
 from tests.builders import (
     LatticeInputs,
@@ -50,10 +51,7 @@ def test_the_unified_recursion_is_cnasters_bitwise(
 @pytest.mark.smoke
 @pytest.mark.parametrize("n_states", [2, 5])
 def test_the_state_axis_decides_which_chain_is_being_run(n_states: int) -> None:
-    """`is_phased` reads the chain from `n_states` and the emission, and refuses a
-    mismatch.
-    """
-    from port.patch.lattice import is_phased
+    """`is_phased` reads the chain from `n_states` and the emission, and refuses a mismatch."""
 
     unphased = _inputs(n_states, phased=False)
     phased = _inputs(n_states, phased=True)
@@ -69,7 +67,6 @@ def test_the_state_axis_decides_which_chain_is_being_run(n_states: int) -> None:
 @pytest.mark.parametrize("n_states", [2, 5])
 def test_the_two_spot_sums_agree_bitwise(n_states: int) -> None:
     """cnaster's whole-block and per-row spot sums agree bitwise under `numba`."""
-    from port.patch.lattice import spot_sums_agree
 
     inputs = _inputs(n_states, phased=True)
 

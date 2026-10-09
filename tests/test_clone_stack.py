@@ -5,8 +5,13 @@
 
 from __future__ import annotations
 
+import inspect
+
+import cnaster.hmm_nophasing as nophasing
 import numpy as np
 import pytest
+import scipy.special
+from cnaster.config import get_global_config
 from cnaster.hmm_nophasing import compute_logmu_shifts
 from port.patch.hmm_nophasing.shifted_emission import _clone_major, clone_count_triples
 
@@ -46,7 +51,6 @@ def test_lengths_that_do_not_tile_the_channel_are_refused() -> None:
 @pytest.mark.patch
 def test_the_triples_are_bitwise_the_pre_fold_build(cnaster_config: None) -> None:
     """`clone_count_triples` is bitwise #276's build on float counts."""
-    from cnaster.config import get_global_config
 
     lengths = (300, 300, 300)
     stacked = _stacked(lengths, seed=5)
@@ -71,7 +75,6 @@ def test_the_triples_are_bitwise_the_pre_fold_build(cnaster_config: None) -> Non
 @pytest.mark.patch
 def test_the_per_clone_reduction_reproduces_cnasters_loop() -> None:
     """`logsumexp(axis=1)` reproduces `compute_logmu_shifts`'s walk at unequal clone lengths."""
-    import scipy.special
 
     rng = np.random.default_rng(17)
     clone_lengths = [40, 25, 55]
@@ -106,9 +109,6 @@ def test_the_per_clone_reduction_reproduces_cnasters_loop() -> None:
 @pytest.mark.bug
 def test_the_consumer_this_accessor_is_for_does_not_run() -> None:
     """`compute_logmu_shifts` is never called upstream (#234); fails when the call is restored."""
-    import inspect
-
-    import cnaster.hmm_nophasing as nophasing
 
     source = inspect.getsource(nophasing)
 

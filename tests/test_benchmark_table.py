@@ -5,6 +5,16 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from port.extensions.repository import ROOT
+from port.qa import ledger
+from port.studies.benchmark_table import (
+    calicost_row,
+    drawn,
+    render,
+    render_supported,
+    sal_pin,
+    swept,
+)
 
 CALICOST = {"ari": 0.8538, "ari_integer": 0.8538, "state_ari": 0.0889, "copy_ari_pf": 0.9075,
             "exact_altered_minor": 0.7095, "wall": 20243.0, "cores": 3}  # fmt: skip
@@ -18,7 +28,6 @@ PORT = {"ari": 0.8612, "ari_integer": 1.0, "state_ari": 0.0682, "copy_ari_pf": 0
 @pytest.mark.snapshot
 def test_the_table_reproduces_the_papers_rows() -> None:
     """Reproduces both archives' rows, phase-free, at the table's rounding."""
-    from port.studies.benchmark_table import render
 
     tex = render(
         CALICOST, PORT, fixture="3381575a", commit="abc1234", sal="5d59752c", repeats=3
@@ -41,8 +50,6 @@ def test_the_table_reproduces_the_papers_rows() -> None:
 @pytest.mark.snapshot
 def test_the_sal_pin_is_the_lockfiles() -> None:
     """`sal_pin` reads the 8-hex commit `uv.lock` pins `snakes_and_ladders` to."""
-    from port.extensions.repository import ROOT
-    from port.studies.benchmark_table import sal_pin
 
     pinned = sal_pin()
     assert len(pinned) == 8
@@ -53,7 +60,6 @@ def test_the_sal_pin_is_the_lockfiles() -> None:
 @pytest.mark.release
 def test_calicosts_committed_outputs_score_as_532(tmp_path: Path) -> None:
     """CalicoST's archive scores #532's row against a fresh `3381575a` draw, to 4 decimals."""
-    from port.studies.benchmark_table import calicost_row, drawn
 
     row = calicost_row(drawn(tmp_path))
     assert {k: row[k] for k in CALICOST} == CALICOST
@@ -62,8 +68,6 @@ def test_calicosts_committed_outputs_score_as_532(tmp_path: Path) -> None:
 @pytest.mark.snapshot
 def test_the_supported_table_is_the_ledgers_last_sweep() -> None:
     """`--supported` renders the ledger's latest sweep, one row per run."""
-    from port.qa import ledger
-    from port.studies.benchmark_table import render_supported, swept
 
     commit, rows = swept()
     tex = render_supported(rows, commit=commit, sal="5d59752c")

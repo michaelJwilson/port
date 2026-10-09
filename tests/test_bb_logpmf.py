@@ -6,8 +6,20 @@ Covers every live port site: the swap kernel, `bb_states`, the M-step gradient a
 
 from __future__ import annotations
 
+from decimal import Decimal, getcontext
+from math import comb
+
 import numpy as np
 import pytest
+from cnaster.hmm_nophasing import _bb_logpmf_1d as upstream
+from port.extensions.copy_likelihood import Pseudobulk, pseudobulk_log_pmf
+from port.patch.emission import bb_log_pmf
+from port.patch.hmm_nophasing.bb_logpmf import _bb_logpmf_1d, _dense_bb_logpmf
+from port.patch.hmm_nophasing.dense_emission import bb_states
+from port.patch.hmm_nophasing.gradient import bb_partials
+from sal.emissions import BetaBinomialEmission
+from sal.emissions.coded import Dense, log_emission
+from sal.emissions.rising import digamma_rising as ours
 from scipy.special import logsumexp
 
 from tests.exact_densities import bb_logpmf, digamma_rise
@@ -29,8 +41,6 @@ def _exact(p: float, tau: float) -> np.ndarray:
 
 
 def _kernel(p: float, tau: float) -> np.ndarray:
-    from port.patch.hmm_nophasing.bb_logpmf import _bb_logpmf_1d
-
     out = np.full(COUNTS.size, np.nan)
     _bb_logpmf_1d(COUNTS, np.full(COUNTS.size, float(TRIALS)), p, tau, out)
     return out
@@ -50,7 +60,6 @@ def test_the_kernel_is_the_beta_binomial_at_every_concentration(
 @pytest.mark.parametrize("tau", [1e8, 1e12, 1e16])
 def test_the_kernel_is_a_pmf_at_a_large_concentration(tau: float) -> None:
     """Over `k = 0..100` the pmf sums to 1 within 1e-10."""
-    from port.patch.hmm_nophasing.bb_logpmf import _bb_logpmf_1d
 
     k = np.arange(TRIALS + 1, dtype=np.float64)
     out = np.full(k.size, np.nan)
@@ -64,8 +73,6 @@ def test_the_kernel_is_a_pmf_at_a_large_concentration(tau: float) -> None:
 @pytest.mark.parametrize("tau", [10.0, 999.0, 5e3, 1e5])
 def test_the_kernel_is_cnasters_where_cnaster_is_exact(tau: float, p: float) -> None:
     """Matches `cnaster`'s kernel to 1e-9 absolute up to `tau = 1e5`, edge cases included."""
-    from cnaster.hmm_nophasing import _bb_logpmf_1d as upstream
-    from port.patch.hmm_nophasing.bb_logpmf import _bb_logpmf_1d
 
     counts = np.append(COUNTS, TRIALS + 1.0)
     trials = np.full(counts.size, float(TRIALS))
@@ -80,7 +87,6 @@ def test_the_kernel_is_cnasters_where_cnaster_is_exact(tau: float, p: float) -> 
 @pytest.mark.patch
 def test_the_dense_kernel_is_the_per_state_kernel() -> None:
     """`_dense_bb_logpmf` is `_bb_logpmf_1d` per state and spot, bitwise, as upstream's is."""
-    from port.patch.hmm_nophasing.bb_logpmf import _bb_logpmf_1d, _dense_bb_logpmf
 
     rng = np.random.default_rng(5)
     trials = rng.integers(0, 60, (40, 3)).astype(np.float64)
@@ -107,7 +113,6 @@ def test_the_dense_kernel_is_the_per_state_kernel() -> None:
 @pytest.mark.parametrize("tau", [5e3, 1e5, 1e12, 1e16])
 def test_the_sal_emission_scores_a_large_concentration_exactly(tau: float) -> None:
     """`dense_emission.bb_states` under `--sal` matches the exact sums to 1e-11 (#776, #777)."""
-    from port.patch.hmm_nophasing.dense_emission import bb_states
 
     scores = bb_states(
         COUNTS, np.full(COUNTS.size, float(TRIALS)), np.array([0.3]), np.array([tau])
@@ -119,7 +124,6 @@ def test_the_sal_emission_scores_a_large_concentration_exactly(tau: float) -> No
 @pytest.mark.parametrize("tau", [5e3, 1e12])
 def test_the_copy_decode_scores_a_large_concentration_exactly(tau: float) -> None:
     """`copy_likelihood.pseudobulk_log_pmf`'s allele channel matches the exact sums to 1e-11."""
-    from port.extensions.copy_likelihood import Pseudobulk, pseudobulk_log_pmf
 
     zeros = np.zeros(COUNTS.size)
     bulk = Pseudobulk(
@@ -143,7 +147,6 @@ def test_the_copy_decode_scores_a_large_concentration_exactly(tau: float) -> Non
 @pytest.mark.parametrize("x", [1e-10, 0.4, 999.0, 1e3, 3e4, 1e8, 1e12, 1e16])
 def test_the_digamma_rise_is_the_sum_of_reciprocals(x: float, m: int) -> None:
     """`sal`'s `digamma_rising` matches the 50-digit reciprocal sum to 1e-12 relative."""
-    from sal.emissions.rising import digamma_rising as ours
 
     np.testing.assert_allclose(
         float(ours(np.array(x), np.array(float(m)))),
@@ -157,7 +160,6 @@ def test_the_digamma_rise_is_the_sum_of_reciprocals(x: float, m: int) -> None:
 @pytest.mark.parametrize("tau", [50.0, 5e3, 1e8, 1e12])
 def test_the_closed_form_gradient_is_the_exact_derivative(tau: float) -> None:
     """`bb_partials` matches the exact derivative to 1e-9 relative, 1e-11 absolute."""
-    from port.patch.hmm_nophasing.gradient import bb_partials
 
     p = 0.3
     a, b = _shapes(p, tau)
@@ -179,11 +181,10 @@ def test_the_closed_form_gradient_is_the_exact_derivative(tau: float) -> None:
 @pytest.mark.bug
 def test_cnasters_beta_binomial_is_not_a_pmf_at_a_large_concentration() -> None:
     """`cnaster`'s pmf at `tau = 1e16` sums to about `e^132`, not 1 (`bug`)."""
-    from cnaster.hmm_nophasing import _bb_logpmf_1d
 
     k = np.arange(TRIALS + 1, dtype=np.float64)
     out = np.full(k.size, np.nan)
-    _bb_logpmf_1d(k, np.full(k.size, float(TRIALS)), 0.3, 1e16, out)
+    upstream(k, np.full(k.size, float(TRIALS)), 0.3, 1e16, out)
 
     assert abs(logsumexp(out)) > 1.0
 
@@ -191,8 +192,6 @@ def test_cnasters_beta_binomial_is_not_a_pmf_at_a_large_concentration() -> None:
 @pytest.mark.analytic
 def test_sals_beta_binomial_is_a_pmf_at_a_large_concentration() -> None:
     """`sal`'s coded beta-binomial at `tau = 1e16` sums to 1 within 1e-12 (#776)."""
-    from sal.emissions import BetaBinomialEmission
-    from sal.emissions.coded import Dense, log_emission
 
     k = np.arange(TRIALS + 1, dtype=np.float64)
     family = BetaBinomialEmission(
@@ -205,8 +204,6 @@ def test_sals_beta_binomial_is_a_pmf_at_a_large_concentration() -> None:
 
 def _binomial_exact(p: float) -> np.ndarray:
     """The binomial log pmf from its definition, in `decimal` at 50 digits."""
-    from decimal import Decimal, getcontext
-    from math import comb
 
     getcontext().prec = 50
     share = Decimal(p)
@@ -242,7 +239,5 @@ def test_the_limit_is_continuous_in_the_concentration() -> None:
 def test_the_limit_at_a_share_of_zero_or_one_excludes_the_other_allele(
     p: float, count: float
 ) -> None:
-    from port.patch.emission import bb_log_pmf
-
     assert bb_log_pmf(count, 1.0, p, np.inf) == -np.inf
     assert bb_log_pmf(1.0 - count, 1.0, p, np.inf) == 0.0

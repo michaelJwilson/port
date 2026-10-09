@@ -4,15 +4,25 @@ Truth is planted, never recovered from the data; each builder returns its seed.
 """
 
 import warnings
+from contextlib import nullcontext
 from dataclasses import dataclass
+from math import comb
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+import cnaster.hmm_nophasing as upstream
 import numpy as np
 import pandas as pd
 import pytest
 import torch
+from cnaster.count_encoder import CountEncoder
+from cnaster.hmm_nophasing import hmm_nophasing
+from cnaster.hmrf import compute_loglike_spot_assignment, run_core_inference
+from port.patch.hmm_nophasing import hmm_nophasing as port_hmm_nophasing
+from port.patch.hmrf.fused_field import fused_spot_clone_field
+from port.patch.hmrf.tabulated_field import tabulated_spot_clone_field
 from port.patch.icm.interface import CsrGraph
+from port.pipeline import patched, with_attributes
 from port.sim.draw import (
     DrawManifest,
     extended,
@@ -29,14 +39,17 @@ from sal.emissions import (
     BetaBinomialEmission,
     NegativeBinomialEmission,
 )
+from sal.enumeration import enumerated_optimum
+from sal.sim.graph import BoundaryCondition, PottsGraph, lattice_graph
 from sal.sim.hmm import (
     HmmParams,
     SimulatedHmmDataset,
     simulate_sequences,
 )
+from sal.sim.potts import energy
+from scipy.sparse import eye as sparse_eye
 
-if TYPE_CHECKING:
-    from sal.sim.graph import BoundaryCondition, PottsGraph
+from tests.builders import allele_counts
 
 
 def tiers(gate: object, stress: object) -> list[Any]:
@@ -130,9 +143,7 @@ def negative_binomial_chains(
 
 
 def circulant_transition(n_states: int, self_transition: float) -> np.ndarray:
-    """`t` on the diagonal, the remainder spread evenly; pinned equal to cnaster's
-    `get_log_transmat`.
-    """
+    """`t` on the diagonal, the remainder spread evenly; pinned equal to cnaster's `get_log_transmat`."""
     if n_states == 1:
         return np.ones((1, 1), dtype=np.float64)
 
@@ -261,9 +272,7 @@ def phased_chains(
     penalize_phase_only_on_same_cnv: bool = False,
     seed: int = DEFAULT_SEED,
 ) -> PhasedChains:
-    """Draw chains over the `2K` paired space; `drift` defaults off 0.5 so the base is
-    asymmetric.
-    """
+    """Draw chains over the `2K` paired space; `drift` defaults off 0.5 so the base is asymmetric."""
     base_transition = drift_transition(n_copy_states, self_transition, drift)
     combined = phased_combined_transition(
         base_transition,
@@ -476,9 +485,7 @@ class SpotCloneField:
         return self.log_emission_rdr.nbytes / 1e6
 
     def spot_major(self) -> tuple[np.ndarray, np.ndarray]:
-        """The same emissions as `(n_states, n_spots, n_obs)`, contiguous; kept for
-        reproducing #59.
-        """
+        """The same emissions as `(n_states, n_spots, n_obs)`, contiguous; kept for reproducing #59."""
         return (
             np.ascontiguousarray(self.log_emission_rdr.transpose(0, 2, 1)),
             np.ascontiguousarray(self.log_emission_baf.transpose(0, 2, 1)),
@@ -566,7 +573,7 @@ class PottsLabels:
     `labels` is what the field was drawn around, not the optimum.
     """
 
-    graph: "PottsGraph"
+    graph: PottsGraph
     labels: np.ndarray
     field: np.ndarray
     coupling: float
@@ -598,7 +605,7 @@ def potts_labels(
     spatial_weight: float = 1.0,
     signal: float = 2.0,
     noise: float = 1.0,
-    boundary: "BoundaryCondition | None" = None,
+    boundary: BoundaryCondition | None = None,
     seed: int = DEFAULT_SEED,
 ) -> PottsLabels:
     """Plant contiguous label domains on a lattice and draw a Gaussian field around
@@ -608,7 +615,6 @@ def potts_labels(
         `ValueError` if `n_clones < 2`, `noise < 0`, or the lattice has fewer
         sites than clones.
     """
-    from sal.sim.graph import BoundaryCondition, lattice_graph
 
     if n_clones < 2:
         msg = f"n_clones must be at least two, got {n_clones}"
@@ -650,11 +656,7 @@ def potts_labels(
 
 
 def enumerate_minimum_energy(fixture: PottsLabels) -> tuple[np.ndarray, float]:
-    """The exact Potts energy minimiser by exhaustive search; returns the labelling and
-    its energy.
-    """
-    from sal.enumeration import enumerated_optimum
-    from sal.sim.potts import energy
+    """The exact Potts energy minimiser by exhaustive search; returns the labelling and its energy."""
 
     graph = scaled_graph(fixture)
 
@@ -666,9 +668,8 @@ def enumerate_minimum_energy(fixture: PottsLabels) -> tuple[np.ndarray, float]:
     return np.array(optimum[::-1], dtype=np.int64), -best
 
 
-def scaled_graph(fixture: PottsLabels) -> "PottsGraph":
+def scaled_graph(fixture: PottsLabels) -> PottsGraph:
     """The fixture's graph with `spatial_weight` folded into the coupling, once."""
-    from sal.sim.graph import PottsGraph
 
     return PottsGraph(
         n_nodes=fixture.graph.n_nodes,
@@ -680,10 +681,7 @@ def scaled_graph(fixture: PottsLabels) -> "PottsGraph":
 def synthetic_ranges(
     n_snps: int, n_ranges: int, seed: int = 11
 ) -> tuple[np.ndarray, Any]:
-    """Sorted SNP ids in cnaster's `{chr}_{pos}_{ref}_{alt}` text form, and filter
-    ranges.
-    """
-    import pandas as pd
+    """Sorted SNP ids in cnaster's `{chr}_{pos}_{ref}_{alt}` text form, and filter ranges."""
 
     rng = np.random.default_rng(seed)
 
@@ -713,7 +711,6 @@ def genomic_plot_instance(
     seed: int = 17, n_states: int = 4, n_obs: int = 24, n_spots: int = 9
 ) -> dict[str, Any]:
     """`plot_clones_genomic`'s arguments and a fit result: 24 bins, 9 spots, 3 clones."""
-    from tests.builders import allele_counts
 
     rng = np.random.default_rng(seed)
     n_clones = 3
@@ -738,7 +735,6 @@ def genomic_plot_instance(
 
 def integer_copies(rng: np.random.Generator, n_obs: int, n_clones: int) -> Any:
     """A `df_cnv` of major and minor copies per clone, the first four bins diploid."""
-    import pandas as pd
 
     frame: dict[str, np.ndarray] = {"CHR": np.ones(n_obs, dtype=int)}
 
@@ -774,8 +770,6 @@ def fused_field_of(
     fixture: SpotCloneField, weight: np.ndarray, *, tabulated: bool = False
 ) -> np.ndarray:
     """`port`'s fused (or tabulated) spot-by-clone field on `fixture`, weighted by `weight`."""
-    from port.patch.hmrf.fused_field import fused_spot_clone_field
-    from port.patch.hmrf.tabulated_field import tabulated_spot_clone_field
 
     # NB `Any`: `numba` dispatchers, whose stubs take no positional unpacking.
     kernel: Any = tabulated_spot_clone_field if tabulated else fused_spot_clone_field
@@ -796,11 +790,6 @@ def two_step_field_of(
     swaps: Any = None,
 ) -> np.ndarray:
     """`cnaster`'s dense producer (under `swaps`), then `kernel`'s field: what the fused kernel replaces."""
-    from contextlib import nullcontext
-
-    import cnaster.hmm_nophasing as upstream
-    from port.pipeline import patched
-    from scipy.sparse import eye as sparse_eye
 
     # NB `_dense_*_logpmf` indexes `[i, 0]`; the fused kernel takes `(n_states,)` (#278).
     with nullcontext() if swaps is None else patched(swaps):
@@ -843,7 +832,6 @@ def two_step_field_of(
 
 def cnaster_field_of(fixture: SpotCloneField, kernel: Any = None) -> np.ndarray:
     """`cnaster`'s spot-by-clone field on `fixture`, unweighted, or `kernel`'s in its place."""
-    from cnaster.hmrf import compute_loglike_spot_assignment
 
     kernel = compute_loglike_spot_assignment if kernel is None else kernel
     field: np.ndarray = kernel(
@@ -862,10 +850,7 @@ def cnaster_field_of(fixture: SpotCloneField, kernel: Any = None) -> np.ndarray:
 
 
 def partition_ari(planted: np.ndarray, fitted: np.ndarray) -> float:
-    """Adjusted Rand index of two partitions, written here so the referee is independent
-    of cnaster.
-    """
-    from math import comb
+    """Adjusted Rand index of two partitions, written here so the referee is independent of cnaster."""
 
     table = np.zeros((int(planted.max()) + 1, int(fitted.max()) + 1), dtype=np.int64)
     np.add.at(table, (planted, fitted), 1)
@@ -881,9 +866,6 @@ def partition_ari(planted: np.ndarray, fitted: np.ndarray) -> float:
 
 
 def run_planted_core_inference(truth: CoreInferenceTruth, **kwargs: object) -> Any:
-    from cnaster.hmm_nophasing import hmm_nophasing
-    from cnaster.hmrf import run_core_inference
-
     from tests.adapters import from_core_inference_truth
 
     with warnings.catch_warnings():
@@ -972,9 +954,6 @@ def divergent_clone_instance(
     `per_clone > n_clones`, so indexing by clone reads clone zero's block
     silently rather than raising.
     """
-    from cnaster.count_encoder import CountEncoder
-
-    from tests.builders import allele_counts
 
     generator = np.random.default_rng(seed)
     n_segments = n_clones * per_clone
@@ -1024,11 +1003,9 @@ def shifted_replacement(
     instance: dict[str, Any], *, shifted: bool = False, kernels: str = "cnaster"
 ) -> Any:
     """The drop-in, carrying the decode the shift is taken at (#517)."""
-    from port.patch.hmm_nophasing import hmm_nophasing
-    from port.pipeline import with_attributes
 
     model = with_attributes(
-        hmm_nophasing, apply_logmu_shift=shifted, emission_kernels=kernels
+        port_hmm_nophasing, apply_logmu_shift=shifted, emission_kernels=kernels
     )()
     model.state_posteriors = np.eye(instance["n_states"])[instance["decode"]].T
 

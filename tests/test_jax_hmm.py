@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d, hmm_nophasing
+from port.patch.hmm_nophasing import shifts
+from port.qa.jax_hmm import emission, marginal_negative_log_likelihood, shifted_rates
+from scipy.special import logsumexp
 
 
 def _instance(
@@ -30,8 +34,6 @@ def _instance(
 @pytest.mark.oracle
 def test_the_jax_emission_is_cnasters() -> None:
     """Both channels match `_nb_logpmf_1d` and `_bb_logpmf_1d` within 1e-10 absolute."""
-    from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
-    from port.qa.jax_hmm import emission
 
     instance = _instance()
     n_states = instance["log_mu"].shape[0]
@@ -81,9 +83,6 @@ def test_the_jax_emission_is_cnasters() -> None:
 @pytest.mark.oracle
 def test_the_jax_forward_is_cnasters() -> None:
     """Marginal likelihood matches `hmm_nophasing.forward_lattice` within 1e-9 relative."""
-    from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d, hmm_nophasing
-    from port.qa.jax_hmm import emission, marginal_negative_log_likelihood
-    from scipy.special import logsumexp
 
     instance = _instance()
     n_states = instance["log_mu"].shape[0]
@@ -153,8 +152,6 @@ def test_the_jax_forward_is_cnasters() -> None:
 @pytest.mark.oracle
 def test_the_jax_shift_is_the_patched_one() -> None:
     """`shifted_rates` matches `port.patch.hmm_nophasing.shifts` within 1e-12."""
-    from port.patch.hmm_nophasing import shifts
-    from port.qa.jax_hmm import shifted_rates
 
     generator = np.random.default_rng(13)
     n_states, lengths = 4, np.array([9, 5, 11], dtype=np.int64)
@@ -181,7 +178,6 @@ def test_the_jax_shift_is_the_patched_one() -> None:
 @pytest.mark.analytic
 def test_the_shift_removes_the_overall_scale() -> None:
     """Adding a constant to every rate leaves the debiased rates unchanged (model invariant)."""
-    from port.qa.jax_hmm import shifted_rates
 
     generator = np.random.default_rng(23)
     n_states, lengths = 3, np.array([7, 7], dtype=np.int64)

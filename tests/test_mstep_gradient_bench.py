@@ -11,6 +11,8 @@ from typing import Any
 
 import numpy as np
 import pytest
+from port.patch.hmm_nophasing import hmm_nophasing
+from port.pipeline import with_attributes
 from pytest_benchmark.fixture import BenchmarkFixture
 
 GATE = {"n_clones": 3, "n_obs": 300}
@@ -61,9 +63,6 @@ def _fit_inputs(n_clones: int, n_obs: int) -> dict[str, Any]:
 
 
 def _fit(inputs: dict[str, Any], *, analytic: bool) -> dict[str, Any]:
-    from port.patch.hmm_nophasing import hmm_nophasing
-    from port.pipeline import with_attributes
-
     arguments = dict(inputs)
     X = arguments.pop("X")
     lengths = arguments.pop("lengths")

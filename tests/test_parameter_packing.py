@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+from cnaster.hmm_nophasing import hmm_nophasing
 
 TOLERANCE = 1e-9
 
@@ -36,10 +37,7 @@ def named_parameters(n_states: int, n_spots: int = 1) -> dict[str, np.ndarray]:
 def test_unpacking_what_was_packed_returns_it(
     flags: dict[str, bool], n_states: int
 ) -> None:
-    """The round trip is the identity on every parameter it carries; shared dispersions
-    repeat.
-    """
-    from cnaster.hmm_nophasing import hmm_nophasing
+    """The round trip is the identity on every parameter it carries; shared dispersions repeat."""
 
     model = hmm_nophasing()
     params = named_parameters(n_states)
@@ -83,7 +81,6 @@ def test_unpacking_what_was_packed_returns_it(
 @pytest.mark.parametrize("n_states", [1, 3])
 def test_bounds_match_the_packed_vector(flags: dict[str, bool], n_states: int) -> None:
     """One bound per packed coordinate, each an interval containing it."""
-    from cnaster.hmm_nophasing import hmm_nophasing
 
     model = hmm_nophasing()
     params = named_parameters(n_states)

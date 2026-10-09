@@ -6,8 +6,16 @@ Values agree to a per-depth tolerance; the filter's mask is unchanged, with bins
 """
 
 import numpy as np
+import port.patch.normal_spot as module
 import pytest
 import scipy.stats
+from port.patch.normal_spot import (
+    _log_mass,
+    _log_mass_tabulated,
+    _log_tables,
+    cumulative_and_mass,
+    removal_indicator,
+)
 
 pytestmark = pytest.mark.preprocessing
 
@@ -22,7 +30,6 @@ VALUE_TOLERANCE = 1.0e-11
 @pytest.mark.parametrize("total", TOTALS)
 def test_the_distribution_function_agrees_with_scipy(total: int) -> None:
     """Every `k` in `[0, n]` agrees with scipy, covering both summation branches."""
-    from port.patch.normal_spot import cumulative_and_mass
 
     support = np.arange(total + 1)
     totals = np.full_like(support, total)
@@ -42,7 +49,6 @@ def test_the_distribution_function_agrees_with_scipy(total: int) -> None:
 @pytest.mark.patch
 def test_the_tabulated_mass_function_is_scipys_formula() -> None:
     """The log-gamma tables agree with `betaln` to 1e-11 relative."""
-    from port.patch.normal_spot import _log_mass, _log_mass_tabulated, _log_tables
 
     alpha, beta = 4.5, 11.0
     totals = np.repeat([13, 200, 1_009], 7)
@@ -63,7 +69,6 @@ def test_the_tabulated_mass_function_is_scipys_formula() -> None:
 @pytest.mark.parametrize("total", TOTALS)
 def test_the_distribution_function_is_a_distribution_function(total: int) -> None:
     """Non-decreasing, zero below the support, one at its top."""
-    from port.patch.normal_spot import cumulative_and_mass
 
     support = np.arange(-1, total + 1)
     totals = np.full_like(support, total)
@@ -77,10 +82,7 @@ def test_the_distribution_function_is_a_distribution_function(total: int) -> Non
 
 @pytest.mark.patch
 def test_the_chunk_boundary_cannot_move_a_value() -> None:
-    """Results are bitwise identical across `TERM_BUDGET`s spanning three orders of
-    magnitude.
-    """
-    import port.patch.normal_spot as module
+    """Results are bitwise identical across `TERM_BUDGET`s spanning three orders of magnitude."""
 
     totals = np.random.default_rng(5).integers(500, 2_000, size=64)
     counts = np.random.default_rng(6).binomial(totals, 0.5)
@@ -101,10 +103,7 @@ def test_the_chunk_boundary_cannot_move_a_value() -> None:
 
 @pytest.mark.bug
 def test_an_exact_tie_is_decided_the_way_cnaster_decides_it() -> None:
-    """At a symmetric beta-binomial's midpoint (exactly 0.5), the mask matches scipy's
-    decision.
-    """
-    from port.patch.normal_spot import removal_indicator
+    """At a symmetric beta-binomial's midpoint (exactly 0.5), the mask matches scipy's decision."""
 
     total, alpha, beta = 201, 15.0, 15.0
     support = np.arange(total + 1)

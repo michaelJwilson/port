@@ -4,6 +4,16 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from port.extensions.copy_likelihood import (
+    Pseudobulk,
+    _log_emissions,
+    _prior,
+    _viterbi,
+    candidates,
+    pair_rate_and_share,
+    pseudobulk_log_pmf,
+    viterbi_oracle,
+)
 from pytest_benchmark.fixture import BenchmarkFixture
 
 STAY = 1.0 - 1e-7
@@ -18,8 +28,6 @@ def _chain(n_states: int, lengths: list[int]) -> tuple[np.ndarray, ...]:
 
 
 def _bulk(rng: np.random.Generator, n_obs: int, alpha: float, tau: float) -> object:
-    from port.extensions.copy_likelihood import Pseudobulk
-
     trials = rng.poisson(40, n_obs).astype(float)
     return Pseudobulk(
         counts_nb=rng.poisson(200, n_obs).astype(float),
@@ -40,7 +48,6 @@ def test_the_compiled_viterbi_is_the_numpy_recursion_bitwise(
     n_states: int, rounded: bool
 ) -> None:
     """Path and score equal `viterbi_oracle`'s over three contigs, ties included."""
-    from port.extensions.copy_likelihood import _viterbi, viterbi_oracle
 
     rng = np.random.default_rng(n_states + rounded)
     emission = rng.normal(0.0, 5.0, (n_states, 301))
@@ -65,13 +72,6 @@ def test_the_broadcast_emission_is_each_states_row_bitwise(
     alpha: float, tau: float
 ) -> None:
     """Each state's row equals `pseudobulk_log_pmf` for that state alone, bitwise."""
-    from port.extensions.copy_likelihood import (
-        _log_emissions,
-        _prior,
-        candidates,
-        pair_rate_and_share,
-        pseudobulk_log_pmf,
-    )
 
     bulk = _bulk(np.random.default_rng(7), 400, alpha, tau)
     states = candidates(6)
@@ -96,8 +96,6 @@ STRESS = {"n_states": 27, "n_obs": 3_000}
 
 
 def _viterbi_bench(benchmark: BenchmarkFixture, size: dict[str, int], arm: str) -> None:
-    from port.extensions.copy_likelihood import _viterbi, viterbi_oracle
-
     emission = np.random.default_rng(3).normal(
         0.0, 5.0, (size["n_states"], size["n_obs"])
     )

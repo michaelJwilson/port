@@ -7,8 +7,19 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import port.patch.hmrf.clone_assignment as assignment
 import pytest
+import scipy.sparse as sp
 import yaml
+from port.extensions.copy_starts import CopyCall
+from port.qa import stage
+from port.qa.stage import missed
+from port.studies.copy_state_stream import (
+    oracle_states,
+    scored,
+    seed_states,
+    truth_label,
+)
 
 from tests import ROOT, TESTS
 
@@ -16,7 +27,6 @@ from tests import ROOT, TESTS
 @pytest.mark.oracle
 def test_missed_is_the_fewest_misses_over_every_matching_of_states() -> None:
     """Against brute force over all permutations of 4 states."""
-    from port.qa.stage import missed
 
     rng = np.random.default_rng(1)
     truth = rng.integers(0, 4, 200)
@@ -33,8 +43,6 @@ def test_missed_is_the_fewest_misses_over_every_matching_of_states() -> None:
 @pytest.mark.parametrize("name", ["cnaster-gmm", "distinct", "calicost-gmm", "prior"])
 def test_every_start_returns_one_state_per_planted_state(name: str) -> None:
     """Two stacked clones: `n_states` states with positive rates and p in (0, 1)."""
-    from port.extensions.copy_starts import CopyCall
-    from port.studies.copy_state_stream import seed_states
 
     rng = np.random.default_rng(0)
     n = 300
@@ -64,8 +72,6 @@ def test_the_stage_is_the_runs_baum_welch_at_the_planted_clones(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """dev_tree_1s_hard r0: the replayed `--sal` Baum-Welch call reproduces itself bitwise (#730)."""
-    from port.qa import stage
-    from port.studies.copy_state_stream import oracle_states, scored, truth_label
 
     # NB manifests extend relative to the repository root.
     monkeypatch.chdir(ROOT)
@@ -105,9 +111,6 @@ def test_the_field_is_cnasters_at_the_planted_clones_less_the_clone_shift(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """dev_tree_1s_hard r0: `--sal`'s field is `cnaster`'s bitwise, less the shift (#362, #735)."""
-    import port.patch.hmrf.clone_assignment as assignment
-    import scipy.sparse as sp
-    from port.qa import stage
 
     monkeypatch.chdir(ROOT)
     member = next(

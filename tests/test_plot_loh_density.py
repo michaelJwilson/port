@@ -5,8 +5,11 @@ Compares drawn artists (each `Path3DCollection`'s offsets and RGBA), not pixels.
 
 from typing import Any
 
+import matplotlib as mpl
 import numpy as np
 import pytest
+from cnaster.plot_loh_density import plot_loh_density as upstream
+from port.sandbox.patch.plotting.loh_density import plot_loh_density as replacement
 
 from tests.builders import allele_counts
 
@@ -14,9 +17,7 @@ from tests.builders import allele_counts
 def _instance(
     n_bins: int = 12, n_spots: int = 9, n_clones: int = 3, n_states: int = 4
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
-    """A three-clone instance whose clones hold different spots, so a per-column decode
-    would differ.
-    """
+    """A three-clone instance whose clones hold different spots, so a per-column decode would differ."""
     rng = np.random.default_rng(11)
 
     coords = rng.uniform(0.0, 10.0, size=(n_spots, 2))
@@ -49,12 +50,8 @@ def _cloud(figure: Any) -> list[tuple[np.ndarray, np.ndarray]]:
 @pytest.mark.patch
 def test_the_replacement_draws_the_density_upstream_draws() -> None:
     """Both figures on one instance: every point and colour equal bitwise."""
-    import matplotlib as mpl
 
     mpl.use("Agg")
-
-    from cnaster.plot_loh_density import plot_loh_density as upstream
-    from port.sandbox.patch.plotting.loh_density import plot_loh_density as replacement
 
     coords, single_X, total_bb_RD, result = _instance()
 
@@ -79,12 +76,8 @@ def test_the_replacement_draws_the_density_upstream_draws() -> None:
 @pytest.mark.parametrize("plot_type", ["empirical", "model"])
 def test_each_panel_alone_is_upstreams(plot_type: str) -> None:
     """Each channel alone equals upstream's, so a swap between them would fail."""
-    import matplotlib as mpl
 
     mpl.use("Agg")
-
-    from cnaster.plot_loh_density import plot_loh_density as upstream
-    from port.sandbox.patch.plotting.loh_density import plot_loh_density as replacement
 
     coords, single_X, total_bb_RD, result = _instance()
 
@@ -107,12 +100,8 @@ def test_each_panel_alone_is_upstreams(plot_type: str) -> None:
 @pytest.mark.patch
 def test_a_clone_holding_no_spots_leaves_its_column_alone() -> None:
     """An empty clone's column is skipped, as upstream skips it."""
-    import matplotlib as mpl
 
     mpl.use("Agg")
-
-    from cnaster.plot_loh_density import plot_loh_density as upstream
-    from port.sandbox.patch.plotting.loh_density import plot_loh_density as replacement
 
     coords, single_X, total_bb_RD, result = _instance()
 

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import itertools
+
 import numpy as np
 import pytest
+import scipy.sparse as sp
 from port.sandbox.clone_starts import problem as pr
 from port.sandbox.clone_starts import starts as st
 
@@ -12,10 +15,7 @@ STATES = ((0.0, 0.5), (np.log(0.5), 0.02), (np.log(1.5), 1.0 / 3.0))
 
 
 def _capture(n_side: int = 20, n_bins: int = 120, seed: int = 0) -> pr.Capture:
-    """Two clones side by side on an `n_side` lattice; clone 1 carries a loss then a
-    gain.
-    """
-    import scipy.sparse as sp
+    """Two clones side by side on an `n_side` lattice; clone 1 carries a loss then a gain."""
 
     rng = np.random.default_rng(seed)
     n = n_side * n_side
@@ -81,7 +81,6 @@ def test_the_pseudobulk_is_each_clones_sum_over_its_spots() -> None:
 @pytest.mark.oracle
 def test_the_profile_path_is_the_most_likely_one_and_restarts_at_each_contig() -> None:
     """`_viterbi` on 12 bins, 3 states, two contigs, against every path scored by brute force."""
-    import itertools
 
     rng = np.random.default_rng(2)
     emission = rng.normal(size=(6, 3)) * 3.0
@@ -106,9 +105,7 @@ def test_the_profile_path_is_the_most_likely_one_and_restarts_at_each_contig() -
 def test_the_field_the_planted_labels_give_places_each_spot_in_the_clone_that_drew_it() -> (
     None
 ):
-    """From the drawing states, the field's argmax agrees with the planted clone on 95%
-    of spots.
-    """
+    """From the drawing states, the field's argmax agrees with the planted clone on 95% of spots."""
     capture = _capture()
     states = (
         np.array([s[0] for s in STATES]),

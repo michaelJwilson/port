@@ -4,6 +4,7 @@
 
 import numpy as np
 import pytest
+from cnaster.hmrf_utils import clone_stack_obs
 from port.sim.truth import (
     MINIMUM_SEGMENT,
     core_inference_truth,
@@ -100,10 +101,7 @@ def test_no_event_crosses_a_chromosome_boundary() -> None:
 
 @pytest.mark.snapshot
 def test_the_clone_stacked_lengths_are_cnasters_own() -> None:
-    """`stacked_lengths` tiles the ragged segmentation per clone, as `clone_stack_obs`
-    does (#97).
-    """
-    from cnaster.hmrf_utils import clone_stack_obs
+    """`stacked_lengths` tiles the ragged segmentation per clone, as `clone_stack_obs` does (#97)."""
 
     truth = dev_instance()
     n_clones, n_obs = truth.n_clones, truth.n_obs

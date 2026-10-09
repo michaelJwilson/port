@@ -9,9 +9,13 @@ from __future__ import annotations
 import numpy as np
 import pytest
 import scipy.sparse as sp
+from cnaster.icm import merge_assignment
+from port.patch.icm.alpha_expansion import potts_graph_from
+from port.patch.icm.interface import CsrGraph
 from port.studies.color_merge import color_merge, merge_deltas
 from port.studies.field_strength import overdispersion
 from port.studies.potts_stream import hex_graph
+from sal.sim.potts import energy
 
 
 def _hex(n_side: int = 12) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -23,12 +27,7 @@ def _hex(n_side: int = 12) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarr
 
 @pytest.mark.oracle
 def test_the_merge_closed_form_is_the_energy_change_sal_computes() -> None:
-    """Every pair's delta against `sal.sim.potts.energy` of the merged labelling, to 1e-9
-    nats.
-    """
-    from port.patch.icm.alpha_expansion import potts_graph_from
-    from port.patch.icm.interface import CsrGraph
-    from sal.sim.potts import energy
+    """Every pair's delta against `sal.sim.potts.energy` of the merged labelling, to 1e-9 nats."""
 
     _, indptr, indices, weights = _hex()
     rng = np.random.default_rng(2)
@@ -52,7 +51,6 @@ def _cnaster_gain(
     field: np.ndarray, labels: np.ndarray, beta: float
 ) -> tuple[float, tuple[int, int]]:
     """`cnaster.icm.merge_assignment`'s best cost gain and pair on `_hex()`."""
-    from cnaster.icm import merge_assignment
 
     _, indptr, indices, weights = _hex()
     coo = sp.csr_matrix((weights, indices, indptr)).tocoo()
@@ -64,9 +62,7 @@ def _cnaster_gain(
 
 @pytest.mark.oracle
 def test_the_color_merges_field_term_is_cnasters() -> None:
-    """At beta = 1e-9, `cnaster.icm.merge_assignment`'s gain is the closed-form drop and
-    its pair the argmin.
-    """
+    """At beta = 1e-9, `cnaster.icm.merge_assignment`'s gain is the closed-form drop and its pair the argmin."""
     _, indptr, indices, weights = _hex()
     rng = np.random.default_rng(3)
     field = rng.normal(size=(indptr.size - 1, 4)) * 0.3
@@ -82,9 +78,7 @@ def test_the_color_merges_field_term_is_cnasters() -> None:
 
 @pytest.mark.bug
 def test_cnaster_scores_a_merges_boundary_at_half_the_energy_it_removes() -> None:
-    """`merge_assignment` scores half the boundary energy a merge removes; fails when
-    `cnaster` adds both directions.
-    """
+    """`merge_assignment` scores half the boundary energy a merge removes; fails when `cnaster` adds both directions."""
     _, indptr, indices, weights = _hex()
     rng = np.random.default_rng(3)
     field = rng.normal(size=(indptr.size - 1, 4)) * 0.3
@@ -128,9 +122,7 @@ def test_the_hex_graph_gives_interior_points_six_neighbours() -> None:
 
 @pytest.mark.analytic
 def test_the_moment_overdispersion_recovers_the_rho_it_was_drawn_at() -> None:
-    """Beta-binomial draws at rho 0 and 0.05 on 20,000 entries of 2-4 reads: recovered
-    within 0.01.
-    """
+    """Beta-binomial draws at rho 0 and 0.05 on 20,000 entries of 2-4 reads: recovered within 0.01."""
     rng = np.random.default_rng(6)
     n = rng.integers(2, 5, size=20_000).astype(float)
     p = rng.uniform(0.2, 0.8, size=n.size)

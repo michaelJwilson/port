@@ -1,13 +1,21 @@
 """Shared fixtures, including `cnaster`'s module-level global config, set and restored."""
 
+import os
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
+from cnaster.io import load_input_data
+from cnaster.omics import form_gene_snp_table
+from cnaster.scripts.run_cnaster import set_numba_seed
+from port.sim.inputs import written_config
+from port.sim.run_config import planted_and_written
 
 from tests import TESTS
+from tests.fixtures import potts_labels
 
 COMPRESSION_DECIMALS = 6
 """Places `CountEncoder` rounds to before deduplicating; `cnaster`'s default."""
@@ -70,7 +78,6 @@ def cnaster_test_config(
 @pytest.fixture
 def cnaster_config(tmp_path: Path) -> Iterator[None]:
     """Install a minimal `cnaster` global config at shipped solver settings, then restore."""
-    from port.sim.inputs import written_config
 
     with written_config(cnaster_test_config(tmp_path, SHIPPED_EM_FTOL, 100)):
         yield
@@ -79,7 +86,6 @@ def cnaster_config(tmp_path: Path) -> Iterator[None]:
 @pytest.fixture
 def cnaster_converged_config(tmp_path: Path) -> Iterator[None]:
     """As `cnaster_config`, at `CONVERGED_EM_FTOL`, for comparing two implementations."""
-    from port.sim.inputs import written_config
 
     with written_config(cnaster_test_config(tmp_path, CONVERGED_EM_FTOL, 5_000)):
         yield
@@ -95,7 +101,6 @@ def cnaster_perf_sink(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 @pytest.fixture
 def cnaster_config_switch(tmp_path: Path) -> Iterator[Callable[[float, int], None]]:
     """Yield a setter that reinstalls the config mid-test, to compare criteria."""
-    from port.sim.inputs import written_config
 
     with ExitStack() as stack:
         yield lambda em_ftol, em_maxiter: stack.enter_context(
@@ -106,7 +111,6 @@ def cnaster_config_switch(tmp_path: Path) -> Iterator[Callable[[float, int], Non
 @pytest.fixture(scope="session")
 def planted_instance(tmp_path_factory: pytest.TempPathFactory) -> Any:
     """Plant and write the gate instance once per session; tests never rewrite it."""
-    from port.sim.run_config import planted_and_written
 
     return planted_and_written(tmp_path_factory.mktemp("gate"))
 
@@ -114,7 +118,6 @@ def planted_instance(tmp_path_factory: pytest.TempPathFactory) -> Any:
 @pytest.fixture
 def lattice() -> Any:
     """The default Potts draw: a 6x6 open lattice, three clones, 60 edges."""
-    from tests.fixtures import potts_labels
 
     return potts_labels()
 
@@ -122,7 +125,6 @@ def lattice() -> Any:
 @pytest.fixture
 def enumerable() -> Any:
     """A 10-site, three-clone Potts lattice with weak signal: 59,049 labellings."""
-    from tests.fixtures import potts_labels
 
     return potts_labels(shape=(5, 2), n_clones=3, signal=0.6, noise=1.0)
 
@@ -136,7 +138,6 @@ def planted(planted_instance: Any) -> Any:
 @pytest.fixture(scope="module")
 def gate_config(planted_instance: Any) -> Iterator[Any]:
     """The gate instance's run configuration, installed for the module."""
-    from port.sim.inputs import written_config
 
     with written_config(planted_instance[3]) as config:
         yield config
@@ -145,8 +146,6 @@ def gate_config(planted_instance: Any) -> Iterator[Any]:
 @pytest.fixture(scope="module")
 def gate_table(planted_instance: Any, gate_config: Any) -> tuple[Any, Any]:
     """The gate instance as `load_input_data` returns it, and `cnaster`'s gene-SNP table."""
-    from cnaster.io import load_input_data
-    from cnaster.omics import form_gene_snp_table
 
     loaded = load_input_data(gate_config)
     hgtable = str(planted_instance[2].hgtable)
@@ -183,7 +182,6 @@ def _keep_the_perf_log_out_of_the_checkout(
     tmp_path_factory: pytest.TempPathFactory,
 ) -> Iterator[None]:
     """Run the suite from a scratch directory, so `cnaster.perf` stays out of the checkout."""
-    import os
 
     previous = Path.cwd()
     os.chdir(tmp_path_factory.mktemp("cwd"))
@@ -200,8 +198,6 @@ TEST_SEED = 0
 @pytest.fixture(autouse=True)
 def _seeded() -> None:
     """Seed NumPy's and numba's global generators before every test (#264)."""
-    import numpy as np
-    from cnaster.scripts.run_cnaster import set_numba_seed
 
     # NB the legacy global generator is the one `cnaster` draws from.
     np.random.seed(TEST_SEED)  # noqa: NPY002

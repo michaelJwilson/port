@@ -12,6 +12,9 @@ from contextlib import AbstractContextManager
 from typing import Any
 
 import pytest
+from port.extensions.copy_likelihood import capture
+from port.patch.lattice import rust_lattices
+from port.pipeline import FIGURE_SWAPS, PLOT_OFF_SWAPS, SWAPS, patched, release
 
 
 def _snapshot() -> dict[tuple[str, str], Any]:
@@ -34,10 +37,6 @@ def _snapshot() -> dict[tuple[str, str], Any]:
 
 
 def _managers() -> list[tuple[str, Callable[[], AbstractContextManager[Any]]]]:
-    from port.extensions.copy_likelihood import capture
-    from port.patch.lattice import rust_lattices
-    from port.pipeline import FIGURE_SWAPS, PLOT_OFF_SWAPS, SWAPS, patched
-
     return [
         ("capture", capture),
         ("rust_lattices", rust_lattices),
@@ -48,8 +47,6 @@ def _managers() -> list[tuple[str, Callable[[], AbstractContextManager[Any]]]]:
 @pytest.mark.infra
 @pytest.mark.parametrize("index", range(3))
 def test_a_raising_block_leaves_no_module_state_behind(index: int) -> None:
-    from port.pipeline import release
-
     name, manager = _managers()[index]
     # NB `patched` releases run state on exit (#517); earlier tests' leftovers are
     # dropped first.

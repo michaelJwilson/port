@@ -10,11 +10,21 @@ import warnings
 from pathlib import Path
 from typing import Any
 
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+from port.extensions.multisample import cross_sample_adjacency, sample_panels
+from port.patch.plotting.spatial import plot_clones_spatial
+from port.scripts.run_cnaster import main
+from port.sim.inputs import write_tmp_inputs
+from port.sim.run_config import isolated_run, write_run_cnaster_config
+from port.sim.truth import core_inference_truth
+from port.sim.unsegment import unsegment
 
 from tests.fixtures import partition_ari
+from tests.multisample import multi_sample_truth
 
 N_SAMPLES = 3
 
@@ -31,14 +41,10 @@ INSTANCE: dict[str, Any] = {
 
 
 def _base() -> Any:
-    from port.sim.truth import core_inference_truth
-
     return core_inference_truth(**INSTANCE)
 
 
 def _multi() -> Any:
-    from tests.multisample import multi_sample_truth
-
     return multi_sample_truth(_base(), N_SAMPLES)
 
 
@@ -49,14 +55,7 @@ def _multi() -> Any:
 def test_the_entry_point_recovers_the_shared_clones_in_every_sample(
     tmp_path: Path,
 ) -> None:
-    """One clone labelling across three samples: every clone in every sample, at most 2
-    spots misplaced each.
-    """
-    import matplotlib as mpl
-    from port.scripts.run_cnaster import main
-    from port.sim.inputs import write_tmp_inputs
-    from port.sim.run_config import isolated_run, write_run_cnaster_config
-    from port.sim.unsegment import unsegment
+    """One clone labelling across three samples: every clone in every sample, at most 2 spots misplaced each."""
 
     mpl.use("Agg")
     multi = _multi()
@@ -145,7 +144,6 @@ def test_the_grid_labels_each_sample_and_leaves_the_gaps_empty() -> None:
 @pytest.mark.infra
 def test_the_cross_sample_placeholder_has_no_edge_inside_a_sample() -> None:
     """Empty today; the invariant an implementation keeps is no within-sample entry."""
-    from port.extensions.multisample import cross_sample_adjacency
 
     multi = _multi()
     adjacency = cross_sample_adjacency(multi.sample_label)
@@ -158,8 +156,6 @@ def test_the_cross_sample_placeholder_has_no_edge_inside_a_sample() -> None:
 
 @pytest.mark.infra
 def test_a_layout_places_the_samples_row_by_row_and_refuses_too_few_panels() -> None:
-    from port.extensions.multisample import sample_panels
-
     labels = np.repeat([0, 1, 2], 4)
     panels = sample_panels(labels, (3, 1))
 
@@ -172,13 +168,9 @@ def test_a_layout_places_the_samples_row_by_row_and_refuses_too_few_panels() -> 
 
 @pytest.mark.infra
 def test_sample_layout_draws_a_panel_per_sample_in_the_runs_colours() -> None:
-    """Three panels, each in its own coordinates; a clone absent from one sample
-    keeps its colour in the others; unset, one axis as upstream."""
-    import matplotlib as mpl
+    """Three panels, each in its own coordinates; a clone absent from one sample keeps its colour in the others; unset, one axis as upstream."""
 
     mpl.use("Agg")
-    import matplotlib.pyplot as plt
-    from port.patch.plotting.spatial import plot_clones_spatial
 
     rng = np.random.default_rng(0)
     coords = np.array([(r, c) for r in range(6) for c in range(6)] * 3, dtype=float)

@@ -12,7 +12,7 @@ from typing import Literal
 import pytest
 
 from tests import ROOT
-from tests.source_graph import modules, reached, row_modules
+from tests.source_graph import COUNTING, TESTS, modules, reached, row_modules
 
 Role = Literal[
     "row",
@@ -279,8 +279,6 @@ def test_live_and_set_aside_are_what_the_graph_says() -> None:
 
 @pytest.mark.infra
 def test_every_oracle_referees_a_counting_test() -> None:
-    from tests.source_graph import COUNTING, TESTS
-
     referred: set[str] = set()
 
     for path in TESTS.rglob("test_*.py"):

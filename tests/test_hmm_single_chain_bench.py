@@ -61,35 +61,24 @@ def phased() -> PhasedChains:
             f.family.log_density,
             torch.as_tensor(f.dataset.observations, dtype=torch.float64),
         ),
-    ],
-    ids=["cnaster", "upstream"],
-)
-def test_emission(
-    benchmark: BenchmarkFixture,
-    chains: NegativeBinomialChains,
-    arm: Callable[[NegativeBinomialChains], Callable[[], object]],
-) -> None:
-    """The same scores from both, for the ratio between them."""
-    benchmark(arm(chains))
-
-
-@pytest.mark.benchmark
-@pytest.mark.parametrize(
-    "arm",
-    [
         lambda f: partial(
             cnaster_total_log_likelihood, from_negative_binomial_chains(f)
         ),
         lambda f: partial(upstream_total_log_likelihood, f),
     ],
-    ids=["cnaster", "upstream"],
+    ids=[
+        "emission-cnaster",
+        "emission-upstream",
+        "forward-cnaster",
+        "forward-upstream",
+    ],
 )
-def test_forward(
+def test_emission_and_forward(
     benchmark: BenchmarkFixture,
     chains: NegativeBinomialChains,
     arm: Callable[[NegativeBinomialChains], Callable[[], object]],
 ) -> None:
-    """The emission and forward recursion together."""
+    """The same scores from both, for the ratio between them; then the emission and forward recursion together."""
     benchmark(arm(chains))
 
 
@@ -109,7 +98,5 @@ def test_phased_forward(
     phased: PhasedChains,
     arm: Callable[[PhasedChains], Callable[[], object]],
 ) -> None:
-    """cnaster's per-position phased lattice against upstream's at the assembled
-    transition.
-    """
+    """cnaster's per-position phased lattice against upstream's at the assembled transition."""
     benchmark(arm(phased))

@@ -8,9 +8,14 @@ from __future__ import annotations
 
 from typing import Any
 
+import matplotlib as mpl
 import numpy as np
 import pytest
+from cnaster.plot_genomic import plot_clones_genomic as upstream
+from cnaster.utils import get_intervals
 from port.sandbox.patch.plotting.genomic import baf_track, rdr_track, segment_levels
+from port.sandbox.patch.plotting.genomic import plot_clones_genomic as replacement
+from scipy.stats import beta as beta_distribution
 
 from tests.adapters import drawn
 from tests.builders import allele_counts
@@ -43,9 +48,7 @@ def test_the_rdr_track_matches_upstreams_expression() -> None:
 
 @pytest.mark.bug
 def test_a_zero_baseline_scrubs_the_error_and_not_the_value() -> None:
-    """The error's non-finite entries are scrubbed and the value's kept, as upstream
-    does.
-    """
+    """The error's non-finite entries are scrubbed and the value's kept, as upstream does."""
     X, base_nb_mean, _ = _instance()
     base_nb_mean[3, 0] = 0.0
 
@@ -77,10 +80,7 @@ def test_the_baf_track_matches_upstreams_expression() -> None:
 
 @pytest.mark.analytic
 def test_the_baf_error_is_the_beta_posterior_standard_deviation() -> None:
-    """The BAF error equals scipy's `Beta(k + 1, n - k + 1)` standard deviation,
-    exactly.
-    """
-    from scipy.stats import beta as beta_distribution
+    """The BAF error equals scipy's `Beta(k + 1, n - k + 1)` standard deviation, exactly."""
 
     X, _, total_bb_RD = _instance()
     _, error = baf_track(X, total_bb_RD, 0)
@@ -94,7 +94,6 @@ def test_the_baf_error_is_the_beta_posterior_standard_deviation() -> None:
 @pytest.mark.patch
 def test_the_segment_levels_match_upstreams_lines() -> None:
     """`exp(new_log_mu[:, idx])[lbl]` and `new_p_binom[:, idx][lbl]`, on three clones."""
-    from cnaster.utils import get_intervals
 
     rng = np.random.default_rng(7)
     n_obs, n_clones, n_states = 30, 3, 5
@@ -138,12 +137,8 @@ def test_the_segment_levels_refuse_a_second_parameter_column() -> None:
 @pytest.mark.patch
 def test_the_replacement_draws_what_upstream_draws(cnaster_config: None) -> None:
     """Every drawn point and segment equals upstream's figure, bitwise."""
-    import matplotlib as mpl
 
     mpl.use("Agg")
-
-    from cnaster.plot_genomic import plot_clones_genomic as upstream
-    from port.sandbox.patch.plotting.genomic import plot_clones_genomic as replacement
 
     instance = genomic_plot_instance(17)
     arguments: tuple[Any, Any, Any, Any] = instance["arguments"]
@@ -171,12 +166,8 @@ def test_the_integer_copy_colouring_is_upstreams(
     cnaster_config: None, phased_integer_copies: bool, palette_name: str
 ) -> None:
     """The `df_cnv` branch's offsets and colours equal upstream's, under both knobs."""
-    import matplotlib as mpl
 
     mpl.use("Agg")
-
-    from cnaster.plot_genomic import plot_clones_genomic as upstream
-    from port.sandbox.patch.plotting.genomic import plot_clones_genomic as replacement
 
     instance = genomic_plot_instance(29)
     arguments: tuple[Any, Any, Any, Any] = instance["arguments"]

@@ -5,6 +5,13 @@ Referees: a second solver in the package, an invariant, or the planted truth.
 
 import numpy as np
 import pytest
+from cnaster.adjacency import multislice_adjacency
+from cnaster.hmm_initialize import cna_mixture_init, gmm_init
+from cnaster.hmm_nophasing import get_log_transmat
+from cnaster.hmrf_utils import clone_stack_obs
+from cnaster.icm import icm_sweep_pqueue, merge_assignment, unpack_adjacency
+from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
+from cnaster.utils import cast_clone_label, top_hat_sum
 from port.sim.truth import CoreInferenceTruth, core_inference_truth
 
 LATTICE = (20, 30)
@@ -34,7 +41,6 @@ def _field(truth: CoreInferenceTruth) -> np.ndarray:
 
 def _graph(truth: CoreInferenceTruth) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return `cnaster`'s lattice adjacency as CSR `(indptr, indices, weights)`."""
-    from cnaster.adjacency import multislice_adjacency
 
     coords = np.stack(
         np.unravel_index(np.arange(truth.n_spots), truth.lattice), axis=-1
@@ -50,7 +56,6 @@ def test_the_priority_queue_solver_finds_the_planted_labelling(
     planted: CoreInferenceTruth,
 ) -> None:
     """`icm_sweep_pqueue` finds the planted labelling from one wrong everywhere."""
-    from cnaster.icm import icm_sweep_pqueue
 
     indptr, indices, weights = _graph(planted)
     field = _field(planted)
@@ -77,7 +82,6 @@ def test_the_merge_step_names_the_pair_it_would_join(
     planted: CoreInferenceTruth,
 ) -> None:
     """`merge_assignment` names the only pair of two clones."""
-    from cnaster.icm import merge_assignment, unpack_adjacency
 
     indptr, indices, weights = _graph(planted)
     adjacency_list = [
@@ -108,7 +112,6 @@ def test_the_merge_step_names_the_pair_it_would_join(
 @pytest.mark.oracle
 def test_the_top_hat_sum_is_a_sliding_window(planted: CoreInferenceTruth) -> None:
     """`top_hat_sum` equals a centred, truncated `numpy` window sum, to 1e-12; a 1-D input is returned unchanged."""
-    from cnaster.utils import top_hat_sum
 
     rng = np.random.default_rng(3)
     values = rng.random((21, 2))
@@ -128,7 +131,6 @@ def test_the_top_hat_sum_is_a_sliding_window(planted: CoreInferenceTruth) -> Non
 @pytest.mark.smoke
 def test_the_clone_label_cast_refuses_what_it_says_it_refuses() -> None:
     """`cast_clone_label` names the normal clone and bounds the rest."""
-    from cnaster.utils import cast_clone_label
 
     assert cast_clone_label("clone-1") == "WARN"
     assert cast_clone_label("clone1") != cast_clone_label("clone2")
@@ -144,10 +146,6 @@ def test_the_mixture_initializer_returns_the_declared_shapes(
     planted: CoreInferenceTruth,
 ) -> None:
     """`cna_mixture_init` raises `TypeError` (class-vs-instance call, as #9); `gmm_init` runs."""
-    from cnaster.hmm_initialize import cna_mixture_init, gmm_init
-    from cnaster.hmm_nophasing import get_log_transmat
-    from cnaster.hmrf_utils import clone_stack_obs
-    from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
 
     counts = np.stack([planted.counts_nb, planted.counts_bb], axis=1)
     X, base, total, _ = merge_pseudobulk_by_index_mix(

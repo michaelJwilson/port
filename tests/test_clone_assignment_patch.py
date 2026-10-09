@@ -5,10 +5,13 @@ Whole-run equivalence is in `tests/test_patched_entry_point.py`.
 
 from typing import Any
 
+import cnaster.hmrf
 import numpy as np
 import pytest
-from port.patch.hmrf.clone_assignment import _decoded
+from port.patch.hmrf import clone_assignment
+from port.patch.hmrf.clone_assignment import _BOUNDARY, _decoded, boundary
 from port.patch.hmrf.invariants import BoundaryInvariants
+from port.pipeline import FIGURE_SWAPS, SWAPS, patched
 
 
 def _cnaster_weight(
@@ -76,9 +79,6 @@ def test_the_flat_pred_is_read_as_cnaster_reads_it(n_obs: int, n_clones: int) ->
 @pytest.mark.infra
 def test_the_fallback_does_not_call_itself() -> None:
     """The fallback binds `cnaster`'s function at import, so it cannot recurse into itself."""
-    import cnaster.hmrf
-    from port.patch.hmrf import clone_assignment
-    from port.pipeline import patched
 
     captured = clone_assignment.UPSTREAM
 
@@ -97,7 +97,6 @@ def test_the_fallback_does_not_call_itself() -> None:
 @pytest.mark.infra
 def test_the_swap_is_in_the_default_table() -> None:
     """The swap is a default-table row, as it reproduces `cnaster` bitwise."""
-    from port.pipeline import FIGURE_SWAPS, SWAPS
 
     rows: Any = [swap for swap in SWAPS if swap.name == "pipeline_clone_assignment"]
 
@@ -109,7 +108,6 @@ def test_the_swap_is_in_the_default_table() -> None:
 @pytest.mark.patch
 def test_the_boundary_invariants_are_computed_once_per_dataset() -> None:
     """Boundary invariants are cached per dataset and equal a fresh computation (#59 item 4)."""
-    from port.patch.hmrf.clone_assignment import boundary
 
     generator = np.random.default_rng(13)
 
@@ -133,7 +131,6 @@ def test_the_boundary_invariants_are_computed_once_per_dataset() -> None:
 @pytest.mark.smoke
 def test_the_invariant_cache_holds_the_arrays_it_is_keyed_on() -> None:
     """The single `id()`-keyed cache entry holds references to its arrays."""
-    from port.patch.hmrf.clone_assignment import _BOUNDARY, boundary
 
     first = np.ones((4, 3))
     second = np.ones((4, 3))

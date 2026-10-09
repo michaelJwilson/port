@@ -7,6 +7,8 @@
 import numpy as np
 import pytest
 import scipy.stats
+from cnaster.hmm_emission import betabinom_logpmf, betabinom_logpmf_zp
+from cnaster.hmm_nophasing import betabinom_logpmf_numba, nbinom_logpmf_numba
 
 IMPLEMENTATION_TOLERANCE = 1.0e-12
 """HMM-vs-M-step gap allowed: reassociation (realized 4.1e-13)."""
@@ -33,8 +35,6 @@ def _draws(size: int = 500) -> tuple[np.ndarray, ...]:
 @pytest.mark.patch
 def test_the_hmm_and_the_m_step_score_the_same_density() -> None:
     """The HMM's and M step's beta-binomials agree within `IMPLEMENTATION_TOLERANCE` (#205, #9)."""
-    from cnaster.hmm_emission import betabinom_logpmf, betabinom_logpmf_zp
-    from cnaster.hmm_nophasing import betabinom_logpmf_numba
 
     successes, totals, alpha, beta = _draws()
 
@@ -55,8 +55,6 @@ def test_the_hmm_and_the_m_step_score_the_same_density() -> None:
 @pytest.mark.oracle
 def test_both_agree_with_scipy_at_integer_counts() -> None:
     """Both agree with `scipy.stats.betabinom` within `SCIPY_TOLERANCE` at integer counts."""
-    from cnaster.hmm_emission import betabinom_logpmf, betabinom_logpmf_zp
-    from cnaster.hmm_nophasing import betabinom_logpmf_numba
 
     successes, totals, alpha, beta = _draws()
     expected = scipy.stats.betabinom.logpmf(successes, totals, alpha, beta)
@@ -88,8 +86,6 @@ def test_an_impossible_observation_scores_as_certain(
     label: str, successes: float, totals: float, alpha: float, beta: float
 ) -> None:
     """The HMM's guard returns 0.0 (certainty) where the M step and `scipy` give `-inf`."""
-    from cnaster.hmm_emission import betabinom_logpmf, betabinom_logpmf_zp
-    from cnaster.hmm_nophasing import betabinom_logpmf_numba
 
     guarded = betabinom_logpmf_numba(successes, totals, alpha, beta)
 
@@ -114,7 +110,6 @@ def test_an_impossible_observation_scores_as_certain(
 @pytest.mark.warning
 def test_the_negative_binomial_guard_has_the_same_direction() -> None:
     """`nbinom_logpmf_numba` returns 0.0 when a tiny exposure underflows `p` to 1 (#30)."""
-    from cnaster.hmm_nophasing import nbinom_logpmf_numba
 
     alpha, exposure, mu = 1.0e-6, 1.0e-12, 1.0
     rate = exposure * mu

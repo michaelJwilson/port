@@ -8,6 +8,18 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from cnaster.hmm_nophasing import _nb_logpmf_1d, compute_logmu_shifts
+from cnaster.hmm_nophasing import hmm_nophasing as upstream
+from port.patch.hmm_nophasing import hmm_nophasing
+from port.patch.hmm_nophasing.logmu_shift import shifts
+from port.patch.hmm_nophasing.shifted_emission import (
+    current_clone_lengths,
+    neutral_state,
+    stacked_log_lambda,
+)
+from port.patch.hmrf.clone_assignment import _clone_shifts
+from port.patch.hmrf.core_inference import pin_neutral
+from port.pipeline import with_attributes
 
 from tests.fixtures import (
     divergent_clone_instance,
@@ -20,7 +32,6 @@ from tests.fixtures import (
 @pytest.mark.patch
 def test_off_it_is_upstreams_emission_bitwise(cnaster_config: None) -> None:
     """With the flag off the emission is upstream's, bitwise."""
-    from cnaster.hmm_nophasing import hmm_nophasing as upstream
 
     instance = divergent_clone_instance()
 
@@ -36,10 +47,7 @@ def test_off_it_is_upstreams_emission_bitwise(cnaster_config: None) -> None:
 def test_off_is_the_default_and_a_missing_decode_still_delegates(
     cnaster_config: None,
 ) -> None:
-    """A missing decode, exposure or clone lengths delegates to upstream rather than
-    guessing.
-    """
-    from cnaster.hmm_nophasing import hmm_nophasing as upstream
+    """A missing decode, exposure or clone lengths delegates to upstream rather than guessing."""
 
     instance = divergent_clone_instance()
     expected = shifted_emission_call(upstream(), instance)
@@ -71,10 +79,7 @@ def test_off_is_the_default_and_a_missing_decode_still_delegates(
 @pytest.mark.cnaster
 @pytest.mark.patch
 def test_on_it_applies_cnasters_own_shift(cnaster_config: None) -> None:
-    """`exp(log_mu - log Z_c)` against `cnaster`'s `compute_logmu_shifts` and
-    `_nb_logpmf_1d`, bitwise.
-    """
-    from cnaster.hmm_nophasing import _nb_logpmf_1d, compute_logmu_shifts
+    """`exp(log_mu - log Z_c)` against `cnaster`'s `compute_logmu_shifts` and `_nb_logpmf_1d`, bitwise."""
 
     instance = divergent_clone_instance()
     per_clone = instance["per_clone"]
@@ -117,10 +122,7 @@ def test_on_it_applies_cnasters_own_shift(cnaster_config: None) -> None:
 
 @pytest.mark.bug
 def test_each_clone_takes_its_own_shift(cnaster_config: None) -> None:
-    """Each clone scores under its own shift, not clone zero's: fails if indexed by clone
-    rather than segment.
-    """
-    from cnaster.hmm_nophasing import compute_logmu_shifts
+    """Each clone scores under its own shift, not clone zero's: fails if indexed by clone rather than segment."""
 
     instance = divergent_clone_instance()
     per_clone = instance["per_clone"]
@@ -164,10 +166,7 @@ def test_each_clone_takes_its_own_shift(cnaster_config: None) -> None:
 
 @pytest.mark.bug
 def test_stale_clone_lengths_are_retiled_to_the_decoded_sequence() -> None:
-    """Stale `clone_lengths` from `hmrf.py:564` are retiled to the decode, or refused
-    (#293, #292).
-    """
-    from port.patch.hmm_nophasing.shifted_emission import current_clone_lengths
+    """Stale `clone_lengths` from `hmrf.py:564` are retiled to the decode, or refused (#293, #292)."""
 
     assert current_clone_lengths((300,) * 6, 900) == (300,) * 3
     assert current_clone_lengths((300,) * 3, 900) == (300,) * 3
@@ -178,10 +177,7 @@ def test_stale_clone_lengths_are_retiled_to_the_decoded_sequence() -> None:
 
 @pytest.mark.analytic
 def test_a_per_bin_lambda_is_repeated_over_the_clone_stack() -> None:
-    """A per-bin `normal_lambda` (`hmrf.py:476`) is repeated over the clone stack; other
-    lengths are refused (#293).
-    """
-    from port.patch.hmm_nophasing.shifted_emission import stacked_log_lambda
+    """A per-bin `normal_lambda` (`hmrf.py:476`) is repeated over the clone stack; other lengths are refused (#293)."""
 
     profile = np.log(np.array([0.2, 0.3, 0.5]))
 
@@ -199,7 +195,6 @@ def test_a_per_bin_lambda_is_repeated_over_the_clone_stack() -> None:
 @pytest.mark.analytic
 def test_the_neutral_state_is_the_balanced_one_with_the_lowest_mu() -> None:
     """The neutral state is balanced within 0.05 of 0.5, then lowest `mu` (#293)."""
-    from port.patch.hmm_nophasing.shifted_emission import neutral_state
 
     log_mu = np.log(np.array([2.0, 0.9, 0.5, 1.1]))
     p_binom = np.array([0.5, 0.52, 0.12, 0.47])
@@ -210,11 +205,7 @@ def test_the_neutral_state_is_the_balanced_one_with_the_lowest_mu() -> None:
 
 @pytest.mark.analytic
 def test_the_pin_leaves_every_shifted_rate_as_it_was() -> None:
-    """The pin `mu -> c mu` leaves every shifted rate unchanged to 1e-12; the pinned state
-    reads 0 in log.
-    """
-    from port.patch.hmm_nophasing.logmu_shift import shifts
-    from port.patch.hmrf.core_inference import pin_neutral
+    """The pin `mu -> c mu` leaves every shifted rate unchanged to 1e-12; the pinned state reads 0 in log."""
 
     rng = np.random.default_rng(3)
     states = rng.integers(0, 3, 40).astype(np.int64)
@@ -246,12 +237,7 @@ def test_the_pin_leaves_every_shifted_rate_as_it_was() -> None:
 def test_the_dense_emission_applies_the_recorded_shift_to_the_mean(
     offset: float,
 ) -> None:
-    """`base * exp(log_mu - shift)` against upstream on the shifted mean, to 1e-9 relative,
-    finite at offset -7,024 (#292).
-    """
-    from cnaster.hmm_nophasing import hmm_nophasing as upstream
-    from port.patch.hmm_nophasing import hmm_nophasing
-    from port.pipeline import with_attributes
+    """`base * exp(log_mu - shift)` against upstream on the shifted mean, to 1e-9 relative, finite at offset -7,024 (#292)."""
 
     shifted = with_attributes(hmm_nophasing, apply_logmu_shift=True)
     rng = np.random.default_rng(5)
@@ -307,12 +293,7 @@ def test_the_dense_emission_applies_the_recorded_shift_to_the_mean(
 
 @pytest.mark.analytic
 def test_each_candidate_clone_is_scored_under_its_own_normalizer() -> None:
-    """`_clone_shifts` against `log sum_g lambda_g mu_{s_c(g)}` written out, to 1e-12;
-    `None` when unshifted.
-    """
-    from port.patch.hmm_nophasing import hmm_nophasing
-    from port.patch.hmrf.clone_assignment import _clone_shifts
-    from port.pipeline import with_attributes
+    """`_clone_shifts` against `log sum_g lambda_g mu_{s_c(g)}` written out, to 1e-12; `None` when unshifted."""
 
     rng = np.random.default_rng(9)
     base = rng.uniform(1.0, 5.0, (30, 7))
@@ -335,10 +316,7 @@ def test_each_candidate_clone_is_scored_under_its_own_normalizer() -> None:
 
 @pytest.mark.analytic
 def test_the_pinned_state_is_the_normal_clones_dominant_one() -> None:
-    """The pinned state is the normal clone's dominant balanced state, not the lowest `mu`
-    (#299).
-    """
-    from port.patch.hmm_nophasing.shifted_emission import neutral_state
+    """The pinned state is the normal clone's dominant balanced state, not the lowest `mu` (#299)."""
 
     log_mu = np.log(np.array([2.4, 1.0, 4.0]))
     p_binom = np.array([0.50, 0.50, 0.17])

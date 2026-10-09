@@ -6,9 +6,18 @@ chromosome, containing the SNP -- is also checked against the intervals.
 
 from typing import Any
 
+import cnaster.omics
 import numpy as np
 import pandas as pd
 import pytest
+from cnaster.io import load_input_data
+from cnaster.omics import assign_initial_blocks as upstream
+from cnaster.omics import form_gene_snp_table as cnaster_form_gene_snp_table
+from port.patch.omics.blocks import assign_initial_blocks as port_assign_initial_blocks
+from port.patch.omics.blocks import form_gene_snp_table as patched
+from port.patch.omics.blocks import merged_gene_intervals, preceding_gene
+from port.pipeline import SWAPS
+from port.pipeline import patched as pipeline_patched
 from port.sim.run_config import PlantedInstance
 
 pytestmark = pytest.mark.preprocessing
@@ -20,15 +29,12 @@ def both_tables(
     gate_config: Any,
 ) -> tuple[Any, Any]:
     """Both implementations run once on the planted instance."""
-    from cnaster.io import load_input_data
-    from cnaster.omics import form_gene_snp_table as upstream
-    from port.patch.omics.blocks import form_gene_snp_table as patched
 
     _, _, written, _ = planted_instance
     loaded = load_input_data(gate_config)
     arguments = (loaded.unique_snp_ids, str(written.hgtable), loaded.adata)
 
-    return upstream(*arguments), patched(*arguments)
+    return cnaster_form_gene_snp_table(*arguments), patched(*arguments)
 
 
 @pytest.mark.patch
@@ -43,9 +49,7 @@ def test_the_table_is_cnasters_table(both_tables: tuple[Any, Any]) -> None:
 def test_every_snp_kept_got_the_gene_that_contains_it(
     both_tables: tuple[Any, Any],
 ) -> None:
-    """Each surviving SNP's gene satisfies the containment condition, recomputed from
-    the intervals.
-    """
+    """Each surviving SNP's gene satisfies the containment condition, recomputed from the intervals."""
     _, realized = both_tables
 
     snps = realized[~realized.is_interval]
@@ -74,7 +78,6 @@ def test_the_window_takes_the_nearest_preceding_gene_and_stops_at_the_edges() ->
     Row 2 (the SNP) lies in `outer` and `inner`; row 4, on chromosome 2, lies in `later`
     numerically only.
     """
-    from port.patch.omics.blocks import preceding_gene
 
     chromosome = np.array([1, 1, 1, 1, 2])
     start = np.array([100, 200, 250, 260, 250])
@@ -90,7 +93,6 @@ def test_the_window_takes_the_nearest_preceding_gene_and_stops_at_the_edges() ->
 @pytest.mark.analytic
 def test_the_window_does_not_reach_past_its_own_length() -> None:
     """A gene further back than `num_preceeding_rows` rows is not found, as in cnaster."""
-    from port.patch.omics.blocks import preceding_gene
 
     filler = 8
     chromosome = np.ones(filler + 2, dtype=int)
@@ -120,25 +122,36 @@ def staged(
     return *gate_table, planted_instance[2]
 
 
-@pytest.mark.patch
-@pytest.mark.parametrize("min_umi", MIN_UMIS)
-def test_the_blocks_are_cnasters_blocks(
-    staged: tuple[Any, Any, Any], min_umi: int
-) -> None:
-    """Every block id equals cnaster's at four thresholds, bitwise.
+def _under_the_swaps(*arguments: Any) -> Any:
+    """The swapped name, called as cnaster's pipeline calls it."""
+    with pipeline_patched(SWAPS):
+        return cnaster.omics.assign_initial_blocks(*arguments)
 
-    A fresh copy per call: cnaster writes its block columns by position (#189).
-    """
-    from cnaster.omics import assign_initial_blocks as upstream
-    from port.patch.omics.blocks import assign_initial_blocks as patched
+
+@pytest.mark.patch
+@pytest.mark.parametrize(
+    ("min_umi", "known", "assign"),
+    [
+        *((min_umi, False, port_assign_initial_blocks) for min_umi in MIN_UMIS),
+        (1, True, _under_the_swaps),
+    ],
+    ids=[*(f"min-umi-{min_umi}" for min_umi in MIN_UMIS), "known-under-the-swaps"],
+)
+def test_the_blocks_are_cnasters_blocks(
+    staged: tuple[Any, Any, Any], min_umi: int, known: bool, assign: Any
+) -> None:
+    """Every block id equals cnaster's at four thresholds, bitwise, and with `known_id` the swapped name returns what cnaster does, without recursing (#466); a fresh copy per call: cnaster writes its block columns by position (#189)."""
 
     loaded, table, _ = staged
     alleles = (loaded.cell_snp_Aallele, loaded.cell_snp_Ballele)
+    if known:
+        table = table.copy()
+        table["known_id"] = (np.arange(len(table)) >= len(table) // 2).astype(int)
 
     reference = upstream(
         table.copy(), loaded.adata, *alleles, loaded.unique_snp_ids, min_umi
     )
-    realized = patched(
+    realized = assign(
         table.copy(), loaded.adata, *alleles, loaded.unique_snp_ids, min_umi
     )
 
@@ -147,10 +160,7 @@ def test_the_blocks_are_cnasters_blocks(
 
 @pytest.mark.analytic
 def test_the_merge_sweep_restarts_at_every_chromosome() -> None:
-    """The running reach resets per chromosome, so the second chromosome yields two
-    intervals.
-    """
-    from port.patch.omics.blocks import merged_gene_intervals
+    """The running reach resets per chromosome, so the second chromosome yields two intervals."""
 
     chromosome = np.array([1, 1, 2, 2])
     start = np.array([100, 5_000, 100, 5_000])
@@ -163,40 +173,10 @@ def test_the_merge_sweep_restarts_at_every_chromosome() -> None:
 
 @pytest.mark.analytic
 def test_the_merge_sweep_joins_a_chain_of_overlaps() -> None:
-    """The run's reach is its largest end, so `(0, 100), (50, 60), (70, 200)` is one
-    interval.
-    """
-    from port.patch.omics.blocks import merged_gene_intervals
+    """The run's reach is its largest end, so `(0, 100), (50, 60), (70, 200)` is one interval."""
 
     chromosome = np.ones(4, dtype=int)
     start = np.array([0, 50, 70, 300])
     end = np.array([100, 60, 200, 400])
 
     np.testing.assert_array_equal(merged_gene_intervals(chromosome, start, end), [0, 3])
-
-
-@pytest.mark.patch
-def test_a_known_segmentation_is_cnasters_under_the_swaps(
-    staged: tuple[Any, Any, Any],
-) -> None:
-    """With `known_id`, the swapped name returns what cnaster does, without recursing
-    (#466).
-    """
-    from cnaster.omics import assign_initial_blocks as upstream
-    from port.pipeline import SWAPS, patched
-
-    loaded, table, _ = staged
-    alleles = (loaded.cell_snp_Aallele, loaded.cell_snp_Ballele)
-    known = table.copy()
-    known["known_id"] = (np.arange(len(known)) >= len(known) // 2).astype(int)
-
-    reference = upstream(known.copy(), loaded.adata, *alleles, loaded.unique_snp_ids, 1)
-
-    import cnaster.omics
-
-    with patched(SWAPS):
-        realized = cnaster.omics.assign_initial_blocks(
-            known.copy(), loaded.adata, *alleles, loaded.unique_snp_ids, 1
-        )
-
-    pd.testing.assert_frame_equal(realized, reference)

@@ -5,6 +5,10 @@ Referee: `update_combined_transmat` (`hmm_phased.py:44`), bitwise.
 
 import numpy as np
 import pytest
+import torch
+from cnaster.hmm_nophasing import get_log_transmat
+from cnaster.hmm_phased import update_combined_transmat
+from sal.opt.hmm import forward_log_likelihood_from_density
 
 SELF_TRANSITION = 1.0 - 1e-4
 """The copy-state diagonal, looser than the shipped `1 - 1e-6` so a wrong block shows."""
@@ -16,10 +20,7 @@ def sitewise_kernel(
     *,
     penalize_phase_only_on_same_cnv: bool = False,
 ) -> np.ndarray:
-    """`(T - 1, 2K, 2K)` from the `(K, K)` copy kernel and per-site `switch_prob`; step `s`
-    reads site `s`.
-    """
-    from cnaster.hmm_phased import update_combined_transmat
+    """`(T - 1, 2K, 2K)` from the `(K, K)` copy kernel and per-site `switch_prob`; step `s` reads site `s`."""
 
     n_states = log_transmat.shape[0]
     steps = switch_prob.shape[0] - 1
@@ -46,7 +47,6 @@ def sitewise_kernel(
 @pytest.mark.parametrize("n_states", [2, 5])
 def test_every_block_is_cnasters_own(n_states: int) -> None:
     """Each slice is `cnaster`'s block at that site, bitwise."""
-    from cnaster.hmm_nophasing import get_log_transmat
 
     rng = np.random.default_rng(7)
     switch_prob = rng.uniform(0.01, 0.2, 40)
@@ -55,8 +55,6 @@ def test_every_block_is_cnasters_own(n_states: int) -> None:
     kernels = sitewise_kernel(log_transmat, switch_prob)
 
     assert kernels.shape == (39, 2 * n_states, 2 * n_states)
-
-    from cnaster.hmm_phased import update_combined_transmat
 
     for step in (0, 17, 38):
         expected = np.empty((2 * n_states, 2 * n_states))
@@ -76,7 +74,6 @@ def test_every_block_is_cnasters_own(n_states: int) -> None:
 @pytest.mark.parametrize("n_states", [2, 5])
 def test_every_block_is_a_transition_kernel(n_states: int) -> None:
     """Each row exponentiates to one, at every site."""
-    from cnaster.hmm_nophasing import get_log_transmat
 
     rng = np.random.default_rng(11)
     switch_prob = rng.uniform(0.01, 0.45, 30)
@@ -90,7 +87,6 @@ def test_every_block_is_a_transition_kernel(n_states: int) -> None:
 @pytest.mark.smoke
 def test_a_constant_rate_gives_a_constant_kernel() -> None:
     """A constant switch probability gives the same block at every step."""
-    from cnaster.hmm_nophasing import get_log_transmat
 
     switch_prob = np.full(25, 0.07)
     kernels = sitewise_kernel(get_log_transmat(4, SELF_TRANSITION), switch_prob)
@@ -101,12 +97,7 @@ def test_a_constant_rate_gives_a_constant_kernel() -> None:
 
 @pytest.mark.smoke
 def test_upstream_accepts_the_kernel_and_scores_with_it() -> None:
-    """Upstream's recursion accepts the kernel, and a different genetic map changes the
-    evidence.
-    """
-    import torch
-    from cnaster.hmm_nophasing import get_log_transmat
-    from sal.opt.hmm import forward_log_likelihood_from_density
+    """Upstream's recursion accepts the kernel, and a different genetic map changes the evidence."""
 
     n_states, length = 3, 24
     rng = np.random.default_rng(5)

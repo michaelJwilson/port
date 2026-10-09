@@ -3,9 +3,12 @@
 No spatial layer or factored state space, so the correspondence is exact.
 """
 
+from typing import Any
+
 import numpy as np
 import pytest
 import torch
+from cnaster.hmm_nophasing import get_log_transmat
 
 from tests.adapters import (
     BAF_CHANNEL,
@@ -55,28 +58,22 @@ def test_emission_matches_upstream(n_states: int, separation: float) -> None:
 
 @pytest.mark.oracle
 @pytest.mark.critical
-@pytest.mark.parametrize("n_sequences", [1, 4])
-@pytest.mark.parametrize("sequence_length", [1, 60])
-def test_total_log_likelihood_matches_upstream(
-    n_sequences: int, sequence_length: int
-) -> None:
-    """Forward totals equal upstream's, to `TOLERANCE`, including at length one."""
-    fixture = negative_binomial_chains(
-        n_sequences=n_sequences, sequence_length=sequence_length
-    )
-    inputs = from_negative_binomial_chains(fixture)
-
-    assert cnaster_total_log_likelihood(inputs) == pytest.approx(
-        upstream_total_log_likelihood(fixture), abs=TOLERANCE
-    )
-
-
-@pytest.mark.oracle
-@pytest.mark.critical
-@pytest.mark.parametrize("drift", [0.2, 0.8])
-def test_total_log_likelihood_matches_upstream_asymmetric(drift: float) -> None:
-    """Totals equal upstream's under an asymmetric transition, catching a transpose."""
-    fixture = negative_binomial_chains(n_states=4, drift=drift)
+@pytest.mark.parametrize(
+    "chains",
+    [
+        *(
+            {"n_sequences": n_sequences, "sequence_length": sequence_length}
+            for sequence_length in (1, 60)
+            for n_sequences in (1, 4)
+        ),
+        {"n_states": 4, "drift": 0.2},
+        {"n_states": 4, "drift": 0.8},
+    ],
+    ids=lambda chains: "-".join(f"{k}={v}" for k, v in chains.items()),
+)
+def test_total_log_likelihood_matches_upstream(chains: dict[str, Any]) -> None:
+    """Forward totals equal upstream's, to `TOLERANCE`, including at length one and under an asymmetric transition, catching a transpose."""
+    fixture = negative_binomial_chains(**chains)
     inputs = from_negative_binomial_chains(fixture)
 
     assert cnaster_total_log_likelihood(inputs) == pytest.approx(
@@ -123,7 +120,6 @@ def test_constant_exposure_is_absorbed(exposure: float) -> None:
 @pytest.mark.parametrize("n_states", [1, 2, 5])
 def test_transition_matches_cnaster_construction(n_states: int) -> None:
     """`circulant_transition` equals `cnaster`'s `get_log_transmat`, to 1e-15."""
-    from cnaster.hmm_nophasing import get_log_transmat
 
     self_transition = 0.8
     mine = circulant_transition(n_states, self_transition)

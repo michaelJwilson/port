@@ -14,6 +14,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pytest
+from cnaster.recomb import get_sitewise_transmat
+from port.patch.recomb import get_sitewise_transmat as port_get_sitewise_transmat
 from pytest_benchmark.fixture import BenchmarkFixture
 
 from tests.builders import gene_snp_blocks
@@ -35,15 +37,11 @@ def _table(per_contig: int) -> pd.DataFrame:
 
 
 def _cnaster(*args: Any) -> Any:
-    from cnaster.recomb import get_sitewise_transmat
-
     return get_sitewise_transmat(*args)
 
 
 def _port(*args: Any) -> Any:
-    from port.patch.recomb import get_sitewise_transmat
-
-    return get_sitewise_transmat(*args)
+    return port_get_sitewise_transmat(*args)
 
 
 @pytest.mark.benchmark

@@ -8,7 +8,11 @@ from __future__ import annotations
 import re
 from typing import Any
 
+import numpy as np
 import pytest
+from port.patch.integer_copy import decode_clone
+from port.pipeline import COPY_SWAPS, SHIFT_SWAPS
+from port.scripts.run_cnaster import _parser, _refusals, _settings, _timed
 
 from tests import ROOT
 
@@ -28,8 +32,6 @@ REFUSALS = {
 
 
 def _refused(*flags: str) -> list[str]:
-    from port.scripts.run_cnaster import _parser, _refusals, _settings
-
     arguments = _parser().parse_args(["config.yaml", *flags])
     return _refusals(arguments, _settings(arguments))
 
@@ -52,8 +54,6 @@ def test_the_decode_refuses_its_arguments_before_reading_the_capture(
     keyword: str, value: Any
 ) -> None:
     """A bad prior was reported as a missing capture."""
-    import numpy as np
-    from port.patch.integer_copy import decode_clone
 
     with pytest.raises(ValueError, match=keyword):
         decode_clone(np.zeros((2, 1)), np.zeros(4), 6, **{keyword: value})
@@ -62,7 +62,6 @@ def test_the_decode_refuses_its_arguments_before_reading_the_capture(
 @pytest.mark.infra
 def test_the_readme_option_table_is_the_parser() -> None:
     """Every option in the README's table, and nothing else (T- #617)."""
-    from port.scripts.run_cnaster import _parser
 
     flags = {
         option
@@ -94,8 +93,6 @@ def test_the_readme_option_table_is_the_parser() -> None:
 @pytest.mark.infra
 def test_time_stages_times_every_selected_function_row() -> None:
     """The shift and copy rows were not timed; class rows cannot be (T- #617)."""
-    from port.pipeline import COPY_SWAPS, SHIFT_SWAPS
-    from port.scripts.run_cnaster import _timed
 
     timed = {(swap.module, swap.name) for swap in _timed(SHIFT_SWAPS + COPY_SWAPS)}
 

@@ -1,9 +1,14 @@
 """The coverage gate's configured paths are the installed `cnaster` and declared oracle modules."""
 
+import ast
+import configparser
+import importlib.util
 import pathlib
 import tomllib
 
+import cnaster
 import pytest
+import sal
 
 from tests import ROOT
 
@@ -11,7 +16,6 @@ from tests import ROOT
 @pytest.mark.infra
 def test_coverage_source_is_the_installed_cnaster() -> None:
     """The configured path is the package `import cnaster` resolves to."""
-    import cnaster
 
     configured = [
         ROOT / entry
@@ -36,7 +40,6 @@ ORACLE_CONFIG = ROOT / ".coveragerc-oracle"
 
 def _declared_oracle_modules() -> set[str]:
     """The surface as dotted module names, from the report's `include` globs."""
-    import configparser
 
     parser = configparser.ConfigParser()
     parser.read(ORACLE_CONFIG)
@@ -50,9 +53,6 @@ def _declared_oracle_modules() -> set[str]:
 @pytest.mark.infra
 def test_every_declared_oracle_module_is_the_installed_one() -> None:
     """Each declared oracle module resolves via `find_spec` in the installed package."""
-    import importlib.util
-
-    import sal
 
     installed = pathlib.Path(next(iter(sal.__path__))).resolve()
 
@@ -68,7 +68,6 @@ def test_every_declared_oracle_module_is_the_installed_one() -> None:
 @pytest.mark.infra
 def test_no_test_referees_against_an_undeclared_upstream_module() -> None:
     """Every upstream module a test imports is in the declared oracle surface."""
-    import ast
 
     declared = _declared_oracle_modules()
     offenders: dict[str, set[str]] = {}

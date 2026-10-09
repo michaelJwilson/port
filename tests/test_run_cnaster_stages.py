@@ -10,6 +10,27 @@ from typing import Any
 
 import numpy as np
 import pytest
+from cnaster.config import get_global_config
+from cnaster.hmm_initialize import gmm_init
+from cnaster.hmm_nophasing import get_log_transmat
+from cnaster.hmm_phased import hmm_phased
+from cnaster.hmrf_utils import clone_stack_obs
+from cnaster.io import (
+    construct_df_clone_label,
+    get_sample_list,
+    load_input_data,
+    read_tumor_prop,
+)
+from cnaster.normal_spot import (
+    determine_normal_baseline,
+    determine_normal_candidates,
+    filter_normal_diffexp,
+    normal_baf_bin_filter,
+)
+from cnaster.omics import binned_gene_snp
+from cnaster.phasing import initial_phase_given_partition
+from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
+from cnaster.spatial import initialize_clones
 from port.sim.inputs import (
     WrittenInputs,
     read_to_bins,
@@ -24,6 +45,7 @@ from port.sim.run_config import (
 )
 from port.sim.truth import CoreInferenceTruth, balanced_clone, core_inference_truth
 from port.sim.unsegment import unsegment
+from scipy.sparse import eye as sparse_eye
 
 from tests.adapters import cnaster_initial_phase
 from tests.fixtures import END_TO_END_LATTICE, end_to_end_truth
@@ -68,7 +90,6 @@ def written(
 @pytest.fixture(scope="module")
 def loaded(planted: CoreInferenceTruth, written: WrittenInputs) -> Iterator[Any]:
     """`load_input_data`'s return; the pipeline's full configuration stays installed for each test."""
-    from cnaster.io import load_input_data
 
     with written_config(write_run_cnaster_config(written, planted)) as config:
         yield load_input_data(config)
@@ -79,7 +100,6 @@ def test_the_sample_list_is_the_one_slice_the_fixture_wrote(
     planted: CoreInferenceTruth, loaded: Any
 ) -> None:
     """One slice in, one slice out, every spot assigned to it."""
-    from cnaster.io import get_sample_list
 
     sample_list, sample_ids = get_sample_list(loaded.adata)
 
@@ -91,7 +111,6 @@ def test_the_sample_list_is_the_one_slice_the_fixture_wrote(
 @pytest.mark.smoke
 def test_no_tumour_proportion_file_gives_no_proportion(loaded: Any) -> None:
     """`preprocessing.tumorprop_file: None` returns `None`, not zeros."""
-    from cnaster.io import read_tumor_prop
 
     assert read_tumor_prop(loaded.adata) is None
 
@@ -102,7 +121,6 @@ def test_the_rectangular_partition_recovers_the_planted_bands(
     planted: CoreInferenceTruth, loaded: Any
 ) -> None:
     """The rectangular partition reproduces the planted bands exactly (#95)."""
-    from cnaster.spatial import initialize_clones
 
     coordinates = np.asarray(loaded.coords, dtype=float)
     # NB the bands run along `x`, so the partition is `n_clones` by one; the transpose
@@ -134,7 +152,6 @@ def test_the_partition_covers_every_spot_exactly_once(
     planted: CoreInferenceTruth, loaded: Any
 ) -> None:
     """The partition covers every spot exactly once, though unbalanced."""
-    from cnaster.spatial import initialize_clones
 
     coordinates = np.asarray(loaded.coords, dtype=float)
     index = initialize_clones(
@@ -151,7 +168,6 @@ def test_the_clone_label_table_carries_every_spot_once(
     planted: CoreInferenceTruth, loaded: Any
 ) -> None:
     """`construct_df_clone_label` is the run's output table, one row per spot."""
-    from cnaster.io import construct_df_clone_label
 
     table = construct_df_clone_label(
         np.asarray(loaded.barcodes),
@@ -171,7 +187,6 @@ def test_the_clone_label_table_carries_every_spot_once(
 @pytest.fixture(scope="module")
 def flipped(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Any]:
     """An instance whose files store every third block on the other haplotype."""
-    from cnaster.io import load_input_data
 
     # NB `self_transition` loosened from 0.99 so the chain leaves its start state.
     # NB a phase-rich genome with no normal clone (#120, #298), so most blocks carry a
@@ -275,10 +290,6 @@ def test_the_phasing_recovers_the_planted_haplotype(phased: Any) -> None:
 @pytest.fixture(scope="module")
 def phase_inputs(flipped: Any) -> Any:
     """Clone-stacked arrays and initializer output as `phasing.py:75-105` builds them."""
-    from cnaster.hmm_initialize import gmm_init
-    from cnaster.hmm_nophasing import get_log_transmat
-    from cnaster.hmrf_utils import clone_stack_obs
-    from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
 
     truth, _, loaded, written = flipped
     blocks = read_to_bins(written, loaded=loaded, through="blocks").blocks
@@ -319,7 +330,6 @@ def _decode_occupancy(result: Any, n_states: int, n_clones: int) -> np.ndarray:
 
 def _fit(phase_inputs: Any, *, t: float, max_iter: int, planted: bool) -> Any:
     """`phasing.py:121`'s call, with the starting point and `t` as knobs."""
-    from cnaster.hmm_phased import hmm_phased
 
     truth, stacked, init_log_mu, init_p_binom, _ = phase_inputs
     if planted:
@@ -349,7 +359,6 @@ def _fit(phase_inputs: Any, *, t: float, max_iter: int, planted: bool) -> Any:
 @pytest.mark.warning
 def test_the_phasing_refuses_a_non_zero_exposure(flipped: Any) -> None:
     """`initial_phase_given_partition` refuses a non-zero exposure, ruling out the call site (#122)."""
-    from cnaster.phasing import initial_phase_given_partition
 
     truth, _, _, _ = flipped
 
@@ -480,12 +489,6 @@ NORMAL_BASELINE_TOLERANCE = 0.15
 @pytest.fixture(scope="module")
 def normal_stage(planted: Any, loaded: Any) -> tuple[Any, np.ndarray, np.ndarray]:
     """The normal stage run once from the planted clones and BAF profiles."""
-    from cnaster.config import get_global_config
-    from cnaster.normal_spot import (
-        determine_normal_baseline,
-        determine_normal_candidates,
-    )
-    from scipy.sparse import eye as sparse_eye
 
     truth = planted
     config = get_global_config()
@@ -557,7 +560,6 @@ SHIPPED_NORMAL_CONFIDENCE = (0.01, 0.99)
 
 def _prep_chain(loaded: Any, written: WrittenInputs) -> tuple[Any, Any, Any]:
     """The five `omics` calls `run_cnaster` makes between loading and binning."""
-    from cnaster.omics import binned_gene_snp
 
     chain = read_to_bins(written, loaded=loaded)
 
@@ -575,7 +577,6 @@ def baf_filtered(
     planted: CoreInferenceTruth, prepared: tuple[Any, Any, Any]
 ) -> tuple[Any, Any, np.ndarray]:
     """`normal_baf_bin_filter` at the shipped interval on a copy, and what it removed (#89)."""
-    from cnaster.normal_spot import normal_baf_bin_filter
 
     truth, binned, _ = planted, *prepared[1:]
     table = prepared[0]
@@ -646,8 +647,6 @@ def one_gene_per_bin(
     planted_instance: PlantedInstance, tmp_path_factory: pytest.TempPathFactory
 ) -> tuple[CoreInferenceTruth, np.ndarray, np.ndarray]:
     """`filter_normal_diffexp` on an instance with one gene per bin."""
-    from cnaster.io import get_sample_list, load_input_data
-    from cnaster.normal_spot import filter_normal_diffexp
 
     truth = planted_instance[0]
     root: Path = tmp_path_factory.mktemp("one_gene")
@@ -689,7 +688,6 @@ def test_the_expression_filter_empties_every_bin_holding_more_than_one_gene(
     prepared: tuple[Any, Any, Any],
 ) -> None:
     """`INCLUDED_GENES` joined by `,` but split on ` ` zeroes every multi-gene bin (`bug`)."""
-    from cnaster.normal_spot import filter_normal_diffexp
 
     _, binned, df_bin_info = prepared
     genes_per_bin = np.array(

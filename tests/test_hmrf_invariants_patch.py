@@ -7,6 +7,7 @@ Also checks the outer loop cannot change them, so hoisting is legal. Benchmark:
 
 import numpy as np
 import pytest
+from cnaster.hmrf import compute_loglike_spot_assignment, pool_spatio_genomic_counts
 from port.patch.hmrf.invariants import BoundaryInvariants, boundary_invariants
 from scipy.sparse import csr_matrix
 
@@ -20,9 +21,7 @@ DROPOUT_SEED = 8_101
 def _with_dropout(
     fixture: SpotCloneField, nb_rate: float, bb_rate: float
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Zero a fraction of each channel in different places, so the weight is not one
-    everywhere.
-    """
+    """Zero a fraction of each channel in different places, so the weight is not one everywhere."""
     rng = np.random.default_rng(DROPOUT_SEED)
 
     base = fixture.base_nb_mean.copy()
@@ -35,9 +34,7 @@ def _with_dropout(
 
 
 def _smooth_matrix(n_spots: int, seed: int) -> csr_matrix:
-    """A smoothing neighbourhood with uneven degree, self included, so a dropped pooling
-    loop shows.
-    """
+    """A smoothing neighbourhood with uneven degree, self included, so a dropped pooling loop shows."""
     return random_graph(
         np.random.default_rng(seed), n_spots, (1, 7), weighted=False, loops=True
     )
@@ -52,10 +49,7 @@ def _cnaster_weight(
     smooth: csr_matrix,
     single_tumor_prop: np.ndarray | None,
 ) -> np.ndarray:
-    """`rel_valid_emision_weight`, recovered from the field with one unit read-depth bin
-    and a zero allele channel.
-    """
-    from cnaster.hmrf import compute_loglike_spot_assignment
+    """`rel_valid_emision_weight`, recovered from the field with one unit read-depth bin and a zero allele channel."""
 
     shape = (fixture.n_states, fixture.n_obs, fixture.n_spots)
 
@@ -86,9 +80,7 @@ def _cnaster_weight(
 @pytest.mark.patch
 @pytest.mark.parametrize(("nb_rate", "bb_rate"), [(0.0, 0.0), (0.1, 0.4), (0.8, 0.3)])
 def test_the_counts_are_bitwise_cnasters(nb_rate: float, bb_rate: float) -> None:
-    """Counts equal `cnaster`'s in value and dtype (`int64` specializes the `@njit`
-    consumer).
-    """
+    """Counts equal `cnaster`'s in value and dtype (`int64` specializes the `@njit` consumer)."""
     fixture = spot_clone_field()
     base, total = _with_dropout(fixture, nb_rate, bb_rate)
 
@@ -104,10 +96,7 @@ def test_the_counts_are_bitwise_cnasters(nb_rate: float, bb_rate: float) -> None
 
 @pytest.mark.patch
 def test_the_counts_survive_the_iteration() -> None:
-    """Pooling and the field leave the data arrays bitwise unchanged under a redrawn
-    `pred`, so the hoist is legal.
-    """
-    from cnaster.hmrf import compute_loglike_spot_assignment, pool_spatio_genomic_counts
+    """Pooling and the field leave the data arrays bitwise unchanged under a redrawn `pred`, so the hoist is legal."""
 
     fixture = spot_clone_field()
     base, total = _with_dropout(fixture, 0.1, 0.4)
@@ -171,9 +160,7 @@ def test_the_weight_is_bitwise_the_fields(seed: int) -> None:
 
 @pytest.mark.patch
 def test_the_weight_is_bitwise_the_fields_under_a_mixed_tumor_proportion() -> None:
-    """The weight equals the field's bitwise under `is_tumor_mixed`, which skips `nan`
-    neighbours.
-    """
+    """The weight equals the field's bitwise under `is_tumor_mixed`, which skips `nan` neighbours."""
     fixture = spot_clone_field()
     base, total = _with_dropout(fixture, 0.1, 0.4)
     smooth = _smooth_matrix(fixture.n_spots, seed=29)

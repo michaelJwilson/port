@@ -8,6 +8,7 @@ normalization differs and is stated in the last test.
 
 import numpy as np
 import pytest
+from cnaster.integer_copy import find_diploid_balanced_state
 from port.sim.truth import CoreInferenceTruth, dev_instance
 
 NORMAL_STATE = 0
@@ -49,10 +50,7 @@ def test_the_planted_normal_state_is_normal_by_cnasters_definition(
 def test_the_planted_normal_state_is_the_candidate_it_selects(
     planted: CoreInferenceTruth,
 ) -> None:
-    """The planted normal state occupies 0.944 of bins, above `min_prop_threshold` (#120,
-    #298).
-    """
-    from cnaster.integer_copy import find_diploid_balanced_state
+    """The planted normal state occupies 0.944 of bins, above `min_prop_threshold` (#120, #298)."""
 
     path = planted.states.reshape(-1)
     occupancy = np.bincount(path, minlength=planted.n_states) / path.size
@@ -76,7 +74,6 @@ def test_a_mostly_diploid_genome_is_the_candidate_it_wants(
     planted: CoreInferenceTruth,
 ) -> None:
     """A half-diploid path clears the threshold and selects the planted state."""
-    from cnaster.integer_copy import find_diploid_balanced_state
 
     rng = np.random.default_rng(101)
     path = np.where(
@@ -98,9 +95,7 @@ def test_a_mostly_diploid_genome_is_the_candidate_it_wants(
 
 @pytest.mark.warning
 def test_the_planted_scale_is_cnasters_and_not_the_papers() -> None:
-    """`mu = 1` is on `cnaster`'s scale, not the paper's: clone 1's exposure-weighted rate
-    is 1.202 (#5, #298).
-    """
+    """`mu = 1` is on `cnaster`'s scale, not the paper's: clone 1's exposure-weighted rate is 1.202 (#5, #298)."""
     truth = dev_instance()
 
     weights = truth.base_nb_mean.sum(axis=1)

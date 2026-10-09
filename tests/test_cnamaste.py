@@ -6,8 +6,11 @@ import re
 from pathlib import Path
 from typing import Any
 
+import h5py
 import numpy as np
 import pytest
+import scipy.sparse as sp
+from port.extensions import cnamaste as c
 
 from tests import ROOT
 
@@ -41,8 +44,6 @@ ROOT_ATTRS = {"commit": "6a1d215", "port": "0.0", "cnaster": "0.0", "sal": "0.3.
 
 
 def _array(spec: Any, rng: np.random.Generator) -> Any:
-    import scipy.sparse as sp
-
     shape = (3,) if spec.dims == ("...",) else tuple(SIZES[a] for a in spec.dims)
     if spec.dtype == "csr":
         return sp.random(*shape, density=0.3, format="csr", random_state=1)
@@ -80,8 +81,6 @@ def _path(group: Any) -> str:
 
 
 def _equal(one: Any, two: Any) -> bool:
-    import scipy.sparse as sp
-
     if sp.issparse(one):
         return bool((one != two).nnz == 0 and one.dtype == two.dtype)
     return (
@@ -94,7 +93,6 @@ def _equal(one: Any, two: Any) -> bool:
 @pytest.mark.parametrize("truth", [False, True])
 def test_every_declared_group_reads_back_bitwise(tmp_path: Path, truth: bool) -> None:
     """Every declared group and dataset reads back equal at its declared type."""
-    from port.extensions import cnamaste as c
 
     groups, schema = (c.TRUTH_GROUPS, c.TRUTH_SCHEMA) if truth else (c.GROUPS, c.SCHEMA)
     path = tmp_path / "file.h5"
@@ -119,8 +117,6 @@ def test_every_declared_group_reads_back_bitwise(tmp_path: Path, truth: bool) ->
 @pytest.mark.infra
 def test_a_stage_never_completed_is_not_read(tmp_path: Path) -> None:
     """A run killed in `/rdrbaf`: earlier groups read, `/rdrbaf` does not, nothing later exists."""
-    import h5py
-    from port.extensions import cnamaste as c
 
     path = tmp_path / c.FILE
     c.create(path, **ROOT_ATTRS)
@@ -145,7 +141,6 @@ def test_a_stage_never_completed_is_not_read(tmp_path: Path) -> None:
 @pytest.mark.infra
 def test_levels_keep_the_order_the_run_recorded(tmp_path: Path) -> None:
     """Levels read in recording order; one rewritten keeps its place and its new labels."""
-    from port.extensions import cnamaste as c
 
     path = tmp_path / c.FILE
     c.create(path, **ROOT_ATTRS)
@@ -184,7 +179,6 @@ def test_what_the_schema_does_not_declare_is_refused(
     error: str,
 ) -> None:
     """Refuses undeclared or missing fields, wrong axes, inexact casts and truth-only groups."""
-    from port.extensions import cnamaste as c
 
     path = tmp_path / c.FILE
     c.create(path, **ROOT_ATTRS)
@@ -196,8 +190,6 @@ def test_what_the_schema_does_not_declare_is_refused(
 @pytest.mark.infra
 def test_a_global_axis_holds_across_groups(tmp_path: Path) -> None:
     """`n_spots` fixed by `/inputs` refuses an `/adjacency` of another size."""
-    import scipy.sparse as sp
-    from port.extensions import cnamaste as c
 
     path = tmp_path / c.FILE
     c.create(path, **ROOT_ATTRS)
@@ -209,7 +201,6 @@ def test_a_global_axis_holds_across_groups(tmp_path: Path) -> None:
 @pytest.mark.infra
 def test_the_document_is_the_schema() -> None:
     """`docs/cnamaste-h5.md`'s tables are `render()` of both schemas, verbatim."""
-    from port.extensions import cnamaste as c
 
     text = (ROOT / "docs" / "cnamaste-h5.md").read_text()
     tables = re.findall(r"(\| Group \|.*?)\n\n", text, flags=re.DOTALL)

@@ -7,7 +7,12 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from port.extensions.copy_likelihood import Pseudobulk, lattice_decode
+from port.extensions.copy_likelihood import (
+    Pseudobulk,
+    lattice_decode,
+    pair_rate_and_share,
+)
+from sal.opt.termination import Stop
 
 PAIRS = np.array([[1, 1], [2, 1], [3, 1], [2, 2]])
 SHIFT = 0.4
@@ -21,7 +26,6 @@ def _planted(
     seed: int, pairs: np.ndarray = PAIRS, purity: float = 1.0
 ) -> tuple[list[np.ndarray], list[Pseudobulk]]:
     """Return paths and pseudobulks of a normal clone and a tumour clone of `purity`."""
-    from port.extensions.copy_likelihood import pair_rate_and_share
 
     rng = np.random.default_rng(seed)
     runs = np.repeat(np.arange(8) % 4, N_OBS // 8)
@@ -71,7 +75,6 @@ PURITY = 0.8
 @pytest.mark.parametrize("pair", [(1, 1), (2, 1), (3, 1), (2, 2), (4, 1)])
 def test_half_purity_mimics_every_pair_with_both_alleles(pair: tuple[int, int]) -> None:
     """At `rho = 1/2`, `(2A - 1, 2B - 1)` has `(A, B)`'s rate and share, to 1e-12."""
-    from port.extensions.copy_likelihood import pair_rate_and_share
 
     pure = pair_rate_and_share(np.array([pair]), 1.0)
     mimic = pair_rate_and_share(np.array([[2 * pair[0] - 1, 2 * pair[1] - 1]]), 0.5)
@@ -119,7 +122,6 @@ def test_the_viterbi_em_recovers_a_planted_tumour_fraction(seed: int) -> None:
 @pytest.mark.parametrize("seed", [0, 1])
 def test_the_decode_reports_why_it_stopped(seed: int) -> None:
     """EM converges at a fixed point; without EM one pass stops on budget (T- #617)."""
-    from sal.opt.termination import Stop
 
     paths, bulks = _planted(seed)
     clones = [(z, b, 0.0) for z, b in zip(paths, bulks, strict=True)]

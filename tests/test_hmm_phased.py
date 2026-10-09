@@ -6,6 +6,7 @@ so scores are supplied as arrays and the defect is pinned separately.
 
 import numpy as np
 import pytest
+from cnaster.hmm_phased import hmm_phased, update_combined_transmat
 
 from tests.adapters import (
     cnaster_phased_total_log_likelihood,
@@ -29,7 +30,6 @@ def test_combined_transition_matches_cnaster_construction(
     penalize: bool, n_copy_states: int
 ) -> None:
     """The fixture's transfer matrix equals `update_combined_transmat`'s."""
-    from cnaster.hmm_phased import update_combined_transmat
 
     fixture = phased_chains(
         n_copy_states=n_copy_states, penalize_phase_only_on_same_cnv=penalize
@@ -141,7 +141,6 @@ def test_switch_outside_the_unit_interval_is_refused() -> None:
 )
 def test_phased_emission_is_reachable() -> None:
     """`cnaster`'s phased emission returns; strict xfail until `cnaster` fixes it."""
-    from cnaster.hmm_phased import hmm_phased
 
     fixture = phased_chains(n_copy_states=2)
     n_paired = fixture.n_paired_states

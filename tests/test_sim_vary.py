@@ -51,9 +51,7 @@ def test_counts_is_the_default_and_shares_one_truth() -> None:
 
 @pytest.mark.infra
 def test_truth_redraws_the_tree_and_layout_after_realization_0() -> None:
-    """`"truth"`: r0 equals `"counts"`' bitwise; r1, r2 differ in tree and labels;
-    barcodes are shared.
-    """
+    """`"truth"`: r0 equals `"counts"`' bitwise; r1, r2 differ in tree and labels; barcodes are shared."""
     counts, truth = _realized("counts"), _realized("truth")
 
     assert _same(counts[0], truth[0])

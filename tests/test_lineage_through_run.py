@@ -5,9 +5,14 @@ from __future__ import annotations
 import warnings
 from typing import Any
 
+import matplotlib as mpl
 import numpy as np
 import pandas as pd
 import pytest
+from port.extensions.segments import recording
+from port.patch import recomb
+from port.scripts.run_cnaster import main
+from port.sim.run_config import isolated_run, write_for_run
 
 from tests.fixtures import end_to_end_truth
 
@@ -15,11 +20,6 @@ from tests.fixtures import end_to_end_truth
 @pytest.fixture(scope="module")
 def run(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
     """The run, with its lineage and every kernel it computed."""
-    import matplotlib as mpl
-    from port.extensions.segments import recording
-    from port.patch import recomb
-    from port.scripts.run_cnaster import main
-    from port.sim.run_config import isolated_run, write_for_run
 
     mpl.use("Agg")
     root = tmp_path_factory.mktemp("lineage")

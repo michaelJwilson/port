@@ -7,8 +7,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import matplotlib as mpl
 import numpy as np
 import pytest
+from port.qa.audit import audit_truth
+from port.sim.truth import COPY_LATTICE, dev_instance
 
 if TYPE_CHECKING:
     from port.qa.audit import Recovery
@@ -17,7 +20,6 @@ if TYPE_CHECKING:
 @pytest.mark.analytic
 def test_the_copy_lattice_plants_integer_allele_copies() -> None:
     """Copy lattice plants `2 mu = A + B` to 1e-15 and `p = B / (A + B)` exactly (paper's map)."""
-    from port.sim.truth import COPY_LATTICE, dev_instance
 
     truth = dev_instance(n_states=len(COPY_LATTICE), copy_lattice=True)
     copies = np.asarray(COPY_LATTICE, dtype=np.float64)
@@ -33,7 +35,6 @@ def test_the_copy_lattice_plants_integer_allele_copies() -> None:
 @pytest.mark.snapshot
 def test_the_default_grid_is_unchanged() -> None:
     """`copy_lattice` is off by default, so every other fixture draws as before."""
-    from port.sim.truth import dev_instance
 
     truth = dev_instance()
 
@@ -47,17 +48,11 @@ def test_the_default_grid_is_unchanged() -> None:
 
 @pytest.mark.infra
 def test_a_state_count_beyond_the_lattice_is_refused() -> None:
-    from port.sim.truth import COPY_LATTICE, dev_instance
-
     with pytest.raises(ValueError, match="copy lattice has"):
         dev_instance(n_states=len(COPY_LATTICE) + 1, copy_lattice=True)
 
 
 def _lattice_run(*, oracle_normal: bool) -> Recovery:
-    import matplotlib as mpl
-    from port.qa.audit import audit_truth
-    from port.sim.truth import COPY_LATTICE, dev_instance
-
     mpl.use("Agg")
     truth = dev_instance(n_states=len(COPY_LATTICE), copy_lattice=True)
     recovery, _ = audit_truth(

@@ -9,7 +9,13 @@ import inspect
 from typing import Any
 
 import numpy as np
+import port.patch.hmrf.core_inference as module
 import pytest
+import scipy.special
+from cnaster.hmm_nophasing import hmm_nophasing as upstream
+from port.patch.hmm_nophasing import hmm_nophasing
+from port.patch.hmrf.clone_assignment import UPSTREAM, pipeline_clone_assignment
+from port.pipeline import with_attributes
 
 from tests.adapters import clone_assignment_arguments, clone_assignment_call
 from tests.fixtures import spot_clone_field, two_clone_stacked_instance
@@ -19,13 +25,7 @@ from tests.fixtures import spot_clone_field, two_clone_stacked_instance
 @pytest.mark.patch
 @pytest.mark.usefixtures("cnaster_config")
 def test_a_shifted_clone_is_scored_as_upstream_scores_its_rescaled_exposure() -> None:
-    """One clone's shifted field against `pipeline_clone_assignment` on `base *
-    exp(-shift)`, to 1e-9 relative.
-    """
-    import scipy.special
-    from port.patch.hmm_nophasing import hmm_nophasing
-    from port.patch.hmrf.clone_assignment import UPSTREAM, pipeline_clone_assignment
-    from port.pipeline import with_attributes
+    """One clone's shifted field against `pipeline_clone_assignment` on `base * exp(-shift)`, to 1e-9 relative."""
 
     fixture = spot_clone_field(n_states=3, n_obs=40, n_spots=16, n_clones=1)
     arguments = clone_assignment_arguments(fixture, width=4)
@@ -51,12 +51,7 @@ def test_a_shifted_clone_is_scored_as_upstream_scores_its_rescaled_exposure() ->
 @pytest.mark.patch
 @pytest.mark.usefixtures("cnaster_config")
 def test_the_fit_is_upstreams_off_and_decodes_under_its_own_shift_on() -> None:
-    """`optimize` off is `cnaster`'s bitwise (#433); on, `log_gamma` is
-    `get_state_posteriors` at the recorded shift, to 1e-9.
-    """
-    from cnaster.hmm_nophasing import hmm_nophasing as upstream
-    from port.patch.hmm_nophasing import hmm_nophasing
-    from port.pipeline import with_attributes
+    """`optimize` off is `cnaster`'s bitwise (#433); on, `log_gamma` is `get_state_posteriors` at the recorded shift, to 1e-9."""
 
     instance = two_clone_stacked_instance()
     kwargs = {
@@ -106,12 +101,7 @@ def test_the_fit_is_upstreams_off_and_decodes_under_its_own_shift_on() -> None:
 
 @pytest.mark.patch
 def test_the_pin_applies_to_a_shifted_rate_fit_only() -> None:
-    """`run_core_inference` pins only a shifted `mu` fit; unshifted or BAF-only fits are
-    upstream's.
-    """
-    import port.patch.hmrf.core_inference as module
-    from port.patch.hmm_nophasing import hmm_nophasing
-    from port.pipeline import with_attributes
+    """`run_core_inference` pins only a shifted `mu` fit; unshifted or BAF-only fits are upstream's."""
 
     def fake(*_: Any, **__: Any) -> dict[str, np.ndarray]:
         return {

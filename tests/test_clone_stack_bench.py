@@ -5,6 +5,8 @@ Equivalence is bitwise; the stress ratio is reported against the 2x bar (`releas
 
 from __future__ import annotations
 
+import time
+
 import numpy as np
 import pytest
 from cnaster.hmm_nophasing import _nb_logpmf_1d
@@ -35,7 +37,6 @@ def _arms(n_obs: int, n_clones: int) -> tuple[np.ndarray, np.ndarray, np.ndarray
 
 def _ratio(n_obs: int, n_clones: int, benchmark_rounds: int = 25) -> float:
     """Return strided time over contiguous time, best of rounds, warmed past numba compile."""
-    import time
 
     strided, contiguous, exposure = _arms(n_obs, n_clones)
     out = np.zeros(n_obs)

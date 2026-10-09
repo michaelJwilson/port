@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+from port.sandbox.patch.emission import emission_buffers
 
 from tests.builders import (
     EmissionInputs,
@@ -17,8 +18,6 @@ def _inputs(n_states: int, *, n_obs: int = 60, n_spots: int = 4) -> EmissionInpu
 
 
 def _buffered(inputs: EmissionInputs, *, phased: bool) -> tuple[np.ndarray, np.ndarray]:
-    from port.sandbox.patch.emission import emission_buffers
-
     n_obs, n_spots = inputs.shape
     buffers = emission_buffers(inputs.n_states, n_obs, n_spots, phased=phased)
     buffered_emission(inputs, buffers, phased)
@@ -62,7 +61,6 @@ def test_the_buffered_emission_is_the_phased_entry_point_bitwise(
 @pytest.mark.smoke
 def test_the_buffers_are_written_in_full_so_a_reused_one_needs_no_clearing() -> None:
     """Every buffer entry is overwritten, so a reused buffer needs no clearing."""
-    from port.sandbox.patch.emission import emission_buffers
 
     inputs = _inputs(3)
     n_obs, n_spots = inputs.shape
@@ -80,7 +78,6 @@ def test_the_buffers_are_written_in_full_so_a_reused_one_needs_no_clearing() -> 
 @pytest.mark.smoke
 def test_what_the_buffers_hold_is_what_cnaster_allocates_per_call() -> None:
     """Buffer bytes equal what `cnaster` allocates per call, by shape arithmetic (#90)."""
-    from port.sandbox.patch.emission import emission_buffers
 
     n_states, n_obs, n_spots = 7, 3_000, 2_000
 

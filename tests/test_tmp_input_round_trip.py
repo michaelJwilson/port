@@ -9,6 +9,7 @@ from typing import Any
 
 import numpy as np
 import pytest
+from cnaster.omics import summarize_counts_for_bins
 from port.sim.inputs import load_written, write_tmp_inputs
 from port.sim.truth import core_inference_truth
 from port.sim.unsegment import unsegment
@@ -75,7 +76,6 @@ def test_the_spots_come_back_in_the_order_they_were_written(tmp_path: Path) -> N
 @pytest.mark.critical
 def test_the_loaded_files_bin_back_to_the_planted_fixture(tmp_path: Path) -> None:
     """Files loaded and binned again equal the planted fixture."""
-    from cnaster.omics import summarize_counts_for_bins
 
     truth, pre_image, written = _written(tmp_path)
     loaded = load_written(written)

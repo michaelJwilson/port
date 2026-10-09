@@ -6,13 +6,23 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
+import port.studies.population_report as report
 import pytest
+from port.qa.statistics import resample_weights
+from port.sandbox.population_sets import (
+    clone_sets,
+    credible_sets,
+    known_set,
+    segment_bins,
+    set_scores,
+)
+from port.studies.population import clone_events, copy_class
 
 
 @pytest.mark.analytic
 def test_a_clone_carries_every_event_on_its_path_root_first(tmp_path: Path) -> None:
     """`truth_tree.tsv` rows compose root to leaf; each class is the pair's."""
-    from port.studies.population import clone_events, copy_class
 
     (tmp_path / "truth_tree.tsv").write_text(
         "node\tparent\tchr\tstart\tend\tA\tB\n"
@@ -38,7 +48,6 @@ def test_the_report_recovers_a_planted_crossing_within_its_interval(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Recovers a planted UMI50 = 10^5.5 within 0.15 dex, inside its 95% bootstrap interval."""
-    import port.studies.population_report as report
 
     monkeypatch.setattr(report, "BOOTSTRAP", 300)
     rng = np.random.default_rng(544)
@@ -72,9 +81,6 @@ def test_the_report_recovers_a_planted_crossing_within_its_interval(
 @pytest.mark.analytic
 def test_counted_rows_read_as_the_rows_they_stand_for() -> None:
     """`curve` on counted rows equals `curve` on those rows repeated."""
-    import pandas as pd
-    import port.studies.population_report as report
-    from port.qa.statistics import resample_weights
 
     rng = np.random.default_rng(3)
     counted = pd.DataFrame({
@@ -100,8 +106,6 @@ def test_counted_rows_read_as_the_rows_they_stand_for() -> None:
 @pytest.mark.analytic
 def test_credible_set_coverage_counts_bins_by_their_states_set() -> None:
     """Credible-set coverage of planted pairs per bin, with miss reasons, computed by hand (#705)."""
-    import pandas as pd
-    from port.sandbox.population_sets import clone_sets, credible_sets, set_scores
 
     table = pd.DataFrame(
         {"state": [0, 0, 1, 2], "A": [1, 2, 2, pd.NA], "B": [1, 1, 1, pd.NA]}
@@ -122,8 +126,6 @@ def test_credible_set_coverage_counts_bins_by_their_states_set() -> None:
 @pytest.mark.analytic
 def test_a_narrower_level_keeps_the_pairs_within_its_threshold() -> None:
     """A 3 sigma table read at 2 sigma keeps only pairs within `chi2(0.9545, dof)`."""
-    import pandas as pd
-    from port.sandbox.population_sets import clone_sets, credible_sets
 
     table = pd.DataFrame(
         {
@@ -150,8 +152,6 @@ def test_a_narrower_level_keeps_the_pairs_within_its_threshold() -> None:
 @pytest.mark.analytic
 def test_segment_sets_read_per_bin_folded_at_a_level() -> None:
     """`cnv_segment_sets.tsv` read at 2 sigma from 3 sigma, folded, by hand."""
-    import pandas as pd
-    from port.sandbox.population_sets import segment_bins
 
     table = pd.DataFrame(
         {
@@ -177,7 +177,6 @@ def test_segment_sets_read_per_bin_folded_at_a_level() -> None:
 @pytest.mark.analytic
 def test_a_known_event_s_set_folds_phase_per_bin() -> None:
     """Phase is folded per bin before summing deviance, by hand."""
-    from port.sandbox.population_sets import known_set
 
     pairs = np.array([(1, 1), (1, 2), (2, 1), (2, 2)])
     loglik = np.array([[-3.0, 0.0, -3.0, -1.0], [-3.0, -3.0, 0.0, -1.0], [9, 9, 9, 9]])

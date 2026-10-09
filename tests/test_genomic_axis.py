@@ -5,16 +5,27 @@ from __future__ import annotations
 import io
 from typing import Any
 
+import matplotlib as mpl
+import matplotlib.image as mimage
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+from matplotlib.colors import to_rgba
+from matplotlib.patches import Rectangle
+from matplotlib.ticker import NullLocator
 from port.extensions.genomic_axis import (
     ALTERED_SCALE,
     NORMAL_FLOOR,
     GenomicAxis,
     Ticks,
     altered_bins,
+    disclose,
 )
+from port.patch.plot_copy_number_profile import plot_copy_number_profile
+from port.patch.plot_genomic import plot_clones_genomic
+
+from tests.fixtures import genomic_plot_instance, integer_copies
 
 LENGTHS = np.array([248_956_422, 133_275_309, 58_617_616])
 """chr1, chr10 and chr19 of GRCh38, in base pairs."""
@@ -178,7 +189,6 @@ def test_ticks_land_on_exact_10_mb_multiples() -> None:
 @pytest.mark.infra
 def test_an_unlabelled_axis_marks_its_ticks_and_labels_none() -> None:
     """`labels=False` draws every 10 Mb mark and no label; the default labels them (#701)."""
-    import matplotlib.pyplot as plt
 
     expected = int(np.sum(LENGTHS // 10_000_000))
     texts = {}
@@ -213,8 +223,6 @@ def test_altered_bins_are_the_union_over_clones_and_tables() -> None:
 
 def _pixels(figure: Any, strip: bool = False) -> np.ndarray:
     """`figure` as `write_fig` writes it at 50 dpi; `strip` drops minor x ticks first."""
-    import matplotlib.image as mimage
-    from matplotlib.ticker import NullLocator
 
     if strip:
         for ax in figure.axes:
@@ -231,14 +239,8 @@ def test_ticks_are_all_a_default_arm_figure_gains(
     cnaster_config: None, figure: str
 ) -> None:
     """`axis=Ticks()` less its minor ticks is `axis=None` bitwise, pixel for pixel."""
-    import matplotlib as mpl
-    import matplotlib.pyplot as plt
 
     mpl.use("Agg")
-    from port.patch.plot_copy_number_profile import plot_copy_number_profile
-    from port.patch.plot_genomic import plot_clones_genomic
-
-    from tests.fixtures import genomic_plot_instance, integer_copies
 
     instance = genomic_plot_instance()
     df_cnv = integer_copies(instance["rng"], 24, 3).assign(
@@ -270,13 +272,8 @@ def test_ticks_are_all_a_default_arm_figure_gains(
 @pytest.mark.analytic
 def test_on_the_metric_a_cna_is_drawn_at_twice_its_extent() -> None:
     """A 3-bin CNA among 24 bins is drawn 6 bins wide, normal segments scaled, to 1e-12."""
-    import matplotlib as mpl
-    import matplotlib.pyplot as plt
-    from matplotlib.colors import to_rgba
-    from matplotlib.patches import Rectangle
 
     mpl.use("Agg")
-    from port.patch.plot_copy_number_profile import plot_copy_number_profile
 
     n = 24
     table = pd.DataFrame(
@@ -313,11 +310,8 @@ def test_on_the_metric_a_cna_is_drawn_at_twice_its_extent() -> None:
 @pytest.mark.infra
 def test_a_warped_figure_states_its_scale_in_its_label() -> None:
     """`disclose` labels a warped figure with its scale and leaves a linear one unlabelled (#743)."""
-    import matplotlib as mpl
-    import matplotlib.pyplot as plt
 
     mpl.use("Agg")
-    from port.extensions.genomic_axis import disclose
 
     for altered, label in (
         (None, ""),

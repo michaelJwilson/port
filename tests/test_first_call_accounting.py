@@ -1,5 +1,6 @@
 """A compiled kernel's first call is recorded apart from its warm calls (#204)."""
 
+import sys
 import time
 from typing import Any
 
@@ -39,7 +40,6 @@ def test_the_timer_attributes_the_first_call_to_the_first_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`instrumented` charges a real function's slow first call to `first`."""
-    import sys
 
     class Stub:
         """A module-like object carrying one name to rebind."""

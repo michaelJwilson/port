@@ -8,14 +8,15 @@ from __future__ import annotations
 import inspect
 import os
 
+import cnaster.hmrf
 import pytest
+from cnaster.hmm_nophasing import hmm_nophasing
+from port.qa.benchmark import patched_lines, share
 
 
 @pytest.mark.infra
 def test_a_function_row_counts_its_whole_body() -> None:
     """`pipeline_clone_assignment`, replaced whole, counts every line it has."""
-    import cnaster.hmrf
-    from port.qa.benchmark import patched_lines
 
     spans = patched_lines()
     function = cnaster.hmrf.pipeline_clone_assignment
@@ -27,11 +28,7 @@ def test_a_function_row_counts_its_whole_body() -> None:
 
 @pytest.mark.infra
 def test_a_class_row_counts_only_what_it_overrides() -> None:
-    """`hmm_nophasing`: only the overridden `optimize` counts, not inherited
-    `get_state_posteriors`.
-    """
-    from cnaster.hmm_nophasing import hmm_nophasing
-    from port.qa.benchmark import patched_lines
+    """`hmm_nophasing`: only the overridden `optimize` counts, not inherited `get_state_posteriors`."""
 
     spans = patched_lines()
     path = os.path.realpath(inspect.getsourcefile(hmm_nophasing) or "")
@@ -48,7 +45,6 @@ def test_a_class_row_counts_only_what_it_overrides() -> None:
 @pytest.mark.infra
 def test_the_share_is_executed_lines_inside_patched_spans() -> None:
     """Three executed lines in one file, two of them patched: 2 of 3."""
-    from port.qa.benchmark import share
 
     assert share({"a.py": {1, 2, 3}}, {"a.py": {2, 3, 9}}) == (2, 3)
     assert share({"a.py": {1}}, {}) == (0, 1)

@@ -11,6 +11,14 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
+from port.sim.realizations import (
+    GENOME,
+    chosen,
+    fit_one,
+    planted_genome,
+    planted_minor,
+    planted_mu,
+)
 
 if TYPE_CHECKING:
     from port.sim.realizations import Fit
@@ -23,8 +31,6 @@ pytestmark = pytest.mark.release
 
 @pytest.fixture(scope="module")
 def first(tmp_path_factory: pytest.TempPathFactory) -> First:
-    from port.sim.realizations import GENOME, chosen, fit_one, planted_genome
-
     root: Path = tmp_path_factory.mktemp("realizations")
     index = chosen(8, int(GENOME["seed"]))
 
@@ -35,9 +41,7 @@ def first(tmp_path_factory: pytest.TempPathFactory) -> First:
 def test_the_rebuilt_objective_is_at_its_optimum_where_the_pipeline_stopped(
     first: First,
 ) -> None:
-    """The Newton decrement of the `jax` objective at cnaster's fit is below 5e-2 (EM
-    stops at `tol = 1e-3`).
-    """
+    """The Newton decrement of the `jax` objective at cnaster's fit is below 5e-2 (EM stops at `tol = 1e-3`)."""
     _, fit = first
 
     assert fit.decrement is not None
@@ -46,10 +50,7 @@ def test_the_rebuilt_objective_is_at_its_optimum_where_the_pipeline_stopped(
 
 @pytest.mark.bug
 def test_the_fit_is_many_standard_errors_from_the_planted_rates(first: First) -> None:
-    """With the shift on, `p` is within 0.5 sigma and `mu` reads low; pinned as found
-    (#293).
-    """
-    from port.sim.realizations import planted_minor, planted_mu
+    """With the shift on, `p` is within 0.5 sigma and `mu` reads low; pinned as found (#293)."""
 
     truth, fit = first
     assert fit.covariance is not None

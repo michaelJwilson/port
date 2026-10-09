@@ -3,15 +3,23 @@
 Given the planted fixture's arrays. Render-only entry points have no test (#355, #103).
 """
 
+import importlib.metadata
 import json
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+from cnaster.annotation import assign_clone_ranges, load_clone_labels, load_clone_ranges
+from cnaster.config import get_global_config
+from cnaster.he import get_he_image
+from cnaster.io import load_input_data
+from cnaster.omics import form_gene_snp_table
+from cnaster.plotting import plot_he
 
 mpl.use("Agg")
 
@@ -43,7 +51,6 @@ def written(
     planted: CoreInferenceTruth, tmp_path_factory: pytest.TempPathFactory
 ) -> Iterator[tuple[Any, Any]]:
     """The written inputs and what `load_input_data` returns for them."""
-    from cnaster.io import load_input_data
 
     root: Path = tmp_path_factory.mktemp("cold")
     inputs = write_tmp_inputs(planted, unsegment(planted, flip_every=0), root)
@@ -59,9 +66,6 @@ def test_the_he_image_loads_and_renders(
     written: tuple[Any, Any], planted: CoreInferenceTruth
 ) -> None:
     """`get_he_image` reads a mocked slide, and `plot_he` draws it."""
-    import matplotlib.pyplot as plt
-    from cnaster.he import get_he_image
-    from cnaster.plotting import plot_he
 
     inputs, _ = written
     spatial = inputs.root / "spaceranger" / "spatial"
@@ -113,13 +117,6 @@ def test_the_clone_annotations_load_and_assign(
     written: tuple[Any, Any], planted: CoreInferenceTruth, tmp_path: Path
 ) -> None:
     """`annotation.py`'s loaders; `load_clone_labels` shifts labels so `normal` is 0."""
-    from cnaster.annotation import (
-        assign_clone_ranges,
-        load_clone_labels,
-        load_clone_ranges,
-    )
-    from cnaster.config import get_global_config
-    from cnaster.omics import form_gene_snp_table
 
     inputs, loaded = written
 
@@ -166,7 +163,6 @@ def test_the_clone_annotations_load_and_assign(
 @pytest.mark.bug
 def test_cnaster_needs_pyarrow_for_its_he_path_and_does_not_declare_it() -> None:
     """`he.py` calls `to_pandas()` but cnaster's metadata does not declare `pyarrow`."""
-    import importlib.metadata
 
     declared = importlib.metadata.requires("cnaster") or []
     names = {

@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+from cnaster.hmm_nophasing import hmm_nophasing
 from scipy.special import logsumexp
 
 from tests.adapters import (
@@ -27,7 +28,6 @@ def test_forward_and_backward_agree_at_every_position(
     n_states: int, n_sequences: int
 ) -> None:
     """`logsumexp(alpha + beta)` equals the forward total at every position."""
-    from cnaster.hmm_nophasing import hmm_nophasing
 
     log_emission, inputs = emission_and_inputs(
         n_states=n_states, n_sequences=n_sequences, sequence_length=40
@@ -50,7 +50,6 @@ def test_forward_and_backward_agree_at_every_position(
 @pytest.mark.parametrize("n_states", [2, 4])
 def test_state_posteriors_normalise(n_states: int) -> None:
     """The posteriors are a distribution over states at every position."""
-    from cnaster.hmm_nophasing import hmm_nophasing
 
     log_emission, inputs = emission_and_inputs(n_states=n_states, sequence_length=30)
     log_gamma = hmm_nophasing().get_state_posteriors(
@@ -63,7 +62,6 @@ def test_state_posteriors_normalise(n_states: int) -> None:
 @pytest.mark.smoke
 def test_copy_states_fold_the_phase_only_when_asked() -> None:
     """`includes_phased` folds the phase index only when set (#9)."""
-    from cnaster.hmm_nophasing import hmm_nophasing
 
     n_copy_states = 3
     log_gamma = np.full((2 * n_copy_states, 4), -np.inf)

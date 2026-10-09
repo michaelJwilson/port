@@ -22,9 +22,7 @@ pytestmark = pytest.mark.preprocessing
 
 STRESS_LATTICE = (50, 50)
 STRESS_OBS = 400
-"""2,500 spots over 400 bins: the largest instance whose fixture builds in under four
-seconds.
-"""
+"""2,500 spots over 400 bins: the largest instance whose fixture builds in under four seconds."""
 
 
 @pytest.fixture(scope="module")
@@ -54,7 +52,5 @@ def test_the_loader(
     loader: Callable[[Any], Any],
     config: str,
 ) -> None:
-    """cnaster, the patch dense, and the patch sparse, at the gate size; decides
-    nothing.
-    """
+    """cnaster, the patch dense, and the patch sparse, at the gate size; decides nothing."""
     benchmark(loader, request.getfixturevalue(config))

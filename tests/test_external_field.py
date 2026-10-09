@@ -7,6 +7,7 @@ from typing import Any
 
 import numpy as np
 import pytest
+from cnaster.hmrf import compute_loglike_spot_assignment
 
 AGREEMENT_TOLERANCE = 1.0e-12
 """Field gap allowed at a point-mass posterior: reassociation (realized 4.3e-14)."""
@@ -73,7 +74,6 @@ def _cnaster_field(
     **overrides: Any,
 ) -> np.ndarray:
     """`cnaster`'s field at the decoded state, with the channel weight off."""
-    from cnaster.hmrf import compute_loglike_spot_assignment
 
     n_obs, n_clones, _ = posterior.shape
     n_spots = rdr.shape[2]

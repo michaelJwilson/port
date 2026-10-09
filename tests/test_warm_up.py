@@ -4,6 +4,7 @@ import sys
 from typing import Any
 
 import pytest
+from port import pipeline
 from port.pipeline import Warmed, _kernels, warm
 
 
@@ -27,7 +28,6 @@ def test_a_kernel_that_cannot_be_warmed_is_reported_and_not_raised(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A kernel whose signature moved is reported, and the run still happens."""
-    from port import pipeline
 
     def broken() -> tuple[tuple[str, Any], ...]:
         return (("port.pipeline:warm", (1, 2, 3)),)

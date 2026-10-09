@@ -10,6 +10,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pytest
+from cnaster.recomb import get_sitewise_transmat
 from port.sim.inputs import WrittenInputs, read_to_bins, written_config
 from port.sim.run_config import PlantedInstance
 from port.sim.truth import CoreInferenceTruth
@@ -19,8 +20,7 @@ pytestmark = pytest.mark.preprocessing
 NU = 1.0
 LOGPHASE_SHIFT = -2.0
 MIN_PROB = 1.0e-2
-"""`zenodo_sim_config.yaml`'s `phasing.nu`, `logphase_shift` and `min_prob`, restated.
-"""
+"""`zenodo_sim_config.yaml`'s `phasing.nu`, `logphase_shift` and `min_prob`, restated."""
 
 SATURATED = np.log(0.5)
 """A switch probability of one half in log space: `get_sitewise_transmat`'s clip."""
@@ -31,7 +31,6 @@ def binned_genome(
     planted_instance: PlantedInstance,
 ) -> Iterator[tuple[WrittenInputs, Any, np.ndarray]]:
     """The prep chain, then `get_sitewise_transmat` over the bins it derived."""
-    from cnaster.recomb import get_sitewise_transmat
 
     _, _, written, config_path = planted_instance
 
@@ -51,9 +50,7 @@ def binned_genome(
 
 
 def _closed_form(written: WrittenInputs, table: Any) -> np.ndarray:
-    """Haldane on the interpolated cM positions, floored, shifted and clipped, without
-    cnaster.
-    """
+    """Haldane on the interpolated cM positions, floored, shifted and clipped, without cnaster."""
     genetic_map = pd.read_csv(written.genetic_map, sep="\t")
 
     grouped = table.dropna(subset=["bin_id"]).groupby("bin_id")

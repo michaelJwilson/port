@@ -4,14 +4,17 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import matplotlib as mpl
 import numpy as np
 import pytest
+from port.qa.realization_plot import contour, plot_realizations
+from port.sim.realizations import match_states, realize
+from port.sim.truth import core_inference_truth
 
 
 @pytest.mark.analytic
 def test_every_contour_point_is_at_its_mahalanobis_radius() -> None:
     """Every contour point is at its Mahalanobis radius within 1e-12 relative."""
-    from port.qa.realization_plot import contour
 
     mean = np.array([1.2, 0.3])
     covariance = np.array([[4e-4, -1.5e-5], [-1.5e-5, 2e-6]])
@@ -27,8 +30,6 @@ def test_every_contour_point_is_at_its_mahalanobis_radius() -> None:
 @pytest.mark.analytic
 def test_a_realization_redraws_the_counts_and_nothing_else() -> None:
     """Realizations redraw only counts, at planted NB means (mean |z| < 1, max < 4.5)."""
-    from port.sim.realizations import realize
-    from port.sim.truth import core_inference_truth
 
     truth = core_inference_truth(
         n_clones=2, n_states=3, lattice=(4, 5), n_obs=30, n_segments=2, seed=3
@@ -54,8 +55,6 @@ def test_a_realization_redraws_the_counts_and_nothing_else() -> None:
 @pytest.mark.analytic
 def test_states_are_matched_by_responsibility_not_by_index() -> None:
     """Relabelled, softened responsibilities are matched back to the planted states."""
-    from port.sim.realizations import match_states
-    from port.sim.truth import core_inference_truth
 
     truth = core_inference_truth(
         n_clones=2, n_states=3, lattice=(4, 5), n_obs=30, n_segments=2, seed=3
@@ -77,11 +76,8 @@ def test_states_are_matched_by_responsibility_not_by_index() -> None:
 @pytest.mark.smoke
 def test_the_figure_has_one_panel_per_state_and_every_series() -> None:
     """Three panels, each with both contours, the errorbar, the others and the truth (`smoke`)."""
-    import matplotlib as mpl
 
     mpl.use("Agg")
-
-    from port.qa.realization_plot import plot_realizations
 
     covariance = np.tile(np.array([[1e-4, 0.0], [0.0, 1e-6]]), (3, 1, 1))
     figure = plot_realizations(
@@ -103,11 +99,8 @@ def test_the_figure_has_one_panel_per_state_and_every_series() -> None:
 @pytest.mark.smoke
 def test_the_truth_can_carry_the_errors_instead() -> None:
     """With `planted_covariance` contours sit on the truth; pinned states have none (`smoke`)."""
-    import matplotlib as mpl
 
     mpl.use("Agg")
-
-    from port.qa.realization_plot import plot_realizations
 
     covariance = np.tile(np.array([[1e-4, 0.0], [0.0, 1e-6]]), (3, 1, 1))
     covariance[0, 0, 0] = 0.0

@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from tests import ROOT
+from tests.conftest import TEST_SEED
 
 SWEEP = """
 import json, numpy as np, scipy.sparse as sp
@@ -58,7 +59,6 @@ def test_the_sweep_is_the_same_at_any_thread_count_and_history() -> None:
 @pytest.mark.analytic
 def test_every_test_starts_from_the_same_numpy_stream() -> None:
     """The autouse fixture has seeded NumPy's global generator to `TEST_SEED`."""
-    from tests.conftest import TEST_SEED
 
     expected = np.random.RandomState(TEST_SEED).random(3)
 

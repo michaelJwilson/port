@@ -4,6 +4,8 @@
 
 import numpy as np
 import pytest
+from cnaster.adjacency import multislice_adjacency
+from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
 
 
 @pytest.mark.oracle
@@ -11,7 +13,6 @@ import pytest
 @pytest.mark.parametrize("n_clones", [1, 3])
 def test_pseudobulk_sums_the_spots_of_each_clone(n_clones: int) -> None:
     """A clone's column is the sum over the spots assigned to it."""
-    from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
 
     rng = np.random.default_rng(6)
     n_obs, n_spots = 9, 12
@@ -36,7 +37,6 @@ def test_pseudobulk_sums_the_spots_of_each_clone(n_clones: int) -> None:
 @pytest.mark.analytic
 def test_pseudobulk_conserves_the_total_over_a_partition() -> None:
     """Summing the clones returns the sum over every spot."""
-    from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
 
     rng = np.random.default_rng(8)
     n_obs, n_spots, n_clones = 6, 15, 4
@@ -63,7 +63,6 @@ def square_grid(side: int, offset: float = 0.0) -> np.ndarray:
 @pytest.mark.analytic
 def test_adjacency_is_symmetric_and_has_no_self_edges() -> None:
     """Neighbourhood is symmetric with no self-edges."""
-    from cnaster.adjacency import multislice_adjacency
 
     coords = square_grid(5)
     adjacency, _ = multislice_adjacency(
@@ -77,7 +76,6 @@ def test_adjacency_is_symmetric_and_has_no_self_edges() -> None:
 @pytest.mark.smoke
 def test_adjacency_does_not_join_slices_by_default() -> None:
     """Two distant slices share no edge unless one is supplied."""
-    from cnaster.adjacency import multislice_adjacency
 
     first = square_grid(4)
     coords = np.vstack([first, square_grid(4, offset=100.0)])
@@ -91,7 +89,6 @@ def test_adjacency_does_not_join_slices_by_default() -> None:
 @pytest.mark.smoke
 def test_lattice_type_sets_the_coordination_number() -> None:
     """`square` gives four neighbours and `triangular` six."""
-    from cnaster.adjacency import multislice_adjacency
 
     coords = square_grid(6)
     sample_ids = np.zeros(len(coords), dtype=int)

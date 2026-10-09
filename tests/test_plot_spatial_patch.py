@@ -8,9 +8,13 @@ from __future__ import annotations
 
 from typing import Any
 
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+from cnaster.plotting import plot_clones_spatial as upstream
+from port.patch.plotting.spatial import TILE, pitch, plot_clones_spatial
 
 
 def _instance() -> tuple[np.ndarray, Any, np.ndarray]:
@@ -49,12 +53,8 @@ def test_every_spot_has_upstreams_colour_at_upstreams_point(
     with_proportion: bool,
 ) -> None:
     """Colour and opacity bitwise, centre exact, on 108 spots and 3 clones."""
-    import matplotlib as mpl
 
     mpl.use("Agg")
-
-    from cnaster.plotting import plot_clones_spatial as upstream
-    from port.patch.plotting.spatial import TILE, pitch, plot_clones_spatial
 
     coords, assignment, proportion = _instance()
     tumour = proportion if with_proportion else None
@@ -81,12 +81,8 @@ def test_every_spot_has_upstreams_colour_at_upstreams_point(
 @pytest.mark.patch
 def test_two_samples_are_offset_and_titled_as_upstream_does() -> None:
     """Sample 1 is offset by sample 0's width plus 10, colours bitwise upstream's."""
-    import matplotlib as mpl
 
     mpl.use("Agg")
-
-    from cnaster.plotting import plot_clones_spatial as upstream
-    from port.patch.plotting.spatial import plot_clones_spatial
 
     coords, assignment, _ = _instance()
     samples = (np.arange(coords.shape[0]) % 2).astype(int)
@@ -115,15 +111,9 @@ def test_two_samples_are_offset_and_titled_as_upstream_does() -> None:
 def test_each_sample_panel_is_upstreams_spots_of_that_sample(
     with_proportion: bool,
 ) -> None:
-    """`sample_layout` per panel: each sample's spots, colours bitwise upstream's, own
-    coordinates (#328).
-    """
-    import matplotlib as mpl
+    """`sample_layout` per panel: each sample's spots, colours bitwise upstream's, own coordinates (#328)."""
 
     mpl.use("Agg")
-    import matplotlib.pyplot as plt
-    from cnaster.plotting import plot_clones_spatial as upstream
-    from port.patch.plotting.spatial import plot_clones_spatial
 
     coords, assignment, proportion = _instance()
     tumour = proportion if with_proportion else None

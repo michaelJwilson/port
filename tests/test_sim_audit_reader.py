@@ -7,14 +7,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+from port.qa.audit import read_run
+from port.sim.fixtures import SimulatedSample
 
 BARCODES = np.array(["s0", "s1", "s2", "s3"])
 LABELS = np.array([0, 1, 1, 2])
 
 
 def _sample() -> object:
-    from port.sim.fixtures import SimulatedSample
-
     return SimulatedSample(
         name="toy",
         path=Path(),
@@ -57,7 +57,6 @@ def test_both_label_layouts_read_alike_and_a_skipped_clone_reads_as_minus_one(
     tmp_path: Path,
 ) -> None:
     """The `BARCODES` index reads as `barcode`; a skipped clone's pairs read as -1."""
-    from port.qa.audit import read_run
 
     _write(tmp_path / "cnaster" / "run", calicost=False)
     _write(tmp_path / "calicost" / "run", calicost=True)

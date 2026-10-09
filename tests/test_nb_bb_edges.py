@@ -8,12 +8,33 @@ sums of logs).
 
 from __future__ import annotations
 
+import importlib
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import cnaster.hmm_nophasing
+import cnaster.hmm_phased as phased
+import cnaster.hmrf
+import cnaster.scripts.run_cnaster as pipeline
 import numpy as np
+import port.patch.hmm_nophasing.shifted_emission
+import port.patch.hmm_phased.coded_emission  # noqa: F401  -- a site once imported
 import pytest
+from port.extensions.copy_likelihood import Pseudobulk, pseudobulk_log_pmf
+from port.patch.hmm_nophasing.dense_emission import nb_states
+from port.patch.hmm_nophasing.gradient import nb_partials as closed_form
+from port.patch.hmm_nophasing.nb_logpmf import _nb_logpmf_1d
+from port.patch.hmrf.field import compute_loglike_spot_assignment_strided
+from port.patch.hmrf.fused_field import fused_spot_clone_field
+from port.patch.hmrf.tabulated_field import tabulated_spot_clone_field
+from port.pipeline import LOG_SPACE_SWAPS, patched, swap_sites
+from port.qa.jax_hmm import emission
+from port.sandbox.admixture.clone_mixture import _nb
+from port.sandbox.admixture.variants import _nb as variants_nb
+from port.sandbox.integer_decoding.schemes import _emission
+from port.sandbox.np_merge import _emissions
+from port.scripts.run_cnaster import main
 from scipy.special import logsumexp
 
 from tests.exact_densities import nb_logpmf, nb_partials
@@ -35,7 +56,6 @@ def _exact(counts: np.ndarray, mean: float, alpha: float) -> np.ndarray:
 
 def _copy_likelihood(counts: np.ndarray, mean: float, alpha: float) -> np.ndarray:
     """The decode's emission with no trials, so the allele channel adds 0."""
-    from port.extensions.copy_likelihood import Pseudobulk, pseudobulk_log_pmf
 
     zeros = np.zeros_like(counts)
     bulk = Pseudobulk(
@@ -53,7 +73,6 @@ def _copy_likelihood(counts: np.ndarray, mean: float, alpha: float) -> np.ndarra
 
 def _jax(counts: np.ndarray, mean: float, alpha: float) -> np.ndarray:
     """`jax_hmm.emission` with no trials, so the beta-binomial adds 0 to within 1e-15."""
-    from port.qa.jax_hmm import emission
 
     zeros = np.zeros_like(counts)
     scores = emission(
@@ -71,7 +90,6 @@ def _jax(counts: np.ndarray, mean: float, alpha: float) -> np.ndarray:
 
 def _row(counts: np.ndarray, mean: float, alpha: float) -> np.ndarray:
     """What `LOG_SPACE_SWAPS` installs over `cnaster.hmm_nophasing._nb_logpmf_1d`."""
-    from port.patch.hmm_nophasing.nb_logpmf import _nb_logpmf_1d
 
     out = np.full(counts.size, np.nan)
     _nb_logpmf_1d(counts, np.ones(counts.size), mean, alpha, out)
@@ -80,7 +98,6 @@ def _row(counts: np.ndarray, mean: float, alpha: float) -> np.ndarray:
 
 def _sal(counts: np.ndarray, mean: float, alpha: float) -> np.ndarray:
     """`dense_emission.nb_states`, sal's Rust kernel, the HMM's under `--sal`."""
-    from port.patch.hmm_nophasing.dense_emission import nb_states
 
     return np.asarray(
         nb_states(counts, np.ones(counts.size), np.array([mean]), np.array([alpha]))[0]
@@ -97,9 +114,7 @@ KERNELS: dict[str, Scorer] = {
 NORMAL = [
     (mean, alpha) for mean in (0.5, 30.0, 1000.0) for alpha in (1e-3, 0.07, 0.5, 3.0)
 ] + [(1e-10, 0.01)]
-"""Realistic means and dispersions, and `a = 1e-12`, where forming `p` lost 0.089 nats at
-count 1000.
-"""
+"""Realistic means and dispersions, and `a = 1e-12`, where forming `p` lost 0.089 nats at count 1000."""
 
 
 @pytest.mark.oracle
@@ -114,21 +129,6 @@ def test_each_live_kernel_is_the_negative_binomial(
         _exact(COUNTS, mean, alpha),
         rtol=1e-9,
         atol=1e-12,
-    )
-
-
-@pytest.mark.oracle
-@pytest.mark.parametrize("name", KERNELS)
-def test_a_vanishing_mean_scores_a_large_count_as_impossible(name: str) -> None:
-    """At `alpha * mean = 1e-19` a count of 1000 is -43,420 nats and 0 is finite, to 1e-9
-    relative.
-    """
-    counts = np.array([0.0, 1000.0])
-    scores = KERNELS[name](counts, VANISHING, 0.01)
-
-    assert scores[1] < -30_000.0
-    np.testing.assert_allclose(
-        scores, _exact(counts, VANISHING, 0.01), rtol=1e-9, atol=1e-12
     )
 
 
@@ -148,7 +148,6 @@ def test_the_closed_form_gradient_is_the_exact_derivative(
     mean: float, alpha: float
 ) -> None:
     """`nb_partials` against 50-digit central differences, to 1e-9 relative and absolute."""
-    from port.patch.hmm_nophasing.gradient import nb_partials as closed_form
 
     d_eta, d_alpha = closed_form(
         COUNTS, np.ones(COUNTS.shape), np.log([mean]), np.array([alpha])
@@ -185,11 +184,7 @@ def _degenerate_field(kernel: Any, *, log_space: bool) -> float:
 @pytest.mark.oracle
 @pytest.mark.parametrize("name", ["fused", "tabulated"])
 def test_the_field_scores_the_degenerate_state_exactly_in_log_space(name: str) -> None:
-    """At `log mu = -43.22`, exposure 1000, count 1000 scores -38,403.9 nats in log space,
-    to 1e-9 relative.
-    """
-    from port.patch.hmrf.fused_field import fused_spot_clone_field
-    from port.patch.hmrf.tabulated_field import tabulated_spot_clone_field
+    """At `log mu = -43.22`, exposure 1000, count 1000 scores -38,403.9 nats in log space, to 1e-9 relative."""
 
     kernel = {"fused": fused_spot_clone_field, "tabulated": tabulated_spot_clone_field}
     log_mu, alpha, exposure, count = DEGENERATE
@@ -202,11 +197,7 @@ def test_the_field_scores_the_degenerate_state_exactly_in_log_space(name: str) -
 
 
 def _two_step_under_the_table(fixture: SpotCloneField) -> np.ndarray:
-    """`cnaster`'s producer under `LOG_SPACE_SWAPS`, then the field: what the fused kernel
-    replaces.
-    """
-    from port.patch.hmrf.field import compute_loglike_spot_assignment_strided
-    from port.pipeline import LOG_SPACE_SWAPS
+    """`cnaster`'s producer under `LOG_SPACE_SWAPS`, then the field: what the fused kernel replaces."""
 
     ones = np.ones(fixture.n_spots)
     kernel = compute_loglike_spot_assignment_strided
@@ -218,11 +209,7 @@ def _two_step_under_the_table(fixture: SpotCloneField) -> np.ndarray:
 def test_the_log_space_field_is_bitwise_the_two_step_under_the_table(
     n_states: int, n_clones: int
 ) -> None:
-    """Fused and tabulated `log_space=True` field against `cnaster`'s two steps under the
-    rows: identical.
-    """
-    from port.patch.hmrf.fused_field import fused_spot_clone_field
-    from port.patch.hmrf.tabulated_field import tabulated_spot_clone_field
+    """Fused and tabulated `log_space=True` field against `cnaster`'s two steps under the rows: identical."""
 
     fixture = spot_clone_field(n_states=n_states, n_clones=n_clones)
     fixture.taus[0] = 1e13
@@ -256,14 +243,8 @@ def test_the_log_space_field_is_bitwise_the_two_step_under_the_table(
 
 @pytest.mark.infra
 def test_the_rows_reach_every_binding_called_from_python_and_restore_it() -> None:
-    """The rows reach `cnaster`'s two modules and port's two Python callers, and are
-    restored.
-    """
-    # NB a site is a module once imported; a run imports both.
-    import port.patch.hmm_nophasing.shifted_emission
-    import port.patch.hmm_phased.coded_emission  # noqa: F401
-    from port.pipeline import LOG_SPACE_SWAPS, patched, swap_sites
-
+    """The rows reach `cnaster`'s two modules and port's two Python callers, and are restored."""
+    # NB a site is a module once imported; a run imports both, as this module does.
     reached = {site.module for site in swap_sites(LOG_SPACE_SWAPS)}
 
     assert {
@@ -274,7 +255,6 @@ def test_the_rows_reach_every_binding_called_from_python_and_restore_it() -> Non
     } <= reached
     assert "port.patch.hmrf.fused_field" not in reached
 
-    import cnaster.hmm_phased as phased
     from port.patch.hmm_nophasing import bb_logpmf, nb_logpmf
 
     before = (phased._nb_logpmf_1d, phased._bb_logpmf_1d)
@@ -297,11 +277,7 @@ def test_run_cnaster_installs_the_rows_and_the_field_option_with_the_shift(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Both kernels rebound and `log_space` bound into the clone assignment, or neither."""
-    import cnaster.hmm_nophasing
-    import cnaster.hmrf
-    import cnaster.scripts.run_cnaster as pipeline
     from port.patch.hmm_nophasing import bb_logpmf, nb_logpmf
-    from port.scripts.run_cnaster import main
 
     config = tmp_path / "config.yaml"
     config.write_text("{}\n")
@@ -329,13 +305,12 @@ def test_run_cnaster_installs_the_rows_and_the_field_option_with_the_shift(
 
 @pytest.mark.bug
 def test_cnasters_kernel_scores_every_count_zero_below_the_dispersion_floor() -> None:
-    """At `alpha = 1e-17`, `mu = 10`, `cnaster` scores counts 0 and 1000 as 0; exact: -10.0
-    and -3,619.5.
-    """
-    from cnaster.hmm_nophasing import _nb_logpmf_1d
+    """At `alpha = 1e-17`, `mu = 10`, `cnaster` scores counts 0 and 1000 as 0; exact: -10.0 and -3,619.5."""
 
     out = np.full(2, np.nan)
-    _nb_logpmf_1d(np.array([0.0, 1000.0]), np.ones(2), 10.0, 1e-17, out)
+    cnaster.hmm_nophasing._nb_logpmf_1d(
+        np.array([0.0, 1000.0]), np.ones(2), 10.0, 1e-17, out
+    )
 
     np.testing.assert_array_equal(out, [0.0, 0.0])
 
@@ -346,7 +321,6 @@ def test_cnasters_kernel_scores_every_count_zero_below_the_dispersion_floor() ->
 
 def _bulk(counts: np.ndarray, alpha: float):  # type: ignore[no-untyped-def]
     """A pseudobulk whose allele channel scores exactly 0: no trials, `tau = inf`."""
-    from port.extensions.copy_likelihood import Pseudobulk
 
     zeros = np.zeros_like(counts)
     return Pseudobulk(
@@ -361,8 +335,6 @@ def _bulk(counts: np.ndarray, alpha: float):  # type: ignore[no-untyped-def]
 
 
 def _schemes(counts: np.ndarray, mean: float, alpha: float) -> np.ndarray:
-    from port.sandbox.integer_decoding.schemes import _emission
-
     bins = np.arange(counts.size)
     return np.asarray(
         _emission(np.log(mean), np.array(0.5), _bulk(counts, alpha), bins)
@@ -370,15 +342,11 @@ def _schemes(counts: np.ndarray, mean: float, alpha: float) -> np.ndarray:
 
 
 def _clone_mixture(counts: np.ndarray, mean: float, alpha: float) -> np.ndarray:
-    from port.sandbox.admixture.clone_mixture import _nb
-
     return _nb(counts, np.full(counts.shape, mean), alpha)
 
 
 def _variants(counts: np.ndarray, mean: float, alpha: float) -> np.ndarray:
-    from port.sandbox.admixture.variants import _nb
-
-    return _nb(counts, np.full(counts.shape, mean), alpha)
+    return variants_nb(counts, np.full(counts.shape, mean), alpha)
 
 
 SANDBOX_KERNELS: dict[str, Scorer] = {
@@ -404,13 +372,15 @@ def test_each_sandbox_kernel_is_the_negative_binomial(
 
 
 @pytest.mark.oracle
-@pytest.mark.parametrize("name", SANDBOX_KERNELS)
-def test_a_sandbox_kernel_scores_a_vanishing_mean_as_impossible(name: str) -> None:
-    """At `alpha * mean = 1e-19` a count of 1000 is -43,420 nats and 0 is finite, to 1e-9
-    relative.
-    """
+@pytest.mark.parametrize(
+    "scorer",
+    [*KERNELS.values(), *SANDBOX_KERNELS.values()],
+    ids=[*KERNELS, *(f"sandbox-{name}" for name in SANDBOX_KERNELS)],
+)
+def test_a_vanishing_mean_scores_a_large_count_as_impossible(scorer: Scorer) -> None:
+    """At `alpha * mean = 1e-19` a count of 1000 is -43,420 nats and 0 is finite, to 1e-9 relative, live or sandbox."""
     counts = np.array([0.0, 1000.0])
-    scores = SANDBOX_KERNELS[name](counts, VANISHING, 0.01)
+    scores = scorer(counts, VANISHING, 0.01)
 
     assert scores[1] < -30_000.0
     np.testing.assert_allclose(
@@ -432,7 +402,6 @@ def test_each_sandbox_kernel_sums_to_one_at_a_small_mean(
 
 def _bound_kernel(module: str) -> float:
     """The `_nb_logpmf_1d` `module` compiles in by name, on one degenerate bin."""
-    import importlib
 
     log_mu, alpha, exposure, count = DEGENERATE
     out = np.full(1, np.nan)
@@ -443,8 +412,6 @@ def _bound_kernel(module: str) -> float:
 
 
 def _np_merge() -> float:
-    from port.sandbox.np_merge import _emissions
-
     log_mu, alpha, exposure, count = DEGENERATE
     X = np.zeros((1, 2, 1))
     X[0, 0, 0] = count
@@ -474,9 +441,7 @@ SANDBOX_SITES: dict[str, Callable[[], float]] = {
 def test_every_sandbox_site_scores_the_degenerate_state_in_log_space(
     site: str,
 ) -> None:
-    """At `log mu = -43.22`, exposure 1000, each sandbox site scores count 1000 as
-    -38,403.9 nats, to 1e-9 (#560).
-    """
+    """At `log mu = -43.22`, exposure 1000, each sandbox site scores count 1000 as -38,403.9 nats, to 1e-9 (#560)."""
     log_mu, alpha, exposure, count = DEGENERATE
     score = SANDBOX_SITES[site]()
 

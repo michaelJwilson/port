@@ -33,9 +33,7 @@ def _write(root: Path, *, plain: bool, packed: bool) -> Path:
 
 @pytest.mark.snapshot
 def test_plain_gzipped_and_both_read_one_hash(tmp_path: Path) -> None:
-    """Plain, `.gz` and both layouts hash alike, to SHA-256 over stripped names and plain
-    bytes computed here.
-    """
+    """Plain, `.gz` and both layouts hash alike, to SHA-256 over stripped names and plain bytes computed here."""
     layouts = {
         "plain": (True, False),
         "packed": (False, True),

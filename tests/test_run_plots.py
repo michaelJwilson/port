@@ -9,6 +9,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+from port.extensions import cnamaste as c
+from port.qa import stage
+from port.qa.audit import drawn_config
+from port.scripts.run_cnaster import main as run_cnaster_main
+from port.scripts.run_plots import main
 
 from tests import ROOT
 
@@ -18,9 +23,6 @@ MANIFEST = Path("sim/manifests/dev_tree_1s_hard.toml")
 @pytest.fixture(scope="module")
 def output(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
     """Run `run_cnaster_port --sal` on dev_tree_1s_hard r0 (`9ec90dc2`) at `SOURCE_DATE_EPOCH=0`."""
-    from port.qa import stage
-    from port.qa.audit import drawn_config
-    from port.scripts.run_cnaster import main
 
     root = tmp_path_factory.mktemp("run_plots")
     here, epoch = Path.cwd(), os.environ.get("SOURCE_DATE_EPOCH")
@@ -29,7 +31,7 @@ def output(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
     try:
         member = next(stage.members(MANIFEST, root / "sim", n=1))
         assert member.hash == "9ec90dc2"
-        main(["--sal", str(drawn_config(member.sample, root / "run", {}))])
+        run_cnaster_main(["--sal", str(drawn_config(member.sample, root / "run", {}))])
         yield root / "run" / "output"
     finally:
         os.chdir(here)
@@ -45,7 +47,6 @@ def test_run_plots_draws_every_page_the_run_wrote_byte_for_byte(
     output: Path, tmp_path: Path
 ) -> None:
     """`run_plots` redraws all 19 PDFs of the run from the file alone, byte for byte."""
-    from port.scripts.run_plots import main
 
     assert main([str(output / "cnamaste.h5"), "--out", str(tmp_path)]) == 0
 
@@ -62,7 +63,6 @@ def test_run_plots_draws_every_page_the_run_wrote_byte_for_byte(
 @pytest.mark.smoke
 def test_the_stages_are_what_the_run_wrote(output: Path) -> None:
     """Each stage group equals the file the run wrote for it, in run order."""
-    from port.extensions import cnamaste as c
 
     h5 = output / c.FILE
     run = next(output.glob("clone*"))

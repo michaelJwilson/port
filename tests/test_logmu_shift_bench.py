@@ -6,7 +6,13 @@ Also counts that the shift is computed once per call, not once per state.
 from __future__ import annotations
 
 import numpy as np
+import port.patch.hmm_nophasing.shifted_emission as emission
 import pytest
+from cnaster.count_encoder import CountEncoder
+from cnaster.hmm_nophasing import compute_logmu_shifts
+from port.patch.hmm_nophasing import hmm_nophasing
+from port.patch.hmm_nophasing.logmu_shift import shifts
+from port.pipeline import with_attributes
 from pytest_benchmark.fixture import BenchmarkFixture
 
 from tests.fixtures import tiers
@@ -37,8 +43,6 @@ def _case(
 @pytest.mark.parametrize("arm", ["cnaster", "patch"])
 def test_the_shift(benchmark: BenchmarkFixture, arm: str, size: dict[str, int]) -> None:
     """Both arms, warmed, at the gate size and at a genome's."""
-    from cnaster.hmm_nophasing import compute_logmu_shifts
-    from port.patch.hmm_nophasing.logmu_shift import shifts
 
     arguments = _case(**size)
     function = compute_logmu_shifts if arm == "cnaster" else shifts
@@ -52,10 +56,6 @@ def test_the_shift(benchmark: BenchmarkFixture, arm: str, size: dict[str, int]) 
 @pytest.mark.patch
 def test_the_shift_is_computed_once_per_call(cnaster_config: None) -> None:
     """The shift is computed once per call, not once per state (counted)."""
-    import port.patch.hmm_nophasing.shifted_emission as emission
-    from cnaster.count_encoder import CountEncoder
-    from port.patch.hmm_nophasing import hmm_nophasing
-    from port.pipeline import with_attributes
 
     n_states, n_clones, per_clone = 7, 3, 8
     n_segments = n_clones * per_clone

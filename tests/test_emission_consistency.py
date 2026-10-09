@@ -5,6 +5,8 @@ Neither is designated the referee; a disagreement is a defect either way.
 
 import numpy as np
 import pytest
+from cnaster.count_encoder import CountEncoder
+from cnaster.hmm_nophasing import hmm_nophasing
 
 from tests.adapters import cnaster_emission, from_negative_binomial_chains
 from tests.fixtures import negative_binomial_chains
@@ -16,8 +18,6 @@ from tests.fixtures import negative_binomial_chains
 @pytest.mark.parametrize("separation", [1.2, 2.5])
 def test_deduplicated_emission_matches_dense(n_states: int, separation: float) -> None:
     """The `CountEncoder` path scores as the dense kernels do, bitwise."""
-    from cnaster.count_encoder import CountEncoder
-    from cnaster.hmm_nophasing import hmm_nophasing
 
     fixture = negative_binomial_chains(n_states=n_states, separation=separation)
     inputs = from_negative_binomial_chains(fixture)
@@ -48,7 +48,6 @@ def test_deduplicated_emission_matches_dense(n_states: int, separation: float) -
 @pytest.mark.usefixtures("cnaster_config")
 def test_encoder_round_trip_is_the_identity() -> None:
     """Decoding what was encoded returns the original, position by position."""
-    from cnaster.count_encoder import CountEncoder
 
     fixture = negative_binomial_chains(n_states=3)
     inputs = from_negative_binomial_chains(fixture)
@@ -65,7 +64,6 @@ def test_encoder_round_trip_is_the_identity() -> None:
 @pytest.mark.usefixtures("cnaster_config")
 def test_deduplication_finds_fewer_uniques_than_positions() -> None:
     """Counts repeat, so the unique set is smaller than the observation set."""
-    from cnaster.count_encoder import CountEncoder
 
     fixture = negative_binomial_chains(n_states=3, sequence_length=200)
     inputs = from_negative_binomial_chains(fixture)

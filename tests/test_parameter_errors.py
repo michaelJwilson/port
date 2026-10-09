@@ -6,15 +6,29 @@ integer copies.
 
 from __future__ import annotations
 
+from typing import Any
+
+import jax
+import jax.numpy as jnp
+import jax.scipy.special as jsp
 import numpy as np
 import pytest
+from port.extensions.integer_copy import decode_copy_state
+from port.patch.hmm_nophasing import shifts
+from port.qa.jax_hmm import emission, marginal_negative_log_likelihood, shifted_rates
+from port.qa.parameter_errors import (
+    copy_state_covariance,
+    parameter_errors,
+    shift_jacobian,
+    shift_weights,
+    shifted_covariance,
+)
+from scipy.optimize import minimize
 
 
 @pytest.mark.analytic
 def test_the_covariance_of_a_gaussian_is_its_variance() -> None:
     """Covariance of `-log N(x; mu, S)` is `S` within 1e-10 (closed form)."""
-    import jax.numpy as jnp
-    from port.qa.parameter_errors import parameter_errors
 
     covariance = np.array([[4.0, 1.0], [1.0, 9.0]])
     precision = np.linalg.inv(covariance)
@@ -32,31 +46,22 @@ def test_the_covariance_of_a_gaussian_is_its_variance() -> None:
     )
 
 
-@pytest.mark.analytic
-def test_a_flat_direction_is_refused_rather_than_inverted() -> None:
-    """A flat direction raises rather than inverting to a ~1e16 variance."""
-    import jax.numpy as jnp
-    from port.qa.parameter_errors import parameter_errors
+def _flat(theta: jnp.ndarray) -> jnp.ndarray:
+    """Curved in the sum, flat in the difference: an unfixed gauge."""
+    return 0.5 * (theta[0] + theta[1]) ** 2
 
-    def flat(theta: jnp.ndarray) -> jnp.ndarray:
-        # NB curved in the sum, flat in the difference: an unfixed gauge.
-        return 0.5 * (theta[0] + theta[1]) ** 2
 
-    with pytest.raises(ValueError, match="not identifiable"):
-        parameter_errors(flat, np.array([0.0, 0.0]))
+def _saddle(theta: jnp.ndarray) -> jnp.ndarray:
+    """Indefinite information."""
+    return 0.5 * theta[0] ** 2 - 0.5 * theta[1] ** 2
 
 
 @pytest.mark.analytic
-def test_a_saddle_is_refused() -> None:
-    """A saddle (indefinite information) is refused."""
-    import jax.numpy as jnp
-    from port.qa.parameter_errors import parameter_errors
-
-    def saddle(theta: jnp.ndarray) -> jnp.ndarray:
-        return 0.5 * theta[0] ** 2 - 0.5 * theta[1] ** 2
-
+@pytest.mark.parametrize("objective", [_flat, _saddle], ids=["flat", "saddle"])
+def test_a_flat_direction_or_a_saddle_is_refused(objective: Any) -> None:
+    """A flat direction raises rather than inverting to a ~1e16 variance; a saddle is refused."""
     with pytest.raises(ValueError, match="not identifiable"):
-        parameter_errors(saddle, np.array([0.0, 0.0]))
+        parameter_errors(objective, np.array([0.0, 0.0]))
 
 
 def _weights_case(
@@ -74,7 +79,6 @@ def _weights_case(
 @pytest.mark.analytic
 def test_the_shift_weights_sum_to_one() -> None:
     """Shift weights are a distribution over one clone's segments, gathered by state."""
-    from port.qa.parameter_errors import shift_weights
 
     log_mus, copy_states, normal_log_lambda = _weights_case()
 
@@ -88,10 +92,6 @@ def test_the_shift_weights_sum_to_one() -> None:
 @pytest.mark.oracle
 def test_the_shift_weights_are_the_jax_derivative() -> None:
     """`w` matches `jax`'s gradient of `log Z` within 1e-12 and sums to one."""
-    import jax
-    import jax.numpy as jnp
-    import jax.scipy.special as jsp
-    from port.qa.parameter_errors import shift_weights
 
     log_mus, copy_states, normal_log_lambda = _weights_case()
 
@@ -107,11 +107,6 @@ def test_the_shift_weights_are_the_jax_derivative() -> None:
 @pytest.mark.analytic
 def test_the_propagated_covariance_is_singular_with_null_direction_w() -> None:
     """`J S J'` has rank `n - 1` with null vector `w`, not `1`."""
-    from port.qa.parameter_errors import (
-        shift_jacobian,
-        shift_weights,
-        shifted_covariance,
-    )
 
     log_mus, copy_states, normal_log_lambda = _weights_case()
     n_states = log_mus.size
@@ -146,8 +141,6 @@ def test_the_propagated_covariance_is_singular_with_null_direction_w() -> None:
 @pytest.mark.oracle
 def test_the_propagated_covariance_is_the_delta_method() -> None:
     """`J S J'` matches a 2,000-draw Monte Carlo of the debiasing within 5e-2 of the max."""
-    from port.qa.jax_hmm import shifted_rates
-    from port.qa.parameter_errors import shift_weights, shifted_covariance
 
     log_mus, copy_states, normal_log_lambda = _weights_case(n_states=3, n_segments=12)
     n_states = log_mus.size
@@ -178,7 +171,6 @@ def test_the_propagated_covariance_is_the_delta_method() -> None:
 @pytest.mark.smoke
 def test_a_copy_state_block_is_what_decode_copy_state_reads() -> None:
     """The `(2, 2)` `(mubar, p)` block with zero off-diagonal, as `decode_copy_state` reads."""
-    from port.qa.parameter_errors import copy_state_covariance
 
     rates = np.diag([0.04, 0.09, 0.16])
     alleles = np.diag([0.0025, 0.01, 0.0225])
@@ -243,18 +235,6 @@ def _planted_genome(seed: int = 23) -> dict[str, np.ndarray]:
 @pytest.mark.xdist_group("pipeline")
 def test_a_fit_s_errors_decode_the_planted_integer_copies() -> None:
     """Fit, debias, propagate and decode recovers the planted pairs within stated tolerances (#287)."""
-    import jax
-    import jax.numpy as jnp
-    from port.extensions.integer_copy import decode_copy_state
-    from port.patch.hmm_nophasing import shifts
-    from port.qa.jax_hmm import emission, marginal_negative_log_likelihood
-    from port.qa.parameter_errors import (
-        copy_state_covariance,
-        parameter_errors,
-        shift_weights,
-        shifted_covariance,
-    )
-    from scipy.optimize import minimize
 
     genome = _planted_genome()
     n_states = len(DECODED)

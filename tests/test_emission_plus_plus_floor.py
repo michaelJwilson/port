@@ -11,6 +11,7 @@ from typing import Any
 
 import numpy as np
 import pytest
+from sal.opt.emission_mixture import CountPairSeeding, plus_plus_start, seed_scores
 
 from tests.exact_densities import nb_divergence
 
@@ -31,16 +32,12 @@ def _rows() -> np.ndarray:
 
 
 def _seam() -> Any:
-    from sal.opt.emission_mixture import CountPairSeeding
-
     return CountPairSeeding(
         dispersion=SIZE, concentration=1_000.0, joint=False, trials=50.0
     )
 
 
 def _refused(seed: int) -> bool:
-    from sal.opt.emission_mixture import plus_plus_start
-
     try:
         plus_plus_start(_rows(), 3, _seam(), np.random.default_rng(seed))
     except ValueError as error:
@@ -52,18 +49,13 @@ def _refused(seed: int) -> bool:
 def test_sals_emission_plus_plus_no_longer_refuses_a_round_off_negative_divergence() -> (
     None
 ):
-    """0 of 20 generators raise "Probabilities are not non-negative" through sal's own seam
-    (sal #1136).
-    """
+    """0 of 20 generators raise "Probabilities are not non-negative" through sal's own seam (sal #1136)."""
     assert sum(_refused(seed) for seed in range(20)) == 0
 
 
 @pytest.mark.oracle
 def test_sals_scores_are_the_exact_divergence() -> None:
-    """From a `(2.0, 0.3)` seed each near row's score is the 50-digit divergence, to 2e-14
-    absolute.
-    """
-    from sal.opt.emission_mixture import seed_scores
+    """From a `(2.0, 0.3)` seed each near row's score is the 50-digit divergence, to 2e-14 absolute."""
 
     rows = _rows()
     candidates = np.arange(rows.shape[0], dtype=np.float64)

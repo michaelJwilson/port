@@ -9,8 +9,10 @@ from __future__ import annotations
 
 from typing import Any
 
+import cnaster.hmm_initialize as initialize
 import numpy as np
 import pytest
+from cnaster.hmm_nophasing import get_log_transmat
 from port.sandbox.patch.hmm_initialize.filtering import (
     Standardize,
     design_matrix,
@@ -34,7 +36,6 @@ def planted() -> CoreInferenceTruth:
 
 def _stacked(truth: CoreInferenceTruth) -> tuple[Any, ...]:
     """`gmm_init`'s positional arguments, as `run_core_inference` builds them."""
-    from cnaster.hmm_nophasing import get_log_transmat
 
     stacked = stacked_clones(truth)
 
@@ -52,7 +53,6 @@ def _stacked(truth: CoreInferenceTruth) -> tuple[Any, ...]:
 
 def _capture_design(monkeypatch: pytest.MonkeyPatch, arguments: tuple[Any, ...]) -> Any:
     """Run `gmm_init` and return the array it passed to `GaussianMixture.fit`."""
-    import cnaster.hmm_initialize as initialize
 
     seen: dict[str, Any] = {}
     original = GaussianMixture.fit
@@ -75,9 +75,7 @@ def _capture_design(monkeypatch: pytest.MonkeyPatch, arguments: tuple[Any, ...])
 def test_the_staged_filter_reproduces_the_design_matrix_bitwise(
     planted: CoreInferenceTruth, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The staged design matrix equals the top (unaugmented) half of what reaches `fit`,
-    bitwise.
-    """
+    """The staged design matrix equals the top (unaugmented) half of what reaches `fit`, bitwise."""
     arguments = _stacked(planted)
     captured = _capture_design(monkeypatch, arguments)
 

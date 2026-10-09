@@ -4,17 +4,18 @@
 Referee: the fixture, bitwise, since the aggregation sums integers.
 """
 
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
 import pytest
+from cnaster.omics import summarize_counts_for_bins
 from port.sim.truth import core_inference_truth
 from port.sim.unsegment import Unsegmented, unsegment
 
 
 def _rebin(pre_image: Unsegmented) -> Any:
     """`cnaster`'s own aggregation, on the pre-image."""
-    from cnaster.omics import summarize_counts_for_bins
 
     return summarize_counts_for_bins(
         pre_image.df_gene_snp,
@@ -81,7 +82,6 @@ def test_the_unassigned_genes_never_reach_a_bin() -> None:
 @pytest.mark.preprocessing
 def test_the_flipped_blocks_are_unflipped_by_the_binner() -> None:
     """`phase_indicator` is read: forcing it true changes the result."""
-    from dataclasses import replace
 
     truth = core_inference_truth(
         n_clones=2, n_states=3, lattice=(6, 6), n_obs=60, n_segments=2

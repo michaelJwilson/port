@@ -6,10 +6,37 @@ Referee: CalicoST's `similarity_components_rdrbaf_neymanpearson` and
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 
+import cnaster.hmrf
+import cnaster.scripts.run_cnaster as pipeline
 import numpy as np
 import pytest
+from calicost.hmm_NB_BB_nophasing_v2 import hmm_nophasing_v2
+from calicost.hmm_NB_BB_phaseswitch import (
+    compute_neymanpearson_stats,
+    similarity_components_rdrbaf_neymanpearson,
+)
+from cnaster.cna_hmrf_result import (
+    CloneAssignment,
+    CnaHMRFResult,
+    HMMParams,
+    HMMProfile,
+)
+from port.patch import hmrf
+from port.sandbox.np_merge import (
+    MINLENGTH,
+    THRESHOLD,
+    groups,
+    hold,
+    installed,
+    merged,
+    np_merge,
+    statistics,
+    taken,
+)
+from port.sandbox.np_merge.merge import UPSTREAM, merge_by_minspots
 
 N_OBS = 120
 N_STATES = 4
@@ -73,9 +100,6 @@ def _calicost_res(res: dict[str, Any]) -> dict[str, Any]:
 @pytest.mark.parametrize("params", ["smp", "sp"])
 def test_the_statistics_are_calicosts(params: str) -> None:
     """Every event's statistic, pair for pair, to 1e-10."""
-    from calicost.hmm_NB_BB_nophasing_v2 import hmm_nophasing_v2
-    from calicost.hmm_NB_BB_phaseswitch import compute_neymanpearson_stats
-    from port.sandbox.np_merge import statistics
 
     X, base, total, res = _instance()
     theirs = compute_neymanpearson_stats(
@@ -99,11 +123,6 @@ def test_the_statistics_are_calicosts(params: str) -> None:
 @pytest.mark.parametrize("params", ["smp", "sp"])
 def test_the_groups_are_calicosts(params: str, monkeypatch: pytest.MonkeyPatch) -> None:
     """Merged groups equal CalicoST's at 2.0 nats and 10 bins (`np.NAN` aliased)."""
-    from calicost.hmm_NB_BB_nophasing_v2 import hmm_nophasing_v2
-    from calicost.hmm_NB_BB_phaseswitch import (
-        similarity_components_rdrbaf_neymanpearson,
-    )
-    from port.sandbox.np_merge import groups
 
     monkeypatch.setattr(np, "NAN", np.nan, raising=False)
     X, base, total, res = _instance()
@@ -128,7 +147,6 @@ def test_the_groups_are_calicosts(params: str, monkeypatch: pytest.MonkeyPatch) 
 @pytest.mark.analytic
 def test_a_clone_shift_scales_the_read_depth_as_its_rates() -> None:
     """Raising a clone's exposure by `e^d` and its shift by `d` keeps statistics, to 1e-9."""
-    from port.sandbox.np_merge import statistics
 
     X, base, total, res = _instance()
     shifted_base = base.copy()
@@ -149,7 +167,6 @@ def test_a_clone_shift_scales_the_read_depth_as_its_rates() -> None:
 @pytest.mark.patch
 def test_merged_keeps_each_groups_first_path_and_shift() -> None:
     """CalicoST keeps the group's least clone's decode; the shift follows it."""
-    from port.sandbox.np_merge import merged
 
     _, _, _, res = _instance()
     res = {**res, "new_log_mu_shift": np.array([0.1, 0.2, 0.3, 0.4])}
@@ -168,10 +185,6 @@ def test_the_swap_is_cnasters_merge_by_minspots_where_it_does_not_merge(
     installed: bool,
 ) -> None:
     """Uninstalled or holding no fit, the swap equals `cnaster.hmrf.merge_by_minspots`."""
-    import contextlib
-
-    from port.sandbox.np_merge import np_merge
-    from port.sandbox.np_merge.merge import UPSTREAM, merge_by_minspots
 
     rng = np.random.default_rng(1)
     assignment = rng.integers(0, 3, 400)
@@ -200,13 +213,6 @@ def test_the_swap_is_cnasters_merge_by_minspots_where_it_does_not_merge(
 @pytest.mark.patch
 def test_merged_writes_a_cnaster_result_and_leaves_the_original() -> None:
     """On a `CnaHMRFResult`, the merge keeps first paths and leaves the input unchanged."""
-    from cnaster.cna_hmrf_result import (
-        CloneAssignment,
-        CnaHMRFResult,
-        HMMParams,
-        HMMProfile,
-    )
-    from port.sandbox.np_merge import merged
 
     _, _, _, plain = _instance()
     gamma = np.log(np.full((N_STATES, N_OBS, 4), 0.25))
@@ -243,7 +249,6 @@ def test_merged_writes_a_cnaster_result_and_leaves_the_original() -> None:
 @pytest.mark.patch
 def test_merged_reads_the_baf_stages_clone_stacked_layout() -> None:
     """The BAF-only stage stacks the clones' decodes in one vector; a group keeps its first block."""
-    from port.sandbox.np_merge import groups, merged, statistics
 
     X, base, total, res = _instance()
     stacked = {
@@ -268,7 +273,6 @@ def test_merged_reads_the_baf_stages_clone_stacked_layout() -> None:
 @pytest.mark.patch
 def test_the_held_merge_is_taken_only_for_its_own_fit() -> None:
     """`taken` hands back the merged result for the fit it was held for, once."""
-    from port.sandbox.np_merge import hold, np_merge, taken
 
     _, _, _, res = _instance()
     other = {**res, "pred_cnv": res["pred_cnv"] + 1}
@@ -285,7 +289,6 @@ def test_the_held_merge_is_taken_only_for_its_own_fit() -> None:
 @pytest.mark.analytic
 def test_a_short_event_of_strong_evidence_keeps_two_clones_apart() -> None:
     """A 6-bin strong event splits clones 0 and 3 by evidence, not by CalicoST's rule."""
-    from port.sandbox.np_merge import MINLENGTH, THRESHOLD, groups, statistics
 
     X, base, total, res = _instance()
     rng = np.random.default_rng(9)
@@ -316,11 +319,6 @@ def test_a_short_event_of_strong_evidence_keeps_two_clones_apart() -> None:
 @pytest.mark.cnaster
 def test_the_sandbox_merge_installs_its_bindings_and_restores_them() -> None:
     """`np_merge()` binds its three names in the sandbox and restores them (#497)."""
-    import cnaster.hmrf
-    import cnaster.scripts.run_cnaster as pipeline
-    from port.patch import hmrf
-    from port.sandbox.np_merge import installed, np_merge
-    from port.sandbox.np_merge.merge import merge_by_minspots
 
     before = (
         hmrf.run_core_inference,

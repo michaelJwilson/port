@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import anndata as ad
 import numpy as np
 import pytest
+import scipy.sparse as sp
+from port.sim.fixtures import SAMPLES, crop, load_simulated, purify, references
 
 WINDOW = (35.0, 70.0, 26.0, 38.0)
 """210 spots of the easy sample holding every clone, 49 to 58 each."""
@@ -13,12 +16,7 @@ WINDOW = (35.0, 70.0, 26.0, 38.0)
 
 @pytest.mark.infra
 def test_a_crop_keeps_the_window_every_input_in_step(tmp_path: Path) -> None:
-    """A crop keeps the window's 210 spots in every per-spot input; a one-clone window is
-    refused.
-    """
-    import anndata as ad
-    import scipy.sparse as sp
-    from port.sim.fixtures import SAMPLES, crop, load_simulated
+    """A crop keeps the window's 210 spots in every per-spot input; a one-clone window is refused."""
 
     sample = load_simulated(SAMPLES["easy"])
     x, y = sample.coords[:, 0], sample.coords[:, 1]
@@ -45,11 +43,7 @@ def test_a_crop_keeps_the_window_every_input_in_step(tmp_path: Path) -> None:
 @pytest.mark.release
 @pytest.mark.analytic
 def test_a_planted_normal_fraction_sets_the_loh_allele_share(tmp_path: Path) -> None:
-    """Pooled LOH-allele BAF equals the admixed share `f / ((1 - f) B + 2 f)` to 0.005, for
-    three `f`.
-    """
-    import scipy.sparse as sp
-    from port.sim.fixtures import SAMPLES, crop, load_simulated, purify, references
+    """Pooled LOH-allele BAF equals the admixed share `f / ((1 - f) B + 2 f)` to 0.005, for three `f`."""
 
     if references() is None:
         pytest.skip("CalicoST's GRCh38_resources not found")

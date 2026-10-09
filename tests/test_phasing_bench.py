@@ -58,14 +58,12 @@ def stress_blocks(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Any]:
 
 
 @pytest.mark.benchmark
-def test_phasing_gate(benchmark: BenchmarkFixture, gate_blocks: Any) -> None:
-    """The dev instance over 200 bins."""
-    truth, blocks = gate_blocks
-    benchmark(_phase, truth, blocks)
-
-
-@pytest.mark.benchmark
-def test_phasing_stress(benchmark: BenchmarkFixture, stress_blocks: Any) -> None:
-    """The whole dev instance, 1,000 bins."""
-    truth, blocks = stress_blocks
-    benchmark(_phase, truth, blocks)
+@pytest.mark.parametrize(
+    "blocks", ["gate_blocks", "stress_blocks"], ids=["gate", "stress"]
+)
+def test_phasing(
+    benchmark: BenchmarkFixture, blocks: str, request: pytest.FixtureRequest
+) -> None:
+    """The dev instance over 200 bins, and whole, 1,000 bins."""
+    truth, phased = request.getfixturevalue(blocks)
+    benchmark(_phase, truth, phased)

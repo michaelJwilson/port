@@ -19,7 +19,7 @@ from port.qa.scoring import (
     planted_classes,
     shared_ari,
 )
-from sklearn.metrics import adjusted_rand_score
+from sklearn.metrics import adjusted_rand_score, confusion_matrix
 
 
 def _code(pairs: list[tuple[int, int]]) -> np.ndarray:
@@ -113,7 +113,6 @@ def test_each_phase_free_class_ari_is_sklearns_on_hand_sorted_pairs() -> None:
 @pytest.mark.oracle
 def test_the_confusion_is_sklearns_row_normalised_matrix_within_the_cap() -> None:
     """Planted rows against `confusion_matrix(normalize="true")` at cap 3, to 5e-5."""
-    from sklearn.metrics import confusion_matrix
 
     cap = 3
     states = [a * 1_000 + b for a, b in copy_states(cap)]
@@ -155,9 +154,7 @@ def test_the_sampled_table_drops_unplanted_rows_and_undecoded_columns() -> None:
 
 @pytest.mark.analytic
 def test_shared_ari_reads_the_planted_labels_at_the_fits_barcodes() -> None:
-    """A relabelled, reordered fit missing one spot scores 1 over the 5 it kept, read by
-    barcode.
-    """
+    """A relabelled, reordered fit missing one spot scores 1 over the 5 it kept, read by barcode."""
     planted = pd.Series([0, 0, 1, 1, 2, 2], index=list("abcdef"))
     fitted = pd.Series([5, 3, 3, 7, 7], index=list("edcba"))
 

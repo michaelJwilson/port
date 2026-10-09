@@ -8,6 +8,8 @@ import inspect
 
 import numpy as np
 import pytest
+from cnaster import hmrf, icm
+from cnaster.icm import icm_sweep_deque
 
 from tests.adapters import lattice_adjacency
 
@@ -40,7 +42,6 @@ def _field(labels: np.ndarray, n_clones: int, margin: float = 40.0) -> np.ndarra
 @pytest.mark.bug
 def test_the_sweep_writes_its_callers_labelling_in_place() -> None:
     """`icm_sweep_deque` rewrites the caller's labelling in place (#45)."""
-    from cnaster.icm import icm_sweep_deque
 
     side = 12
     labels = _bands(side, (72, 72))
@@ -75,10 +76,7 @@ def test_the_sweep_writes_its_callers_labelling_in_place() -> None:
 
 @pytest.mark.bug
 def test_a_clone_under_the_floor_is_dissolved_into_random_neighbours() -> None:
-    """A clone under 200 spots is dissolved though the field prefers it by 40 nats per spot
-    (#81).
-    """
-    from cnaster.icm import icm_sweep_deque
+    """A clone under 200 spots is dissolved though the field prefers it by 40 nats per spot (#81)."""
 
     side = 24
     small = 100
@@ -110,7 +108,6 @@ def test_a_clone_under_the_floor_is_dissolved_into_random_neighbours() -> None:
 @pytest.mark.warning
 def test_the_same_clone_survives_once_it_clears_the_floor() -> None:
     """One spot above the floor the same clone survives (#81 control)."""
-    from cnaster.icm import icm_sweep_deque
 
     side = 24
     small = FLOOR + 1
@@ -138,7 +135,6 @@ def test_the_same_clone_survives_once_it_clears_the_floor() -> None:
 @pytest.mark.bug
 def test_the_floor_is_not_reachable_from_the_pipeline() -> None:
     """No pipeline argument or configuration key reaches `min_clone_spots` (#81)."""
-    from cnaster import hmrf, icm
 
     signature = inspect.signature(icm.icm_sweep_deque)
 

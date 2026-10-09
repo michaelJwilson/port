@@ -10,6 +10,10 @@ from typing import Any
 
 import matplotlib as mpl
 import pytest
+from cnaster.utils import write_fig as upstream
+from port.patch.utils import write_fig
+from port.patch.utils import write_fig as patched
+from port.pipeline import FIGURE_DPI, FIGURE_SWAPS, SWAPS
 
 from tests.figure_checks import CREATION_DATE, wide_rasterized_figure
 
@@ -32,8 +36,6 @@ def _written(tmp_path: Path, name: str, writer: Any, **keywords: Any) -> bytes:
 @pytest.mark.deprecate
 def test_at_its_defaults_it_is_cnasters_function_byte_for_byte(tmp_path: Path) -> None:
     """Called as `cnaster` calls it, the patch writes `cnaster`'s bytes (#517)."""
-    from cnaster.utils import write_fig as upstream
-    from port.patch.utils import write_fig as patched
 
     assert _written(tmp_path, "upstream", upstream) == _written(
         tmp_path, "patched", patched
@@ -45,9 +47,6 @@ def test_the_default_writes_the_same_page_with_a_coarser_raster(
     tmp_path: Path,
 ) -> None:
     """At `FIGURE_DPI` the `MediaBox` is unchanged and the file is smaller."""
-    from cnaster.utils import write_fig as upstream
-    from port.patch.utils import write_fig as patched
-    from port.pipeline import FIGURE_DPI
 
     assert FIGURE_DPI < 300, "the row no longer lowers the resolution"
 
@@ -66,7 +65,6 @@ def test_the_default_writes_the_same_page_with_a_coarser_raster(
 @pytest.mark.infra
 def test_the_figure_swap_is_kept_out_of_the_default_table() -> None:
     """`write_fig` is in `FIGURE_SWAPS` (#195), not `SWAPS`, and no row is in both."""
-    from port.pipeline import FIGURE_SWAPS, SWAPS
 
     names = {swap.name for swap in SWAPS}
     figures = {swap.name: swap.ticket for swap in FIGURE_SWAPS}
@@ -79,7 +77,6 @@ def test_the_figure_swap_is_kept_out_of_the_default_table() -> None:
 @pytest.mark.infra
 def test_png_copies_are_the_same_bytes_on_every_write(tmp_path: Path) -> None:
     """With `png_copy` a PNG lands beside the PDF, byte-identical across writes (#452)."""
-    from port.patch.utils import write_fig
 
     write_fig(str(tmp_path / "plain.pdf"), wide_rasterized_figure())
     assert not (tmp_path / "plain.png").exists()

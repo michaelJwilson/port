@@ -9,9 +9,15 @@ from __future__ import annotations
 
 from typing import Any
 
+import anndata as ad
 import numpy as np
 import pandas as pd
 import pytest
+import scipy.sparse as sp
+from port.sim.fixtures import r0 as port_r0
+from port.sim.fixtures import references
+
+from tests.sim_stages import stages
 
 MIN_GENES = 100
 """Events with fewer genes are left out: their ratio's noise is the bound."""
@@ -38,17 +44,12 @@ def _events(truth: Any) -> list[tuple[int, int, int, str, int, int]]:
 
 @pytest.fixture(scope="module")
 def r0() -> Any:
-    from port.sim.fixtures import r0
-
-    return r0()
+    return port_r0()
 
 
 @pytest.fixture(scope="module")
 def depth(r0: Any) -> dict[tuple[int, int, int, str], tuple[int, float]]:
     """Per planted event and clone: its genes, and its log read-depth ratio to normal."""
-    import anndata as ad
-    import scipy.sparse as sp
-    from port.sim.fixtures import references
 
     resources = references()
 
@@ -96,9 +97,7 @@ def depth(r0: Any) -> dict[tuple[int, int, int, str], tuple[int, float]]:
 def test_the_r0_counts_carry_each_event_s_depth(
     r0: Any, depth: dict[tuple[int, int, int, str], tuple[int, float]]
 ) -> None:
-    """Each event's log read-depth ratio is `log((A + B) / 2)`, to 0.2 (a third of loss-
-    LOH separation).
-    """
+    """Each event's log read-depth ratio is `log((A + B) / 2)`, to 0.2 (a third of loss- LOH separation)."""
     judged = 0
 
     for chrom, start, end, clone, a, b in _events(r0):
@@ -117,7 +116,6 @@ def test_the_r0_counts_carry_each_event_s_depth(
 @pytest.mark.end2end
 def test_the_clone_stage_recovers_r0() -> None:
     """`--sal` on main recovers r0's four clones: ARI 0.9997 at e5ee447 (#470)."""
-    from tests.sim_stages import stages
 
     run = stages("r0", ("--sal",))
 
@@ -153,10 +151,7 @@ def _fitted(run: Any, truth: Any) -> dict[tuple[int, int, int, str], float]:
 def test_the_hmm_fits_r0_s_losses_at_the_depth_of_its_loh(
     r0: Any, depth: dict[tuple[int, int, int, str], tuple[int, float]]
 ) -> None:
-    """#471: with planted clones held, a one-copy loss and copy-neutral LOH share one
-    fitted state.
-    """
-    from tests.sim_stages import stages
+    """#471: with planted clones held, a one-copy loss and copy-neutral LOH share one fitted state."""
 
     run = stages("r0", ("--sal",), oracle=True)
     fitted = _fitted(run, r0)

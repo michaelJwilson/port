@@ -6,11 +6,14 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from port.extensions.copy_likelihood import Captured
+from port.qa.errors import PinnedErrors, pinned_errors, pseudobulk
+from port.sandbox.copy_audit import decode_one
+from port.sandbox.extensions.copy_errors import copy_sets
+from port.scripts.run_cnaster import main
 
 
 def _errors(mu: list[float], minor: list[float], sigma: tuple[float, float]) -> object:
-    from port.qa.errors import PinnedErrors
-
     n_states = len(mu)
     covariance = np.zeros((n_states, 2, 2))
     covariance[:, 0, 0] = sigma[0] ** 2
@@ -30,7 +33,6 @@ def _errors(mu: list[float], minor: list[float], sigma: tuple[float, float]) -> 
 @pytest.mark.analytic
 def test_a_tight_error_admits_only_the_planted_pair(cnaster_config: None) -> None:
     """At the lattice point with 1 per cent errors, each set is that point."""
-    from port.sandbox.extensions.copy_errors import copy_sets
 
     errors = _errors([1.0, 1.5, 2.0], [0.5, 1 / 3, 0.25], (0.01, 0.005))
     sets = copy_sets(errors)  # type: ignore[arg-type]
@@ -43,7 +45,6 @@ def test_a_wider_error_admits_more_and_keeps_the_planted_pair(
     cnaster_config: None,
 ) -> None:
     """Sets are nested in the covariance, and the planted pair never leaves."""
-    from port.sandbox.extensions.copy_errors import copy_sets
 
     sizes = []
 
@@ -63,7 +64,6 @@ def test_the_neutral_state_decodes_on_total_two_by_its_allele_fraction(
     cnaster_config: None,
 ) -> None:
     """At `mu = 1` balanced reads `(1, 1)` and a lost allele `(2, 0)`."""
-    from port.sandbox.extensions.copy_errors import copy_sets
 
     balanced = copy_sets(_errors([1.0], [0.49], (0.0, 0.01)))  # type: ignore[arg-type]
     lost = copy_sets(_errors([1.0], [0.005], (0.0, 0.01)))  # type: ignore[arg-type]
@@ -78,7 +78,6 @@ def test_the_copy_decode_without_the_shift_is_refused(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """`--no-shift` with the copy rows on is refused at the command line (#576)."""
-    from port.scripts.run_cnaster import main
 
     config = tmp_path / "config.yaml"
     config.write_text("{}\n")
@@ -93,7 +92,6 @@ def test_the_copy_decode_without_the_shift_is_refused(
 @pytest.mark.release
 def test_each_planted_pair_is_in_its_state_s_set(tmp_path: Path) -> None:
     """Each planted pair lies in its fitted state's set on one realization (#353)."""
-    from port.sandbox.copy_audit import decode_one
 
     score = decode_one(0, tmp_path)
 
@@ -106,9 +104,6 @@ def test_copy_errors_refuse_a_fit_where_jax_hmms_beta_binomial_is_unstable(
     tau: float,
 ) -> None:
     """T- #599: at `tau >= JAX_TAU_LIMIT` `--copy-errors` refuses the fit."""
-    import numpy as np
-    from port.extensions.copy_likelihood import Captured
-    from port.qa.errors import pinned_errors
 
     result = {
         "new_log_mu": np.zeros((3, 1)),
@@ -127,9 +122,6 @@ def test_copy_errors_refuse_a_fit_where_jax_hmms_beta_binomial_is_unstable(
 @pytest.mark.bug
 def test_the_pseudobulk_refuses_a_clone_with_no_spots() -> None:
     """A pseudobulk with an empty clone is refused (#749 WP0)."""
-    import numpy as np
-    from port.extensions.copy_likelihood import Captured
-    from port.qa.errors import pseudobulk
 
     def captured(assignment: list[int]) -> Captured:
         result = {

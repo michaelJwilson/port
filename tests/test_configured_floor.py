@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from port.qa.audit import audit_sample
+from port.sim.draw import main as draw
+from port.sim.fixtures import load_simulated
 
 from tests import ROOT
 
@@ -19,9 +22,6 @@ def test_a_configured_floor_of_50_keeps_the_planted_small_clones(
     tmp_path: Path,
 ) -> None:
     """`dev_tree` 25 x 25, floor 50: keeps the planted 158- and 49-spot clones (planted labels)."""
-    from port.qa.audit import audit_sample
-    from port.sim.draw import main as draw
-    from port.sim.fixtures import load_simulated
 
     # NB the frozen exponential-length generation the figures were measured on (#619)
     base = (MANIFESTS / "baseline" / "dev_tree.toml").read_text()

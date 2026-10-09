@@ -10,6 +10,7 @@ import dataclasses
 from dataclasses import dataclass
 
 import numpy as np
+from port.sim.realizations import realize
 from port.sim.truth import CoreInferenceTruth
 
 
@@ -39,10 +40,7 @@ class MultiSample:
 def multi_sample_truth(
     truth: CoreInferenceTruth, n_samples: int, *, gap: int = 1
 ) -> MultiSample:
-    """`n_samples` realizations of `truth` concatenated along spots, sharing exposure and
-    trials (#328).
-    """
-    from port.sim.realizations import realize
+    """`n_samples` realizations of `truth` concatenated along spots, sharing exposure and trials (#328)."""
 
     if n_samples < 1:
         msg = f"a fixture needs at least one sample, got {n_samples}"

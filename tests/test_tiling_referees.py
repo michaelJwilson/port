@@ -10,13 +10,16 @@ from typing import Any
 import numpy as np
 import pytest
 import scipy.sparse as sp
+from port.extensions.label_solver import sweep_for
+from port.patch.icm.alpha_expansion import potts_graph_from
+from port.patch.icm.interface import CsrGraph
+from port.sandbox.extensions.label_solvers import SWEEPS
+from sal.search.trws import trws
+from sal.sim.graph import BoundaryCondition, lattice_graph
+from sal.sim.potts import energy, smoothed_noise, tile_partition, tiling_field
 
 
 def _instance(side: int, n_tiles: int, n_states: int, seed: int) -> Any:
-    from port.patch.icm.interface import CsrGraph
-    from sal.sim.graph import BoundaryCondition, lattice_graph
-    from sal.sim.potts import smoothed_noise, tile_partition, tiling_field
-
     lattice = lattice_graph((side, side), BoundaryCondition.OPEN, 1.0)
     rng = np.random.default_rng(seed)
     tiles = tile_partition(lattice, n_tiles, rng)
@@ -42,9 +45,6 @@ def _instance(side: int, n_tiles: int, n_states: int, seed: int) -> Any:
 
 
 def _solve(name: str, field: np.ndarray, graph: Any, beta: float) -> np.ndarray:
-    from port.extensions.label_solver import sweep_for
-    from port.sandbox.extensions.label_solvers import SWEEPS
-
     labelling = np.zeros(field.shape[0], dtype=np.int64)
     # NB `cnaster`'s sweep draws its queue order from the legacy state (#45)
     np.random.seed(0)  # noqa: NPY002
@@ -56,10 +56,6 @@ def _solve(name: str, field: np.ndarray, graph: Any, beta: float) -> np.ndarray:
 def _gap_and_agreement(
     name: str, side: int, n_tiles: int, n_states: int
 ) -> tuple[float, float]:
-    from port.patch.icm.alpha_expansion import potts_graph_from
-    from sal.search.trws import trws
-    from sal.sim.potts import energy
-
     beta = 0.6
     field, graph, planted = _instance(side, n_tiles, n_states, seed=7)
     potts = potts_graph_from(graph, beta)

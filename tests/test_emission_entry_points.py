@@ -8,6 +8,10 @@ the `oracle`, against scipy.
 import numpy as np
 import pytest
 import scipy.stats
+from cnaster.count_encoder import CountEncoder
+from cnaster.hmm_nophasing import _bb_logpmf_1d, hmm_nophasing
+from cnaster.hmm_phased import _switch_betabinom_1d, hmm_phased
+from scipy.special import logsumexp
 
 from tests.builders import EmissionInputs, cnaster_emission_pair, emission_inputs
 
@@ -35,8 +39,6 @@ _unphased_emission = cnaster_emission_pair
 @pytest.mark.parametrize("n_states", [1, 3, 5])
 def test_the_switch_term_is_the_allele_swap(n_states: int) -> None:
     """`_switch_betabinom_1d` scores the B allele as scipy scores `n - k`."""
-    from cnaster.hmm_nophasing import _bb_logpmf_1d
-    from cnaster.hmm_phased import _switch_betabinom_1d
 
     generator = np.random.default_rng(11)
     successes = generator.integers(0, 40, 12).astype(np.float64)
@@ -74,8 +76,6 @@ def test_the_switch_term_is_the_allele_swap(n_states: int) -> None:
 @pytest.mark.parametrize("n_states", [1, 3])
 def test_the_phased_wrapper_is_the_phased_coded_path(n_states: int) -> None:
     """`hmm_phased`'s dense entry point equals the deduplicated one."""
-    from cnaster.count_encoder import CountEncoder
-    from cnaster.hmm_phased import hmm_phased
 
     inputs = _inputs(n_states)
 
@@ -143,9 +143,6 @@ def test_phasing_a_phase_free_emission_changes_no_evidence(
     Parametrized over a zero switch and two small ones, since `-inf` and a tiny finite
     log differ in arithmetic (#205 step 3).
     """
-    from cnaster.hmm_nophasing import hmm_nophasing
-    from cnaster.hmm_phased import hmm_phased
-    from scipy.special import logsumexp
 
     generator = np.random.default_rng(3)
     lengths = np.array([25, 15])

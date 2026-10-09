@@ -20,6 +20,7 @@ from port.qa.statistics import (
     ranks,
     resample_weights,
 )
+from scipy.stats import chisquare
 
 
 @pytest.mark.analytic
@@ -41,10 +42,7 @@ def test_ranks_count_from_the_lowest_and_ties_share_the_lower() -> None:
 
 @pytest.mark.oracle
 def test_the_chi_square_pvalue_is_scipys_over_the_kept_bins() -> None:
-    """Statistic and p-value equal `scipy.stats.chisquare` over bins expecting 5 or more,
-    to 1e-12.
-    """
-    from scipy.stats import chisquare
+    """Statistic and p-value equal `scipy.stats.chisquare` over bins expecting 5 or more, to 1e-12."""
 
     observed = np.array([18.0, 31.0, 51.0, 12.0])
     expected = np.array([20.0, 30.0, 50.0, 2.0])
@@ -58,9 +56,7 @@ def test_the_chi_square_pvalue_is_scipys_over_the_kept_bins() -> None:
 
 @pytest.mark.analytic
 def test_the_bootstrap_interval_covers_the_mean_at_its_nominal_rate() -> None:
-    """A 95% percentile interval covers a normal mean at 0.95 within 0.035 (3 binomial SE
-    at 400 trials).
-    """
+    """A 95% percentile interval covers a normal mean at 0.95 within 0.035 (3 binomial SE at 400 trials)."""
     rng = np.random.default_rng(673)
     n_members, trials = 200, 400
     covered = 0

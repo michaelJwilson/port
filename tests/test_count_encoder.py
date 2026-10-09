@@ -5,14 +5,19 @@ Same pairs in the same order; decode bitwise, encode to 1e-12 relative.
 
 from __future__ import annotations
 
+import cnaster.hmm_nophasing
+import cnaster.hmm_phased
 import numpy as np
 import pytest
+from cnaster.config import get_global_config
+from cnaster.count_encoder import CountEncoder as Upstream
+from port.patch.count_encoder import CountEncoder
+from port.patch.hmm_nophasing import gradient
+from port.pipeline import SWAPS, patched
 
 
 @pytest.fixture
 def decimals(cnaster_config: None) -> int:
-    from cnaster.config import get_global_config
-
     return int(get_global_config().hmm.compression_decimals)
 
 
@@ -33,8 +38,6 @@ def test_the_codes_and_their_decode_are_cnasters(
     decimals: int, integer: bool, collapse: bool
 ) -> None:
     """Pairs equal and in `cnaster`'s order; decode bitwise, both orientations; encode to 1e-12."""
-    from cnaster.count_encoder import CountEncoder as Upstream
-    from port.patch.count_encoder import CountEncoder
 
     obs, total = _counts(799, integer)
     ours = CountEncoder(obs, total, common_zero_depth=collapse)
@@ -70,11 +73,6 @@ def test_the_codes_and_their_decode_are_cnasters(
 @pytest.mark.infra
 def test_the_row_rebinds_every_cnaster_binding() -> None:
     """Installed, `hmm_nophasing`, `hmm_phased` and `port`'s gradient build port's encoder."""
-    import cnaster.hmm_nophasing
-    import cnaster.hmm_phased
-    from port.patch.count_encoder import CountEncoder
-    from port.patch.hmm_nophasing import gradient
-    from port.pipeline import SWAPS, patched
 
     rows = tuple(row for row in SWAPS if row.module == "cnaster.count_encoder")
     with patched(rows):
@@ -85,7 +83,6 @@ def test_the_row_rebinds_every_cnaster_binding() -> None:
 @pytest.mark.oracle
 def test_the_encoder_is_the_brute_force_map(decimals: int) -> None:
     """`CountEncoder` against enumeration: decode exactly, encode to 1e-12 relative."""
-    from port.patch.count_encoder import CountEncoder
 
     obs, total = _counts(800, integer=True)
     encoder = CountEncoder(obs, total)

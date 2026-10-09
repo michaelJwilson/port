@@ -10,13 +10,13 @@ import sys
 from collections.abc import Sequence
 
 from port.qa.audit import score_truth as score
+from port.qa.scripts.run_audit import main as run_audit
 
 __all__ = ["main", "score"]
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """`run_audit --recovery` with these arguments."""
-    from port.qa.scripts.run_audit import main as run_audit
 
     return run_audit(["--recovery", *(sys.argv[1:] if argv is None else argv)])
 

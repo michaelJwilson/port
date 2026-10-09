@@ -6,13 +6,12 @@ import inspect
 from typing import Any
 
 import pytest
+from cnaster.hmrf import reindex_clones
+from port.patch._signature import as_upstream
 
 
 @pytest.mark.patch
 def test_the_wrapper_binds_and_refuses_as_cnaster_does() -> None:
-    from cnaster.hmrf import reindex_clones
-    from port.patch._signature import as_upstream
-
     seen: list[dict[str, Any]] = []
 
     @as_upstream(reindex_clones)
@@ -35,9 +34,6 @@ def test_the_wrapper_binds_and_refuses_as_cnaster_does() -> None:
 
 @pytest.mark.patch
 def test_an_option_is_keyword_only_and_arrives_with_its_default() -> None:
-    from cnaster.hmrf import reindex_clones
-    from port.patch._signature import as_upstream
-
     seen: list[tuple[dict[str, Any], dict[str, Any]]] = []
 
     @as_upstream(reindex_clones, mode="cnaster")

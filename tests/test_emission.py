@@ -8,6 +8,23 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from port.patch.emission import (
+    bb_complete,
+    bb_log_pmf,
+    bb_tables,
+    nb_complete,
+    nb_log_pmf,
+    nb_partials,
+    nb_table,
+    scaled_rising,
+)
+from port.patch.hmm_nophasing.dense_emission import bb_states, nb_states
+from port.patch.hmrf.fused_field import fused_spot_clone_field
+from port.patch.hmrf.tabulated_field import tabulated_spot_clone_field
+from sal.emissions.bb import beta_binomial_log_pmf
+from sal.emissions.nb import negative_binomial_log_pmf
+from sal.emissions.rising import scaled_rising_array
+from scipy.special import gammaln
 from scipy.stats import binom, poisson
 
 from tests.exact_densities import bb_logpmf as exact_bb
@@ -29,15 +46,11 @@ CONDITION = 1e-14
 
 
 def _scale(f: np.ndarray, counts: np.ndarray) -> np.ndarray:
-    from scipy.special import gammaln
-
     scale: np.ndarray = 1.0 + np.abs(f) + gammaln(np.asarray(counts) + 1.0)
     return scale
 
 
 def _scaled(x: float | np.ndarray, m: np.ndarray) -> np.ndarray:
-    from sal.emissions.rising import scaled_rising_array
-
     out: np.ndarray = scaled_rising_array(x, m)
     return out
 
@@ -45,7 +58,6 @@ def _scaled(x: float | np.ndarray, m: np.ndarray) -> np.ndarray:
 @pytest.mark.oracle
 def test_the_scaled_rising_table_is_sals_kernel_bitwise() -> None:
     """`scaled_rising` equals `sal`'s `scaled_rising_array`, bitwise."""
-    from port.patch.emission import scaled_rising
 
     counts = np.arange(0.0, 4000.0)
     assert np.array_equal(
@@ -60,8 +72,6 @@ def test_the_scaled_rising_table_is_sals_kernel_bitwise() -> None:
 @pytest.mark.parametrize("alpha", ALPHAS)
 def test_the_negative_binomial_is_sals_pmf_bitwise(alpha: float) -> None:
     """`nb_log_pmf` equals `sal`'s `negative_binomial_log_pmf` at `r = 1 / alpha`, bitwise."""
-    from port.patch.emission import nb_log_pmf
-    from sal.emissions.nb import negative_binomial_log_pmf
 
     rng = np.random.default_rng(1)
     y = rng.integers(0, 20_000, 5_000).astype(float)
@@ -75,8 +85,6 @@ def test_the_negative_binomial_is_sals_pmf_bitwise(alpha: float) -> None:
 @pytest.mark.parametrize("tau", TAUS)
 def test_the_beta_binomial_is_sals_pmf_bitwise(tau: float) -> None:
     """`bb_log_pmf` equals `sal`'s `beta_binomial_log_pmf`, bitwise."""
-    from port.patch.emission import bb_log_pmf
-    from sal.emissions.bb import beta_binomial_log_pmf
 
     rng = np.random.default_rng(2)
     n = rng.integers(0, 4_000, 5_000).astype(float)
@@ -91,7 +99,6 @@ def test_the_beta_binomial_is_sals_pmf_bitwise(tau: float) -> None:
 @pytest.mark.parametrize("alpha", ALPHAS)
 def test_the_negative_binomial_meets_the_exact_density(alpha: float) -> None:
     """`nb_log_pmf` is within `CONDITION` of the 50-digit density, to the floor (T- #776)."""
-    from port.patch.emission import nb_log_pmf
 
     counts = np.array([0.0, 1.0, 7.0, 42.0, 300.0, 2_500.0, 18_842.0])
     for mean in (1e-3, 2.0, 600.0, 3e4):
@@ -104,7 +111,6 @@ def test_the_negative_binomial_meets_the_exact_density(alpha: float) -> None:
 @pytest.mark.parametrize("tau", TAUS)
 def test_the_beta_binomial_meets_the_exact_density(tau: float) -> None:
     """`bb_log_pmf` within 1e-11 of the 50-digit density, `tau` to 1e16."""
-    from port.patch.emission import bb_log_pmf
 
     n = np.array([1.0, 8.0, 100.0, 1_253.0, 3_804.0])
     for p in (0.12, 0.5, 0.95):
@@ -123,7 +129,6 @@ def test_the_beta_binomial_meets_the_exact_density(tau: float) -> None:
 @pytest.mark.analytic
 def test_the_limits_are_the_binomial_and_the_poisson() -> None:
     """`tau = inf` is `scipy`'s binomial, `alpha = 0` its Poisson, to 1e-12."""
-    from port.patch.emission import bb_log_pmf, nb_log_pmf
 
     n = np.arange(0.0, 60.0)
     z = np.floor(n * 0.3)
@@ -142,14 +147,6 @@ def test_the_limits_are_the_binomial_and_the_poisson() -> None:
 @pytest.mark.backend
 def test_the_numba_completions_are_the_numpy_form_to_rounding() -> None:
     """`nb_complete` and `bb_complete` equal the NumPy form within `CONDITION`."""
-    from port.patch.emission import (
-        bb_complete,
-        bb_log_pmf,
-        bb_tables,
-        nb_complete,
-        nb_log_pmf,
-        nb_table,
-    )
 
     rng = np.random.default_rng(3)
     y = rng.integers(0, 2_000, 2_000).astype(float)
@@ -192,8 +189,6 @@ def test_the_numba_completions_are_the_numpy_form_to_rounding() -> None:
 @pytest.mark.oracle
 def test_the_fit_is_sals_numpy_pmf_to_its_rounding() -> None:
     """`nb_states` and `bb_states` (Rust, sal #1340) equal the NumPy pmfs within `CONDITION`."""
-    from port.patch.emission import bb_log_pmf, nb_log_pmf
-    from port.patch.hmm_nophasing.dense_emission import bb_states, nb_states
 
     rng = np.random.default_rng(4)
     y = rng.negative_binomial(10, 10 / 3010, 6_000).astype(float)
@@ -230,9 +225,6 @@ def test_the_fit_is_sals_numpy_pmf_to_its_rounding() -> None:
 @pytest.mark.merge
 def test_the_field_is_the_modules_per_bin_sums() -> None:
     """Tabulated and fused fields equal per-bin NumPy sums, to 1e-12 relative."""
-    from port.patch.emission import bb_log_pmf, nb_log_pmf
-    from port.patch.hmrf.fused_field import fused_spot_clone_field
-    from port.patch.hmrf.tabulated_field import tabulated_spot_clone_field
 
     rng = np.random.default_rng(5)
     bins, spots, states, clones = 300, 500, 5, 4
@@ -274,7 +266,6 @@ def test_the_negative_binomial_partials_meet_the_exact_derivatives(
     alpha: float,
 ) -> None:
     """`nb_partials` meets 50-digit central differences, rtol 1e-9 (T- #776)."""
-    from port.patch.emission import nb_partials
 
     counts = np.array([0.0, 1.0, 42.0, 1_000.0])
     for mean in (0.5, 300.0):

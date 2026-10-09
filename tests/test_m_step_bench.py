@@ -67,8 +67,6 @@ def test_m_step(
     arm: Callable[[BetaBinomialChains, np.ndarray], object],
     size: tuple[int, int, int],
 ) -> None:
-    """`Weighted_BetaBinom_mix.fit` to its maximum against upstream's
-    `BetaBinomialEmission.reestimate`.
-    """
+    """`Weighted_BetaBinom_mix.fit` to its maximum against upstream's `BetaBinomialEmission.reestimate`."""
     fixture, posterior = _problem(*size)
     benchmark(arm, fixture, posterior)

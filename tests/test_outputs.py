@@ -7,12 +7,33 @@ positions.
 from __future__ import annotations
 
 import json
+import os
+import shutil
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 import pytest
+from cnaster.hmm_nophasing import hmm_nophasing as upstream
+from port.extensions.outputs import (
+    CNASTER_LABEL,
+    binlevel,
+    clone_columns,
+    config_keys,
+    final_fit,
+    integer_clones,
+    run_directories,
+    segments,
+    states,
+    write_outputs,
+)
+from port.extensions.outputs import _load as load
+from port.patch.hmm_nophasing import hmm_nophasing
+from port.pipeline import with_attributes
+from port.sandbox.extensions import copy_errors
+from port.sim.inputs import GENE_SPACING
+from port.sim.run_config import run_written
 
 from tests.fixtures import end_to_end_truth
 
@@ -84,15 +105,12 @@ def _run(tmp_path: Path, seed: int = 3, shift: np.ndarray | None = None) -> Path
 
 
 def _load(run: Path) -> Any:
-    from port.extensions.outputs import _load as load
-
     return load(run)
 
 
 @pytest.mark.infra
 def test_each_clone_is_matched_to_its_column_by_its_path(tmp_path: Path) -> None:
     """`clone0`, `clone2`, `clone5` sit at positions 1, 2, 0 of `pred_cnv`."""
-    from port.extensions.outputs import clone_columns
 
     seglevel, _, fit = _load(_run(tmp_path))
 
@@ -104,7 +122,6 @@ def test_each_clone_is_matched_to_its_column_by_its_path(tmp_path: Path) -> None
 @pytest.mark.analytic
 def test_the_segments_expand_back_to_every_bin_s_pair(tmp_path: Path) -> None:
     """Each clone's runs tile its bins within chromosomes and carry every bin's pair and state."""
-    from port.extensions.outputs import segments
 
     seglevel, _, fit = _load(_run(tmp_path))
     table = segments(seglevel, fit)
@@ -141,7 +158,6 @@ def test_the_segments_expand_back_to_every_bin_s_pair(tmp_path: Path) -> None:
 @pytest.mark.analytic
 def test_the_states_carry_the_fit_the_decoding_and_the_shares(tmp_path: Path) -> None:
     """One row per clone and state, agreeing with `.npz`, `cnv_perstate.tsv` and every bin."""
-    from port.extensions.outputs import states
 
     seglevel, perstate, fit = _load(_run(tmp_path))
     table = states(seglevel, perstate, fit)
@@ -164,7 +180,6 @@ def test_the_states_carry_the_fit_the_decoding_and_the_shares(tmp_path: Path) ->
 @pytest.mark.analytic
 def test_the_posterior_means_lie_within_the_states(tmp_path: Path) -> None:
     """Posterior means match the `.npz` weights on the states' `p` to 1e-12."""
-    from port.extensions.outputs import binlevel
 
     seglevel, _, fit = _load(_run(tmp_path))
     table = binlevel(seglevel, fit)
@@ -185,7 +200,6 @@ def test_the_writer_leaves_cnaster_s_files_and_writes_valid_json(
     tmp_path: Path,
 ) -> None:
     """Writes four files, leaves `cnaster`'s byte for byte; the manifest is strict JSON."""
-    from port.extensions.outputs import run_directories, write_outputs
 
     run = _run(tmp_path)
     before = {path.name: path.read_bytes() for path in run.iterdir()}
@@ -212,7 +226,6 @@ def test_the_writer_leaves_cnaster_s_files_and_writes_valid_json(
 @pytest.mark.analytic
 def test_clones_that_decode_alike_are_one_integer_clone() -> None:
     """Equal `(A, B)` at every bin is one clone, named by its smallest id."""
-    from port.extensions.outputs import integer_clones
 
     base = np.array([[1, 1], [2, 1], [1, 0], [1, 1]])
     frame = pd.DataFrame({"CHR": [1, 1, 2, 2]})
@@ -228,7 +241,6 @@ def test_clones_that_decode_alike_are_one_integer_clone() -> None:
 @pytest.mark.infra
 def test_the_integer_labels_keep_every_spot_s_fitted_label(tmp_path: Path) -> None:
     """`clone_labels_integer.tsv` is `clone_labels.tsv` plus each spot's integer clone."""
-    from port.extensions.outputs import integer_clones, write_outputs
 
     run = _run(tmp_path)
     seglevel, _, _ = _load(run)
@@ -260,7 +272,6 @@ def test_the_integer_labels_keep_every_spot_s_fitted_label(tmp_path: Path) -> No
 @pytest.mark.infra
 def test_a_merge_rewrites_clone_labels_and_keeps_cnaster_s(tmp_path: Path) -> None:
     """Merged clones rewrite `clone_label`, keeping `cnaster`'s; idempotent over two passes (#518)."""
-    from port.extensions.outputs import CNASTER_LABEL, write_outputs
 
     run = _run(tmp_path)
     labels = pd.DataFrame(
@@ -302,9 +313,6 @@ def test_a_run_s_outputs_recover_the_planted_clones_and_the_flat_normal(
     cnaster_config: None, tmp_path: Path
 ) -> None:
     """On a whole run, fitted clones are planted ones to 95% and the normal reads flat (#293)."""
-    from port.extensions.outputs import run_directories, write_outputs
-    from port.sim.inputs import GENE_SPACING
-    from port.sim.run_config import run_written
 
     truth = end_to_end_truth()
     # NB `cnaster`'s ICM draws from numpy's global generator; seeded and restored.
@@ -355,7 +363,6 @@ def test_the_writer_returns_the_planted_states_of_a_perfect_decode(
     tmp_path: Path,
 ) -> None:
     """A planted-truth run directory reads back as the truth, exactly."""
-    from port.extensions.outputs import binlevel, segments, states
 
     truth = end_to_end_truth()
     n_states, n_bins = len(np.ravel(truth.log_mu)), truth.states.shape[1]
@@ -442,7 +449,6 @@ def _profiles(disagreeing: dict[str, int], n_bins: int = 1000) -> pd.DataFrame:
 @pytest.mark.analytic
 def test_the_agreement_rule_joins_what_agrees_and_no_less() -> None:
     """At 0.99 agreement, profiles differing at 7 of 1,000 bins are one; at 14, two (#518, #344)."""
-    from port.extensions.outputs import integer_clones
 
     frame = _profiles({"0": 0, "1": 7, "2": 14})
 
@@ -455,7 +461,6 @@ def test_the_agreement_rule_joins_what_agrees_and_no_less() -> None:
 @pytest.mark.parametrize("agreement", [0.0, -0.1, 1.5])
 def test_an_agreement_outside_the_unit_interval_is_refused(agreement: float) -> None:
     """A merge agreement outside (0, 1] is refused."""
-    from port.extensions.outputs import integer_clones
 
     with pytest.raises(ValueError, match="merge agreement"):
         integer_clones(_profiles({"0": 0}), agreement)
@@ -464,7 +469,6 @@ def test_an_agreement_outside_the_unit_interval_is_refused(agreement: float) -> 
 @pytest.mark.infra
 def test_the_configured_agreement_is_what_write_outputs_uses(tmp_path: Path) -> None:
     """`int_copy_num.merge_agreement` reaches `config_keys` and the manifest (#518)."""
-    from port.extensions.outputs import config_keys
 
     config = tmp_path / "config.yaml"
     config.write_text("int_copy_num:\n  merge_agreement: 0.99\n")
@@ -475,9 +479,6 @@ def test_the_configured_agreement_is_what_write_outputs_uses(tmp_path: Path) -> 
 @pytest.mark.infra
 def test_a_directory_an_earlier_run_left_is_not_this_run_s(tmp_path: Path) -> None:
     """`since` keeps the directories written at or after it (#617)."""
-    import os
-
-    from port.extensions.outputs import run_directories
 
     run = _run(tmp_path)
     table = run / "cnv_seglevel.tsv"
@@ -493,9 +494,6 @@ def test_two_fits_of_different_k_in_one_directory_are_told_apart(
     tmp_path: Path,
 ) -> None:
     """`n_states` names the fit; two fits without it are refused."""
-    import shutil
-
-    from port.extensions.outputs import final_fit, write_outputs
 
     run = _run(tmp_path)
     shutil.copy(
@@ -522,9 +520,6 @@ def test_copy_sets_go_beside_the_fit_this_run_wrote(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Copy sets go beside this run's fit, not the newest under `output_dir` (#617)."""
-    import os
-
-    from port.sandbox.extensions import copy_errors
 
     ours, other = (
         tmp_path / "clone3_rectangle0_w1.0",
@@ -561,7 +556,6 @@ def test_a_refused_fit_leaves_the_run_and_says_so(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """A refused fit (#599) writes no sets and does not fail the run (#705)."""
-    from port.sandbox.extensions import copy_errors
 
     (tmp_path / "rdrbaf_final_nstates4_smp.npz").write_bytes(b"")
 
@@ -587,7 +581,6 @@ def test_a_bin_s_mu_is_its_state_s_rate_with_the_clone_s_shift(
     tmp_path: Path,
 ) -> None:
     """`clone{c} mu` is `exp(logmu[Z] - shift_c)` to 1e-12; a segment's is its bins' mean (#613)."""
-    from port.extensions.outputs import binlevel, segments
 
     seglevel, _, fit = _load(_run(tmp_path, shift=SHIFT))
     table = binlevel(seglevel, fit)
@@ -617,7 +610,6 @@ def test_a_bin_s_mu_is_its_state_s_rate_with_the_clone_s_shift(
 @pytest.mark.infra
 def test_written_mu_joins_cnv_states_and_the_manifest_shift(tmp_path: Path) -> None:
     """Written `clone{c} mu` is `exp(logmu - log_mu_shift)` from the files (#613)."""
-    from port.extensions.outputs import write_outputs
 
     for name, shift in (("shifted", SHIFT), ("unshifted", None)):
         (tmp_path / name).mkdir()
@@ -642,10 +634,6 @@ def test_a_bin_s_mu_is_the_rate_the_shifted_emission_evaluates(
     tmp_path: Path,
 ) -> None:
     """Written `mu` is the shifted emission's rate, against `cnaster`'s unshifted one (#613)."""
-    from cnaster.hmm_nophasing import hmm_nophasing as upstream
-    from port.extensions.outputs import binlevel
-    from port.patch.hmm_nophasing import hmm_nophasing
-    from port.pipeline import with_attributes
 
     seglevel, _, fit = _load(_run(tmp_path, shift=SHIFT))
     table = binlevel(seglevel, fit)

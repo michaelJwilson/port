@@ -119,9 +119,7 @@ def _target(base: str, name: str) -> str:
 
 @cache
 def edges(module: str) -> frozenset[str]:
-    """Every `port` module `module` imports, following package re-exports and
-    `"port.x:y"` strings.
-    """
+    """Every `port` module `module` imports, following package re-exports and `"port.x:y"` strings."""
     known = modules()
     out: set[str] = set()
 
@@ -195,9 +193,7 @@ def row_modules() -> frozenset[str]:
 
 
 def state_writes() -> dict[str, frozenset[str]]:
-    """Every module-level name `port` writes after import, keyed `module.name`; excludes
-    `sandbox/`.
-    """
+    """Every module-level name `port` writes after import, keyed `module.name`; excludes `sandbox/`."""
     found: dict[str, set[str]] = {}
 
     for module, path in modules().items():
@@ -365,9 +361,7 @@ SHARED_HELPERS = ("fixtures", "adapters", "figure_checks")
 
 @cache
 def counting_mentions() -> dict[str, frozenset[str]]:
-    """Each name, to the `end2end`/`oracle` tests that mention it, transitively through
-    helpers.
-    """
+    """Each name, to the `end2end`/`oracle` tests that mention it, transitively through helpers."""
     out: dict[str, set[str]] = {}
     shared = {
         node.name: node

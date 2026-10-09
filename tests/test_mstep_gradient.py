@@ -6,10 +6,27 @@ The objective's value is first pinned against cnaster's coded emission.
 
 from __future__ import annotations
 
+import warnings
+from types import SimpleNamespace
 from typing import Any
 
+import cnaster.config
+import cnaster.hmm_utils
+import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
+import scipy.optimize
+from cnaster.config import get_global_config
+from cnaster.hmm_nophasing import hmm_nophasing as upstream
+from jax.scipy.special import expit
+from port.patch.hmm_nophasing import hmm_nophasing
+from port.patch.hmm_nophasing.gradient import (
+    EmGradient,
+    analytic_bfgs,
+    configured_method,
+)
+from port.qa.jax_hmm import emission, shifted_rates
 
 from tests.fixtures import two_clone_stacked_instance
 
@@ -18,8 +35,6 @@ def _problem(
     *, shifted: bool, shared: bool, seed: int = 5, silent: float | None = None
 ) -> tuple[Any, Any, np.ndarray, dict[str, Any]]:
     """A clone-stacked fit, mid-EM: posteriors held, parameters at `x`."""
-    from port.patch.hmm_nophasing import hmm_nophasing
-    from port.patch.hmm_nophasing.gradient import EmGradient
 
     generator = np.random.default_rng(seed)
     n_states, n_clones, per_clone = 4, 3, 40
@@ -90,9 +105,6 @@ def _cnaster_value(model: Any, gradient: Any, x: np.ndarray) -> float:
 
 def _jax_objective(model: Any, gradient: Any, data: dict[str, Any]) -> Any:
     """The same objective in `jax`, from `jax_hmm`'s emission and shifted rates."""
-    import jax.numpy as jnp
-    from jax.scipy.special import expit
-    from port.qa.jax_hmm import emission, shifted_rates
 
     n_states = gradient.n_states
     flags = gradient.flags
@@ -154,7 +166,6 @@ def test_the_closed_form_gradient_is_jaxs(
     shifted: bool, shared: bool, cnaster_config: None
 ) -> None:
     """Value to 1e-9 of `cnaster`'s (3.6e-10 realized); gradient to 1e-8 relative of `jax`'s."""
-    import jax
 
     model, gradient, x, data = _problem(shifted=shifted, shared=shared)
     objective = _jax_objective(model, gradient, data)
@@ -197,17 +208,10 @@ def test_a_bin_without_baseline_moves_no_gradient(cnaster_config: None) -> None:
 def test_the_closed_form_fit_is_cnasters_fit_to_a_stated_tolerance(
     cnaster_config: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """cnaster's finite-difference fit matches `port`'s closed-form one to 1e-5 relative
-    at `max_iter=20`.
-    """
-    from cnaster.hmm_nophasing import hmm_nophasing as upstream
-    from port.patch.hmm_nophasing import hmm_nophasing
-    from port.patch.hmm_nophasing.gradient import EmGradient
+    """cnaster's finite-difference fit matches `port`'s closed-form one to 1e-5 relative at `max_iter=20`."""
 
     assert hmm_nophasing.analytic_gradient
     assert EmGradient is not None
-
-    from cnaster.config import get_global_config
 
     # NB BFGS on both sides, so only the gradients differ.
     monkeypatch.setattr(get_global_config().hmm, "solver", "BFGS")
@@ -233,13 +237,7 @@ def test_the_closed_form_fit_is_cnasters_fit_to_a_stated_tolerance(
 
 @pytest.mark.patch
 def test_the_m_step_passes_bfgs_only_its_own_options() -> None:
-    """cnaster's `ftol` reaches no BFGS call; bitwise against scipy BFGS without it
-    (#448).
-    """
-    import warnings
-
-    import scipy.optimize
-    from port.patch.hmm_nophasing.gradient import analytic_bfgs
+    """cnaster's `ftol` reaches no BFGS call; bitwise against scipy BFGS without it (#448)."""
 
     scale = np.array([1.0, 4.0, 9.0])
 
@@ -278,19 +276,11 @@ def test_the_m_step_passes_bfgs_only_its_own_options() -> None:
 def test_the_m_step_runs_the_configured_solver_at_its_tolerances(
     solver: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`hmm.solver` and `em_*` keys reach the M step, bitwise against scipy with the
-    mapped options (#448).
-    """
-    from types import SimpleNamespace
-
-    import cnaster.config
-    import scipy.optimize
-    from port.patch.hmm_nophasing.gradient import configured_method
+    """`hmm.solver` and `em_*` keys reach the M step, bitwise against scipy with the mapped options (#448)."""
 
     hmm = SimpleNamespace(
         solver=solver, em_maxiter=7, em_ftol=1e-3, em_xrtol=1e-3, em_disp=0
     )
-    import cnaster.hmm_utils
 
     # NB both bindings: `hmm_utils` imports the name at load.
     for module in (cnaster.config, cnaster.hmm_utils):

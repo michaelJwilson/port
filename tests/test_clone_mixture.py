@@ -4,6 +4,15 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from cnaster.hmm_nophasing import _dense_bb_logpmf, _dense_nb_logpmf
+from port.sandbox.admixture.clone_mixture import (
+    ADMIXTURE_STARTS,
+    PARSIMONY,
+    fit_mixture,
+    lattice,
+    mixed_parameters,
+    score,
+)
 
 MU = np.array([1.0, 1.5, 0.5, 2.0])
 P = np.array([0.5, 0.67, 0.5, 0.75])
@@ -14,7 +23,6 @@ def _planted(
     weights: np.ndarray, seed: int = 0, n_bins: int = 400
 ) -> tuple[np.ndarray, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
     """Pure paths in blocks, and pseudobulk counts drawn from the mixed model."""
-    from port.sandbox.admixture.clone_mixture import mixed_parameters
 
     rng = np.random.default_rng(seed)
     k = weights.shape[0]
@@ -39,11 +47,7 @@ def _planted(
 
 @pytest.mark.oracle
 def test_the_pure_mixture_is_cnasters_emission() -> None:
-    """At `W = I` each clone's score is `cnaster`'s NB + BB at the shifted-emission mean
-    (#276).
-    """
-    from cnaster.hmm_nophasing import _dense_bb_logpmf, _dense_nb_logpmf
-    from port.sandbox.admixture.clone_mixture import mixed_parameters, score
+    """At `W = I` each clone's score is `cnaster`'s NB + BB at the shifted-emission mean (#276)."""
 
     weights = np.eye(3)
     paths, bulks = _planted(weights)
@@ -72,7 +76,6 @@ def test_the_pure_mixture_is_cnasters_emission() -> None:
 @pytest.mark.end2end
 def test_the_fit_recovers_a_planted_blend_and_never_goes_downhill() -> None:
     """The fit recovers a planted 25% blend to 0.05 and never lowers the log-likelihood."""
-    from port.sandbox.admixture.clone_mixture import fit_mixture
 
     planted = np.eye(3)
     planted[1] = [0.0, 0.75, 0.25]
@@ -93,7 +96,6 @@ def test_the_fit_recovers_a_planted_blend_and_never_goes_downhill() -> None:
 @pytest.mark.analytic
 def test_the_identity_is_the_start_and_a_pure_sample_stays_there() -> None:
     """With no blend planted, the fit keeps `W` within 0.03 of the identity (#380)."""
-    from port.sandbox.admixture.clone_mixture import fit_mixture
 
     paths, bulks = _planted(np.eye(3), seed=5)
     n = MU.size
@@ -109,15 +111,7 @@ def test_the_identity_is_the_start_and_a_pure_sample_stays_there() -> None:
 
 @pytest.mark.end2end
 def test_the_lattice_finds_a_uniform_normal_admixture() -> None:
-    """On integer pairs each tumour clone's diploid weight is 0.08 to 0.03 and its pure
-    pair planted (#380).
-    """
-    from port.sandbox.admixture.clone_mixture import (
-        ADMIXTURE_STARTS,
-        PARSIMONY,
-        fit_mixture,
-        lattice,
-    )
+    """On integer pairs each tumour clone's diploid weight is 0.08 to 0.03 and its pure pair planted (#380)."""
 
     pairs, mu, p = lattice(6)
     index = {tuple(x): i for i, x in enumerate(pairs.tolist())}
@@ -128,8 +122,6 @@ def test_the_lattice_finds_a_uniform_normal_admixture() -> None:
     weights = np.eye(3)
     weights[1] = [0.08, 0.92, 0.0]
     weights[2] = [0.08, 0.0, 0.92]
-
-    from port.sandbox.admixture.clone_mixture import mixed_parameters
 
     rng = np.random.default_rng(7)
     base = np.full((3, n_bins), 400.0) * rng.uniform(0.5, 1.5, n_bins)

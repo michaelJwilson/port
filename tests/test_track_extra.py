@@ -8,6 +8,7 @@ from __future__ import annotations
 import tomllib
 
 import pytest
+from sal import track
 
 from tests import ROOT
 
@@ -15,7 +16,6 @@ from tests import ROOT
 @pytest.mark.infra
 def test_the_recording_seam_imports_without_aim() -> None:
     """`record` through the seam runs without `aim`, using its null store."""
-    from sal import track
 
     tracked = track.current()
 

@@ -4,6 +4,12 @@ from typing import Any
 
 import numpy as np
 import pytest
+from cnaster.spatial import (
+    best_equal_partition,
+    construct_lattice_adjacency,
+    construct_multislice_lattice_adjacency,
+    initialize_rdr_clone_refininement,
+)
 from port.sim.truth import CoreInferenceTruth, core_inference_truth
 
 pytestmark = pytest.mark.preprocessing
@@ -46,7 +52,6 @@ def _moore_neighbourhood(spot: int, rows: int, columns: int) -> set[int]:
 @pytest.fixture(scope="module")
 def adjacency(planted: CoreInferenceTruth) -> tuple[np.ndarray, np.ndarray]:
     """Run `construct_multislice_lattice_adjacency` once on the one planted slice."""
-    from cnaster.spatial import construct_multislice_lattice_adjacency
 
     result = construct_multislice_lattice_adjacency(
         np.zeros(planted.n_spots, dtype=int),
@@ -111,7 +116,6 @@ def test_the_pooling_matrix_is_the_identity_whatever_is_asked_for(
     planted: CoreInferenceTruth, adjacency: tuple[np.ndarray, np.ndarray]
 ) -> None:
     """`maxspots_pooling` is discarded: the smoothing matrix is the identity."""
-    from cnaster.spatial import construct_lattice_adjacency
 
     _, smooth = adjacency
 
@@ -129,7 +133,6 @@ def test_the_equal_partition_recovers_the_planted_bands(
     planted: CoreInferenceTruth,
 ) -> None:
     """`best_equal_partition` returns the planted bands exactly (#160)."""
-    from cnaster.spatial import best_equal_partition
 
     # NB equal bands: #298's normal clone would make the planted bands unequal
     planted = core_inference_truth(
@@ -164,7 +167,6 @@ def test_the_read_depth_refinement_splits_clones_without_mixing_them(
     planted: CoreInferenceTruth,
 ) -> None:
     """Each refined clone lies inside one planted clone, allowed its own two (#160)."""
-    from cnaster.spatial import initialize_rdr_clone_refininement
 
     config = _refinement_config(n_clones_rdr=2)
 

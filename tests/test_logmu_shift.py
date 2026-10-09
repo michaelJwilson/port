@@ -45,9 +45,7 @@ def _case(
 )
 @pytest.mark.cnaster
 def test_it_reproduces_cnasters_loop(lengths: list[int], n_states: int) -> None:
-    """`np.repeat` of the per-clone return equals upstream's per-segment array, bitwise,
-    at unequal lengths.
-    """
+    """`np.repeat` of the per-clone return equals upstream's per-segment array, bitwise, at unequal lengths."""
     log_mus, copy_states, normal_log_lambda, clone_lengths = _case(
         lengths, n_states, 17
     )

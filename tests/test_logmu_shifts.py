@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+from cnaster.hmm_nophasing import compute_logmu_shifts
 
 
 def draw(seed: int, n_states: int, clone_lengths: list[int]) -> tuple[np.ndarray, ...]:
@@ -22,7 +23,6 @@ def draw(seed: int, n_states: int, clone_lengths: list[int]) -> tuple[np.ndarray
 @pytest.mark.smoke
 def test_is_constant_within_a_clone() -> None:
     """One shift per clone, constant over its positions."""
-    from cnaster.hmm_nophasing import compute_logmu_shifts
 
     clone_lengths = [6, 9, 5]
     shifts = compute_logmu_shifts(
@@ -40,7 +40,6 @@ def test_is_constant_within_a_clone() -> None:
 @pytest.mark.parametrize("offset", [-2.0, 0.5, 3.0])
 def test_shifts_with_log_mu(offset: float) -> None:
     """Scaling every mean by `c` moves the shift by `log c`."""
-    from cnaster.hmm_nophasing import compute_logmu_shifts
 
     log_mus, copy_states, normal_log_lambda, clone_lengths = draw(
         seed=9, n_states=3, clone_lengths=[8, 8]
@@ -56,7 +55,6 @@ def test_shifts_with_log_mu(offset: float) -> None:
 @pytest.mark.analytic
 def test_normalised_weights_and_one_state_give_that_state() -> None:
     """Equal `log_mu` everywhere returns that value."""
-    from cnaster.hmm_nophasing import compute_logmu_shifts
 
     n_segments = 12
     log_mus = np.array([1.75])

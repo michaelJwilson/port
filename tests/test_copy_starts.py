@@ -10,8 +10,10 @@ from typing import Any
 
 import numpy as np
 import pytest
+import torch
 from port.extensions import copy_starts as cs
 from port.sandbox.extensions import copy_starts as study
+from sal.emissions import CountPairEmission
 
 STATES_RDRBAF = ((0.0, 0.5), (-0.69, 0.02), (0.41, 0.33))
 """`(log mu, p)` per planted state: neutral, a one-copy loss, a gain."""
@@ -20,9 +22,7 @@ STATES_RDRBAF = ((0.0, 0.5), (-0.69, 0.02), (0.41, 0.33))
 def _call(
     stage: str, n_bins: int = 400, n_clones: int = 2, seed: int = 0
 ) -> cs.CopyCall:
-    """A clone-stacked call from `STATES_RDRBAF`: Poisson totals at exposure times `mu`,
-    binomial B counts.
-    """
+    """A clone-stacked call from `STATES_RDRBAF`: Poisson totals at exposure times `mu`, binomial B counts."""
     rng = np.random.default_rng(seed)
     n = n_bins * n_clones
     state = rng.integers(0, len(STATES_RDRBAF), size=n)
@@ -79,9 +79,7 @@ def test_the_planted_states_are_the_pooled_rates_that_drew_them() -> None:
 @pytest.mark.analytic
 @pytest.mark.merge
 def test_the_baf_only_stage_reads_no_read_depth() -> None:
-    """On the BAF-only stage the polished fit and likelihood do not depend on `log mu` or
-    the totals.
-    """
+    """On the BAF-only stage the polished fit and likelihood do not depend on `log mu` or the totals."""
     call = _call("baf")
     p = np.array([0.5, 0.05, 0.3])
     one = cs.polish_states("a", call, np.zeros(3), p, seconds=10.0)
@@ -97,9 +95,7 @@ def test_the_baf_only_stage_reads_no_read_depth() -> None:
 
 @pytest.mark.analytic
 def test_a_window_of_one_segment_is_the_call_and_a_genome_wide_one_is_its_sum() -> None:
-    """`smoothed`: a one-segment window is the call; a window wider than a contig gives
-    each row its contig's totals.
-    """
+    """`smoothed`: a one-segment window is the call; a window wider than a contig gives each row its contig's totals."""
     call = _call("rdrbaf", n_bins=40)
     same = study.smoothed(call, segments=1)
     wide = study.smoothed(call, bp=1e12)
@@ -140,9 +136,7 @@ def test_an_outlier_arm_changes_the_rows_it_names_and_no_others() -> None:
 
 @pytest.mark.infra
 def test_every_start_names_its_stages_and_the_registry_is_one_list() -> None:
-    """Each start takes one or both stages; `sal`'s starts sit beside `cnaster`'s and
-    port's in one registry.
-    """
+    """Each start takes one or both stages; `sal`'s starts sit beside `cnaster`'s and port's in one registry."""
     names = set(study.starts())
 
     assert {"kmeans++", "kmeans++x5", "kmeans++x5+em", "emission++", "prior"} <= names
@@ -154,9 +148,7 @@ def test_every_start_names_its_stages_and_the_registry_is_one_list() -> None:
 
 @pytest.mark.analytic
 def test_a_state_placed_on_the_instance_reads_back_as_itself() -> None:
-    """`(log mu, p)` through the instance's seeding and back is the identity, a loss
-    included (#540).
-    """
+    """`(log mu, p)` through the instance's seeding and back is the identity, a loss included (#540)."""
     for stage in cs.STAGES:
         call = _call(stage)
         held = cs.instance(call)
@@ -188,11 +180,7 @@ def test_the_lattice_start_places_the_states_that_drew_the_call_before_any_polis
 
 @pytest.mark.oracle
 def test_the_lattice_channels_are_sals_count_pair_density() -> None:
-    """`channel_log_densities` against `sal`'s independent-form `CountPairEmission`, to
-    1e-10 relative.
-    """
-    import torch
-    from sal.emissions import CountPairEmission
+    """`channel_log_densities` against `sal`'s independent-form `CountPairEmission`, to 1e-10 relative."""
 
     for stage in cs.STAGES:
         call = _call(stage)
@@ -229,9 +217,7 @@ def test_the_lattice_channels_are_sals_count_pair_density() -> None:
 @pytest.mark.bug
 @pytest.mark.parametrize("covariate", [True, False])
 def test_every_seeding_row_is_a_rate_the_seam_can_place(covariate: bool) -> None:
-    """Every seeding B count lies within the common trial count, on both instances
-    (`d2938975`).
-    """
+    """Every seeding B count lies within the common trial count, on both instances (`d2938975`)."""
     call = _call("rdrbaf")
     call.trials[:10] = 5 * call.trials.max()
     call.b[:10] = call.trials[:10] * 0.9

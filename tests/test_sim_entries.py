@@ -17,6 +17,7 @@ from port.sim.entries import (
     independent,
     mixture,
 )
+from scipy.stats import chi2_contingency, chisquare
 
 
 def _law(alpha: float) -> Mixture:
@@ -30,7 +31,6 @@ def _law(alpha: float) -> Mixture:
 @pytest.mark.parametrize("alpha", [0.0, 1.0, 12.0])
 def test_the_exact_sampler_draws_the_laws_pmf(alpha: float) -> None:
     """400,000 entries match `Mixture.pmf`: nonzero share to 4 SE, chi-square p > 1e-3."""
-    from scipy.stats import chisquare
 
     law = _law(alpha)
     drawn = independent(law, (400, 1_000), np.random.default_rng(2))
@@ -99,7 +99,6 @@ def test_the_concentration_is_recovered_from_a_draw_at_it() -> None:
 @pytest.mark.oracle
 def test_the_urn_draws_the_gamma_samplers_law() -> None:
     """The urn's per-clone, per-gene count pmf matches normalized gammas, chi-square p > 1e-3."""
-    from scipy.stats import chi2_contingency
 
     q = np.array([[0.55, 0.05], [0.25, 0.15], [0.15, 0.3], [0.05, 0.5]])
     n = 30_000

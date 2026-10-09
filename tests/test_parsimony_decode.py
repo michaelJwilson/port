@@ -12,8 +12,15 @@ from contextlib import contextmanager
 from typing import Any
 
 import numpy as np
+import port.extensions.copy_likelihood as module
 import pytest
-from port.extensions.copy_likelihood import PARSIMONY, Pseudobulk
+from port.extensions.copy_likelihood import (
+    PARSIMONY,
+    Pseudobulk,
+    _prior,
+    lattice_decode,
+)
+from port.patch.integer_copy import decode_clone
 
 PLANTED = ((1, 1), (0, 1), (2, 2), (0, 2), (2, 1))
 """One bin run per pair: a loss, a balanced gain and copy-neutral LOH among them."""
@@ -45,7 +52,6 @@ def _clones() -> list[tuple[np.ndarray, Pseudobulk, float]]:
 @contextmanager
 def _spied(clones: list[Any]) -> Iterator[list[dict[str, Any]]]:
     """`captured_clones` answering `clones`; each `lattice_decode` call recorded."""
-    import port.extensions.copy_likelihood as module
 
     original_clones, original_decode = module.captured_clones, module.lattice_decode
     calls: list[dict[str, Any]] = []
@@ -67,7 +73,6 @@ def _spied(clones: list[Any]) -> Iterator[list[dict[str, Any]]]:
 
 def _decode(clones: list[Any], **options: Any) -> list[dict[str, Any]]:
     """`decode_clone` as the copy rows call it, with `options` bound."""
-    from port.patch.integer_copy import decode_clone
 
     path = clones[0][0]
     log_mu = np.zeros(len(PLANTED))
@@ -81,7 +86,6 @@ def _decode(clones: list[Any], **options: Any) -> list[dict[str, Any]]:
 @pytest.mark.analytic
 def test_a_parsimony_of_zero_is_a_flat_prior() -> None:
     """At `parsimony=0` the prior is zero for every pair up to total 6."""
-    from port.extensions.copy_likelihood import _prior
 
     states = np.array([(a, b) for a in range(7) for b in range(7 - a)])
 
@@ -101,7 +105,6 @@ def test_with_the_flag_zero_reaches_the_lattice_decode() -> None:
 @pytest.mark.patch
 def test_without_the_flag_the_decode_is_bitwise_the_default_lattice_decode() -> None:
     """The rows' default: pairs, fractions and likelihood equal `lattice_decode`'s default call."""
-    from port.extensions.copy_likelihood import lattice_decode
 
     clones = _clones()
     calls = _decode(clones)

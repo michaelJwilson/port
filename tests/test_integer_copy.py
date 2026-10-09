@@ -6,6 +6,7 @@ nominal rate.
 
 import numpy as np
 import pytest
+from cnaster.integer_copy import get_acn_baf_rdr, get_ordered_acn
 from port.extensions.integer_copy import (
     CHANNELS,
     acn_lattice,
@@ -14,11 +15,15 @@ from port.extensions.integer_copy import (
     decode_copy_state,
     success_probability_variance,
 )
+from sal.emissions import BetaBinomialEmission
+from sal.opt.fit import fit, parameter_covariance
+from sal.opt.hmm import EmissionHmmObjective
 from scipy.stats import chi2
 
+from tests.fixtures import beta_binomial_chains
+
 PLANTED = (2, 1)
-"""A single-copy gain with one allele lost: `mubar = 1.5`, `p = 1/3`, near its lattice neighbours.
-"""
+"""A single-copy gain with one allele lost: `mubar = 1.5`, `p = 1/3`, near its lattice neighbours."""
 
 TIGHT = np.diag([0.02**2, 0.01**2])
 """A covariance small enough that the decoding is unambiguous."""
@@ -39,8 +44,6 @@ def test_the_lattice_is_the_one_cnaster_searches() -> None:
     assert set(acn_lattice()) == cnaster_candidates
     assert len(acn_lattice()) == 25
 
-    from cnaster.integer_copy import get_ordered_acn
-
     assert (6, 0) in get_ordered_acn()
     assert (6, 0) not in cnaster_candidates
 
@@ -52,8 +55,6 @@ def test_the_minor_allele_is_the_numerator() -> None:
 
     assert observables[0, 0] == pytest.approx(2.0)
     assert observables[0, 1] == pytest.approx(0.25)
-
-    from cnaster.integer_copy import get_acn_baf_rdr
 
     cnaster_baf, cnaster_rdr = get_acn_baf_rdr([(3, 1)])
 
@@ -200,11 +201,6 @@ def test_a_scale_error_empties_the_set_without_moving_the_argmin() -> None:
 @pytest.mark.xdist_group("pipeline")
 def test_the_covariance_comes_from_upstream() -> None:
     """Covariance from `snakes_and_ladders` at a fitted maximum (4,800 observations), decoded (#6)."""
-    from sal.emissions import BetaBinomialEmission
-    from sal.opt.fit import fit, parameter_covariance
-    from sal.opt.hmm import EmissionHmmObjective
-
-    from tests.fixtures import beta_binomial_chains
 
     fixture = beta_binomial_chains(n_states=3, sequence_length=600, n_sequences=8)
     observations = np.asarray(fixture.dataset.observations)

@@ -9,16 +9,19 @@ from __future__ import annotations
 
 from typing import Any
 
+import anndata
 import numpy as np
 import pandas as pd
 import pytest
+from cnaster.normal_spot import filter_normal_diffexp as upstream
+from port.extensions.segments import recording
+from port.patch.normal_spot import filter_normal_diffexp, flagged_genes
+from port.patch.omics import summarize_counts_for_bins
 
 N_SPOTS = 400
 N_GENES = 300
 FOLD = 300.0
-"""A tumour fold leaving a normalized log fold change of about 5, above `logfcthreshold_t =
-4`.
-"""
+"""A tumour fold leaving a normalized log fold change of about 5, above `logfcthreshold_t = 4`."""
 
 
 def _expression(seed: int = 7) -> tuple[pd.DataFrame, np.ndarray, list[str]]:
@@ -45,11 +48,7 @@ def _bins(genes: list[str], per_bin: int) -> pd.DataFrame:
 @pytest.mark.cnaster
 @pytest.mark.patch
 def test_one_gene_bins_are_cnasters_bitwise_with_genes_flagged() -> None:
-    """On one-gene bins the drop-in equals `cnaster`'s filter bitwise and flags the planted
-    genes.
-    """
-    from cnaster.normal_spot import filter_normal_diffexp as upstream
-    from port.patch.normal_spot import filter_normal_diffexp, flagged_genes
+    """On one-gene bins the drop-in equals `cnaster`'s filter bitwise and flags the planted genes."""
 
     counts, normal, planted = _expression()
     bins = _bins(list(counts.columns), 1)
@@ -64,7 +63,6 @@ def test_one_gene_bins_are_cnasters_bitwise_with_genes_flagged() -> None:
 @pytest.mark.oracle
 def test_a_multi_gene_bin_keeps_its_unflagged_genes() -> None:
     """Each bin's read depth is the sum of its genes' counts, the flagged ones left out."""
-    from port.patch.normal_spot import filter_normal_diffexp, flagged_genes
 
     counts, normal, _ = _expression()
     bins = _bins(list(counts.columns), 4)
@@ -82,9 +80,6 @@ def test_a_multi_gene_bin_keeps_its_unflagged_genes() -> None:
 @pytest.mark.oracle
 def test_the_bins_summed_after_the_filter_leave_the_flagged_genes_out() -> None:
     """`summarize_counts_for_bins` inside a recording reads depth from every gene but the flagged."""
-    import anndata
-    from port.extensions.segments import recording
-    from port.patch.omics import summarize_counts_for_bins
 
     counts, _, _ = _expression()
     genes = list(counts.columns)

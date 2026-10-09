@@ -2,11 +2,34 @@
 
 from __future__ import annotations
 
+import contextlib
+import inspect
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
+import cnaster.scripts.run_cnaster as pipeline
+import cnaster.spatial as upstream
 import numpy as np
 import pytest
+from cnaster.config import get_global_config
+from cnaster.icm import icm_sweep_deque
+from port.patch.hmm_nophasing import hmm_nophasing
+from port.patch.hmrf import clone_assignment, refinement
+from port.patch.hmrf.clone_assignment import pipeline_clone_assignment
+from port.patch.hmrf.refinement import (
+    forget,
+    initialize_rdr_clone_refininement,
+    mask_for,
+)
+from port.patch.icm.floor import CNASTER_FLOOR, configured_floor, floor_clones
+from port.patch.icm.interface import CsrGraph, icm_sweep
+from port.pipeline import with_attributes
+from port.qa.audit import audit_truth
+from port.scripts.run_cnaster import main
+from port.sim import truth as sim_truth
+from sal.search.icm import _floor_smallest_first
+from scipy.sparse import csr_matrix
 
 
 def _problem(sizes: list[int], seed: int = 7) -> tuple[np.ndarray, np.ndarray]:
@@ -21,8 +44,6 @@ def _problem(sizes: list[int], seed: int = 7) -> tuple[np.ndarray, np.ndarray]:
 @pytest.mark.bug
 def test_cnasters_floor_moves_every_undersized_clone_into_the_one_over_it() -> None:
     """`cnaster`'s floor of 20 over 25 + 15 x 9 spots leaves one clone; fails when fixed."""
-    from port.patch.icm.interface import CsrGraph, icm_sweep
-    from scipy.sparse import csr_matrix
 
     field, assignment = _problem([25] + [9] * 15)
     graph = CsrGraph.from_matrix(csr_matrix((assignment.size, assignment.size)))
@@ -36,7 +57,6 @@ def test_cnasters_floor_moves_every_undersized_clone_into_the_one_over_it() -> N
 @pytest.mark.patch
 def test_the_floor_merges_smallest_first_and_stops_when_every_clone_clears_it() -> None:
     """`floor_clones` on the same problem keeps seven clones of at least 20 spots."""
-    from port.patch.icm.floor import floor_clones
 
     field, assignment = _problem([25] + [9] * 15)
     emptied = floor_clones(field, assignment, 20)
@@ -51,7 +71,6 @@ def test_the_floor_merges_smallest_first_and_stops_when_every_clone_clears_it() 
 @pytest.mark.patch
 def test_the_floor_does_not_cross_a_masked_boundary() -> None:
     """An undersized clone with no unmasked partner keeps its spots."""
-    from port.patch.icm.floor import floor_clones
 
     field, assignment = _problem([30, 5, 30])
     field[assignment == 1, 0] = -np.inf
@@ -64,8 +83,6 @@ def test_the_floor_does_not_cross_a_masked_boundary() -> None:
 
 @pytest.mark.infra
 def test_the_mask_is_handed_only_to_the_problem_it_describes() -> None:
-    from port.patch.hmrf import refinement
-
     mask = np.zeros((4, 3), dtype=bool)
     mask[:2, :2] = True
     mask[2:, 2] = True
@@ -87,14 +104,6 @@ def test_the_mask_is_handed_only_to_the_problem_it_describes() -> None:
 @pytest.mark.usefixtures("cnaster_config")
 def test_the_refinement_start_is_upstreams_and_its_mask_is_kept() -> None:
     """The wrapper returns `cnaster`'s three values unchanged and keeps the mask."""
-    from types import SimpleNamespace
-
-    import cnaster.spatial as upstream
-    from port.patch.hmrf.refinement import (
-        forget,
-        initialize_rdr_clone_refininement,
-        mask_for,
-    )
 
     rng = np.random.default_rng(5)
     coords = np.column_stack(np.unravel_index(np.arange(200), (10, 20)))
@@ -121,12 +130,6 @@ def test_the_refinement_start_is_upstreams_and_its_mask_is_kept() -> None:
 @pytest.mark.usefixtures("cnaster_config")
 def test_the_floor_is_cnasters_unless_the_config_sets_one() -> None:
     """Unset `hmrf.min_spots_per_clone` keeps `cnaster`'s floor (#348, #403, #517)."""
-    import inspect
-
-    from cnaster.config import get_global_config
-    from cnaster.icm import icm_sweep_deque
-    from port.patch.hmrf.clone_assignment import pipeline_clone_assignment
-    from port.patch.icm.floor import CNASTER_FLOOR, configured_floor
 
     default = inspect.signature(icm_sweep_deque).parameters["min_clone_spots"].default
     assert default == CNASTER_FLOOR
@@ -142,7 +145,6 @@ def test_the_floor_is_cnasters_unless_the_config_sets_one() -> None:
 @pytest.mark.patch
 def test_the_mask_keeps_the_columns_cnaster_relabels_survivors_to() -> None:
     """`compact` keeps mask columns in `run_core_inference`'s ascending relabel order."""
-    from port.patch.hmrf import refinement
 
     mask = np.eye(4, dtype=bool)
     assignment = np.array([3, 0, 3, 0])
@@ -165,8 +167,6 @@ def test_no_patch_refuses_a_flag_nothing_would_read(
     flag: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`--no-patch` refuses the mask and floor flags, which only port's assignment reads (#466)."""
-    import cnaster.scripts.run_cnaster as pipeline
-    from port.scripts.run_cnaster import main
 
     config = tmp_path / "config.yaml"
     config.write_text("{}\n")
@@ -185,11 +185,6 @@ def test_a_delegated_assignment_says_it_drops_the_mask_floor_or_shift(
     flag: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """With a tumour proportion the call delegates to `cnaster` and says what it drops (#466)."""
-    import contextlib
-
-    from port.patch.hmm_nophasing import hmm_nophasing
-    from port.patch.hmrf import clone_assignment, refinement
-    from port.pipeline import with_attributes
 
     said: list[str] = []
     monkeypatch.setattr(clone_assignment, "UPSTREAM", lambda *_, **__: "cnaster")
@@ -223,10 +218,6 @@ def test_sal_recovers_dev_where_the_hard_mask_froze_the_baf_boundary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`--sal` recovers `dev`'s planted clones where the hard mask froze the BAF boundary (#467)."""
-    import numpy as np
-    from port.patch.hmrf import refinement
-    from port.qa.audit import audit_truth
-    from port.sim import truth as sim_truth
 
     soft, _ = audit_truth(sim_truth.dev_instance(), ["--sal"])
 
@@ -241,8 +232,6 @@ def test_sal_recovers_dev_where_the_hard_mask_froze_the_baf_boundary(
 @pytest.mark.oracle
 def test_the_floor_is_sals_oracle_on_random_problems() -> None:
     """`floor_clones` equals `sal`'s oracle `_floor_smallest_first` on 300 random problems (#777)."""
-    from port.patch.icm.floor import floor_clones
-    from sal.search.icm import _floor_smallest_first
 
     rng = np.random.default_rng(0)
     for _ in range(300):

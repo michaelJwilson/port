@@ -9,15 +9,18 @@ from __future__ import annotations
 
 import gzip
 import hashlib
+import importlib
 import pickle
 import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from port.sim.fixtures import R0_HASH, r0, realization_hash
+import pandas as pd
+from port.qa.audit import audit_sample
+from port.sim.fixtures import R0_HASH, SAMPLES, load_simulated, r0, realization_hash
 
 from tests import ROOT
 
@@ -71,9 +74,7 @@ class Stages:
         return [call for call in self.calls if call.name == name]
 
     def one(self, name: str, index: int = 0) -> Call:
-        """The `index`-th call to `name`; `run_core_inference`'s 0 is BAF-only, 1 is
-        RDR+BAF.
-        """
+        """The `index`-th call to `name`; `run_core_inference`'s 0 is BAF-only, 1 is RDR+BAF."""
         calls = self.all(name)
 
         if index >= len(calls):
@@ -85,7 +86,6 @@ class Stages:
 
 def _sample(name: str) -> tuple[Any, str]:
     """The `SimulatedSample`, and the content key it is cached under."""
-    from port.sim.fixtures import SAMPLES, load_simulated
 
     if name == "r0":
         r0()
@@ -124,7 +124,6 @@ def code_hash() -> str:
 @contextmanager
 def capturing(calls: list[Call], names: tuple[str, ...] = CAPTURED) -> Iterator[None]:
     """Record the driver's calls to `names`, around whatever each is bound to."""
-    import importlib
 
     driver = importlib.import_module(DRIVER)
     undo: list[tuple[str, Any]] = []
@@ -153,11 +152,6 @@ def _record(
     name: str, flags: tuple[str, ...], oracle: bool, overrides: dict[str, Any]
 ) -> Stages:
     """Run the sample once, with the driver's stage calls recorded."""
-    import importlib
-    from dataclasses import asdict
-
-    import pandas as pd
-    from port.qa.audit import audit_sample
 
     driver = importlib.import_module(DRIVER)
 

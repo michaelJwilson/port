@@ -10,6 +10,12 @@ from typing import Any
 import numpy as np
 import pytest
 import scipy.sparse as sp
+from cnaster.spatial import construct_lattice_adjacency
+from port.extensions.adjacency import AdjacencyError, lattice_adjacency
+from port.patch.icm.alpha_expansion import potts_graph_from
+from port.patch.icm.interface import CsrGraph
+from sal.sim.graph import PottsGraph
+from sal.sim.potts import energy
 
 from tests.adapters import square_coords
 
@@ -32,9 +38,6 @@ def _upper_triangle(
 @pytest.mark.parametrize("side", [6, 40])
 def test_a_symmetric_graph_converts_bitwise_as_the_loop_did(side: int) -> None:
     """The lattice construction's reinforced graph: same edges, same couplings."""
-    from port.extensions.adjacency import lattice_adjacency
-    from port.patch.icm.alpha_expansion import potts_graph_from
-    from port.patch.icm.interface import CsrGraph
 
     graph = CsrGraph.from_matrix(lattice_adjacency(square_coords(side, side), "moore"))
     ours = potts_graph_from(graph, 0.6)
@@ -48,10 +51,6 @@ def test_a_symmetric_graph_converts_bitwise_as_the_loop_did(side: int) -> None:
 @pytest.mark.cnaster
 def test_a_one_way_edge_carries_half_the_coupling_cnasters_row_sum_does() -> None:
     """Zero-field energy equals half `cnaster`'s row-sum coupling on its kNN graph, to 1e-12."""
-    from cnaster.spatial import construct_lattice_adjacency
-    from port.patch.icm.alpha_expansion import potts_graph_from
-    from port.patch.icm.interface import CsrGraph
-    from sal.sim.potts import energy
 
     _, directed = construct_lattice_adjacency(
         square_coords(40, 40).astype(float), unit_xsquared=1, unit_ysquared=1
@@ -74,9 +73,6 @@ def test_a_one_way_edge_carries_half_the_coupling_cnasters_row_sum_does() -> Non
 @pytest.mark.patch
 def test_a_mostly_one_way_graph_is_refused() -> None:
     """A graph with under 0.6 of edges reciprocated is refused."""
-    from port.extensions.adjacency import AdjacencyError
-    from port.patch.icm.alpha_expansion import potts_graph_from
-    from port.patch.icm.interface import CsrGraph
 
     rng = np.random.default_rng(0)
     n = 144
@@ -93,7 +89,6 @@ def test_a_mostly_one_way_graph_is_refused() -> None:
 
 def _symmetrized_from_csr(graph: Any, beta: float) -> Any:
     """Return the replaced construction (T- #632): `(A + A^T) * beta / 2` via `from_csr`."""
-    from sal.sim.graph import PottsGraph
 
     n = int(graph.indptr.size - 1)
     matrix = sp.csr_matrix((graph.weights, graph.indices, graph.indptr), shape=(n, n))
@@ -107,9 +102,6 @@ def _symmetrized_from_csr(graph: Any, beta: float) -> Any:
 @pytest.mark.parametrize("beta", [0.6, 1.3, 7.0])
 def test_from_directed_csr_builds_the_symmetrized_graph_bitwise(beta: float) -> None:
     """On `cnaster`'s directed kNN graph, edges and couplings equal `_symmetrized_from_csr`'s."""
-    from cnaster.spatial import construct_lattice_adjacency
-    from port.patch.icm.alpha_expansion import potts_graph_from
-    from port.patch.icm.interface import CsrGraph
 
     _, directed = construct_lattice_adjacency(
         square_coords(40, 40).astype(float), unit_xsquared=1, unit_ysquared=1

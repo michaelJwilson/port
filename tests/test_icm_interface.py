@@ -5,8 +5,11 @@ Each comparison seeds the legacy global RNG identically, since the sweep's queue
 draws from it.
 """
 
+import inspect
+
 import numpy as np
 import pytest
+from cnaster import icm
 from port.patch.icm.interface import CsrGraph, fold_unary, icm_sweep
 from scipy.sparse import csr_matrix
 
@@ -81,9 +84,7 @@ def test_the_reduced_call_is_bitwise_cnasters(seed: int) -> None:
 
 @pytest.mark.patch
 def test_the_per_sample_weights_fold_bitwise() -> None:
-    """Folding `log_persample_weights[c, sample_ids[i]]` once matches cnaster's per-
-    visit add, bitwise.
-    """
+    """Folding `log_persample_weights[c, sample_ids[i]]` once matches cnaster's per- visit add, bitwise."""
     field, graph, assignment, sample_ids = _problem()
 
     rng = np.random.default_rng(SEED)
@@ -110,9 +111,7 @@ def test_the_per_sample_weights_fold_bitwise() -> None:
 
 @pytest.mark.patch
 def test_the_allowed_clone_mask_folds_bitwise() -> None:
-    """`onehot_allowed_clones` folded as `-inf` matches cnaster's post-edge-term
-    overwrite, bitwise.
-    """
+    """`onehot_allowed_clones` folded as `-inf` matches cnaster's post-edge-term overwrite, bitwise."""
     field, graph, assignment, _ = _problem()
 
     rng = np.random.default_rng(SEED)
@@ -150,9 +149,7 @@ def test_the_temperature_folds_into_the_coupling(temp: float) -> None:
 
 @pytest.mark.bug
 def test_the_posterior_argument_is_never_read_or_written() -> None:
-    """`posterior` is unread: a finite array comes back untouched and the labelling
-    equals `None`'s.
-    """
+    """`posterior` is unread: a finite array comes back untouched and the labelling equals `None`'s."""
     field, graph, assignment, _ = _problem()
 
     posterior = np.full((N_SPOTS, N_CLONES), 0.25)
@@ -169,12 +166,7 @@ def test_the_posterior_argument_is_never_read_or_written() -> None:
 
 @pytest.mark.patch
 def test_the_live_sweep_is_the_csr_one() -> None:
-    """`cnaster.icm` exports the last of four `icm_sweep_deque` definitions, the CSR one
-    the patch wraps.
-    """
-    import inspect
-
-    from cnaster import icm
+    """`cnaster.icm` exports the last of four `icm_sweep_deque` definitions, the CSR one the patch wraps."""
 
     source = inspect.getsource(icm)
     assert source.count("\ndef icm_sweep_deque(") == 4, "the shadowing changed"
@@ -188,9 +180,7 @@ def test_the_live_sweep_is_the_csr_one() -> None:
 
 @pytest.mark.bug
 def test_the_sweep_is_not_reproducible_without_seeding_a_global() -> None:
-    """Two unseeded runs of cnaster's sweep differ: it shuffles with the legacy global
-    RNG.
-    """
+    """Two unseeded runs of cnaster's sweep differ: it shuffles with the legacy global RNG."""
     field, graph, assignment, _ = _problem()
 
     # NPY002: cnaster's sweep shuffles with the legacy global RNG.

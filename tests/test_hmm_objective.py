@@ -10,7 +10,36 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
+import port.sandbox.extensions.hmm_objective as module
 import pytest
+import torch
+from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d, hmm_nophasing
+from port.qa.jax_hmm import emission, marginal_negative_log_likelihood
+from port.qa.provenance import CONFIGS, calibration
+from port.sandbox.extensions.copy_starts import HMM_SAMPLERS
+from port.sandbox.extensions.hmm_objective import (
+    ALPHA,
+    BUDGETS,
+    DEFAULTS,
+    SAMPLERS,
+    TAU,
+    TUNED_KEYS,
+    T,
+    negative_log_likelihood,
+    objective_for,
+    sample,
+)
+from port.studies import copy_state_stream, potts_stream
+from sal.emissions import RateConcentrationCountPairEmission
+from sal.opt.hmm import EmissionHmmObjective
+from sal.opt.objective import (
+    Restricted,
+    autograd_value_and_gradient,
+    coordinates,
+    value_and_gradient,
+)
+from sal.ragged import Ragged
+from scipy.special import logsumexp
 
 
 def _rows() -> dict[str, Any]:
@@ -32,8 +61,6 @@ def _rows() -> dict[str, Any]:
 
 
 def _objective(rows: dict[str, Any], theta: np.ndarray) -> Any:
-    from port.sandbox.extensions.hmm_objective import objective_for
-
     return objective_for(
         rows["total"], rows["b"], rows["exposure"], rows["trials"],
         rows["lengths"], 3, theta,
@@ -42,14 +69,7 @@ def _objective(rows: dict[str, Any], theta: np.ndarray) -> Any:
 
 @pytest.mark.oracle
 def test_the_adapter_is_cnasters_forward_and_ports_nll() -> None:
-    """At 5 random states: `cnaster`'s `forward_lattice` to 1e-9 relative, port's JAX NLL
-    to 1e-12.
-    """
-    import torch
-    from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d, hmm_nophasing
-    from port.qa.jax_hmm import emission, marginal_negative_log_likelihood
-    from port.sandbox.extensions.hmm_objective import ALPHA, TAU, T
-    from scipy.special import logsumexp
+    """At 5 random states: `cnaster`'s `forward_lattice` to 1e-9 relative, port's JAX NLL to 1e-12."""
 
     rows = _rows()
     n_obs, k = rows["total"].size, 3
@@ -91,15 +111,7 @@ def test_the_adapter_is_cnasters_forward_and_ports_nll() -> None:
 
 @pytest.mark.oracle
 def test_the_adapter_is_sals_count_pair_hmm_objective() -> None:
-    """At 5 random states: `sal`'s `EmissionHmmObjective` value to 1e-12 relative, gradient
-    to 1e-10 of the norm (T- #707).
-    """
-    import torch
-    from port.sandbox.extensions.hmm_objective import ALPHA, TAU, T
-    from sal.emissions import RateConcentrationCountPairEmission
-    from sal.opt.hmm import EmissionHmmObjective
-    from sal.opt.objective import Restricted, coordinates
-    from sal.ragged import Ragged
+    """At 5 random states: `sal`'s `EmissionHmmObjective` value to 1e-12 relative, gradient to 1e-10 of the norm (T- #707)."""
 
     rows = _rows()
     k = 3
@@ -132,11 +144,7 @@ def test_the_adapter_is_sals_count_pair_hmm_objective() -> None:
 
 @pytest.mark.analytic
 def test_the_gradient_is_the_central_difference() -> None:
-    """Gradient against central differences (step 1e-5), to 1e-6 of its norm; `sal`'s
-    autograd route bitwise.
-    """
-    import torch
-    from sal.opt.objective import autograd_value_and_gradient, value_and_gradient
+    """Gradient against central differences (step 1e-5), to 1e-6 of its norm; `sal`'s autograd route bitwise."""
 
     rows = _rows()
     rng = np.random.default_rng(1)
@@ -163,10 +171,7 @@ def test_the_gradient_is_the_central_difference() -> None:
 @pytest.mark.analytic
 @pytest.mark.parametrize("name", ["hmc-hmm", "anneal-hmm", "tempering-hmm"])
 def test_the_starts_keep_their_best_within_budget(name: str) -> None:
-    """Seeds 0-2: the reported NLL is the re-evaluated one, within the deleted samplers'
-    budget, reproducible.
-    """
-    from port.sandbox.extensions.hmm_objective import negative_log_likelihood, sample
+    """Seeds 0-2: the reported NLL is the re-evaluated one, within the deleted samplers' budget, reproducible."""
 
     budget = {"anneal-hmm": 433, "tempering-hmm": 436, "hmc-hmm": 217}[name]
     rows = _rows()
@@ -194,20 +199,13 @@ def test_the_starts_keep_their_best_within_budget(name: str) -> None:
 @pytest.mark.infra
 def test_the_registry_names_the_samplers_the_module_runs() -> None:
     """`HMM_SAMPLERS` is a literal that matches `SAMPLERS`."""
-    from port.sandbox.extensions.copy_starts import HMM_SAMPLERS
-    from port.sandbox.extensions.hmm_objective import SAMPLERS
 
     assert HMM_SAMPLERS == SAMPLERS
 
 
 @pytest.mark.infra
 def test_the_defaults_are_the_calibrated_settings() -> None:
-    """Each start's defaults are `configs/copy_sampler_settings.json`'s, its budget
-    `BUDGETS`' (#749 WP1).
-    """
-    from port.qa.provenance import CONFIGS, calibration
-    from port.sandbox.extensions.hmm_objective import BUDGETS, DEFAULTS, TUNED_KEYS
-    from port.studies import copy_state_stream, potts_stream
+    """Each start's defaults are `configs/copy_sampler_settings.json`'s, its budget `BUDGETS`' (#749 WP1)."""
 
     tuned = calibration("copy_sampler_settings")
     for name, knobs in DEFAULTS.items():
@@ -222,10 +220,7 @@ def test_the_defaults_are_the_calibrated_settings() -> None:
 def test_a_start_is_sampled_at_the_runs_own_stickiness_and_dispersions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`held_by` reads the run's stickiness and dispersions, and `sample` builds its
-    objective at them (T- #777).
-    """
-    import port.sandbox.extensions.hmm_objective as module
+    """`held_by` reads the run's stickiness and dispersions, and `sample` builds its objective at them (T- #777)."""
 
     assert module.held_by({"t": 0.999}) == {
         "stay": 0.999,

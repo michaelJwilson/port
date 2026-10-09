@@ -11,6 +11,13 @@ from typing import Any
 
 import numpy as np
 import pytest
+from cnaster.cna_hmrf_result import (
+    CloneAssignment,
+    CnaHMRFResult,
+    HMMParams,
+    HMMProfile,
+)
+from cnaster.hmrf import reindex_clones as upstream
 from port.patch.hmrf.reindex import reindex_clones
 
 
@@ -43,7 +50,6 @@ def _result(n_states: int = 4, n_obs: int = 12, n_clones: int = 3) -> dict[str, 
 @pytest.mark.patch
 def test_the_replacement_reindexes_as_upstream_does() -> None:
     """Same normal clone, order and reindexed arrays as `cnaster.hmrf.reindex_clones`."""
-    from cnaster.hmrf import reindex_clones as upstream
 
     theirs, _ = upstream(_result(), posterior=None, single_tumor_prop=None)
     ours, _ = reindex_clones(_result(), posterior=None, single_tumor_prop=None)
@@ -58,9 +64,7 @@ def test_the_replacement_reindexes_as_upstream_does() -> None:
 
 @pytest.mark.bug
 def test_every_parameter_is_checked_not_only_p_binom() -> None:
-    """Upstream asserts one column for `new_p_binom` only, then reorders all four
-    (#267).
-    """
+    """Upstream asserts one column for `new_p_binom` only, then reorders all four (#267)."""
     for key in ("new_log_mu", "new_alphas", "new_taus"):
         widened = _result()
         widened[key] = np.tile(widened[key], (1, 3))
@@ -72,7 +76,6 @@ def test_every_parameter_is_checked_not_only_p_binom() -> None:
 @pytest.mark.bug
 def test_upstream_accepts_the_widths_it_cannot_mean() -> None:
     """The three parameters upstream lets through widened are refused here."""
-    from cnaster.hmrf import reindex_clones as upstream
 
     widened = _result()
     widened["new_log_mu"] = np.tile(widened["new_log_mu"], (1, 3))
@@ -86,9 +89,7 @@ def test_upstream_accepts_the_widths_it_cannot_mean() -> None:
 
 @pytest.mark.patch
 def test_the_contract_makes_the_entry_point_branch_dead() -> None:
-    """`idx = s if shape[1] > 1 else 0` (`run_cnaster.py:1366`) can only take the
-    `else`.
-    """
+    """`idx = s if shape[1] > 1 else 0` (`run_cnaster.py:1366`) can only take the `else`."""
     reindexed, _ = reindex_clones(_result(), posterior=None, single_tumor_prop=None)
 
     for key in ("new_log_mu", "new_alphas", "new_p_binom", "new_taus"):
@@ -98,10 +99,7 @@ def test_the_contract_makes_the_entry_point_branch_dead() -> None:
 @pytest.mark.cnaster
 @pytest.mark.patch
 def test_the_deconcatenated_path_is_reindexed_as_upstream_does() -> None:
-    """`pred_cnv` at `(n_obs, n_clones)`: `log_gamma` is permuted along its clone axis,
-    as upstream.
-    """
-    from cnaster.hmrf import reindex_clones as upstream
+    """`pred_cnv` at `(n_obs, n_clones)`: `log_gamma` is permuted along its clone axis, as upstream."""
 
     n_states, n_obs, n_clones = 4, 12, 3
     rng = np.random.default_rng(13)
@@ -125,7 +123,6 @@ def test_the_deconcatenated_path_is_reindexed_as_upstream_does() -> None:
 @pytest.mark.patch
 def test_a_posterior_is_permuted_with_the_clones() -> None:
     """The posterior is permuted as upstream permutes it."""
-    from cnaster.hmrf import reindex_clones as upstream
 
     n_clones = 3
     rng = np.random.default_rng(17)
@@ -140,9 +137,7 @@ def test_a_posterior_is_permuted_with_the_clones() -> None:
 
 
 def _by_rule(res: dict[str, Any], n_obs: int) -> tuple[np.ndarray, list[int]]:
-    """The normal clone (BAF least outside `0.5 +- 0.05`) first, then by increasing spot
-    count.
-    """
+    """The normal clone (BAF least outside `0.5 +- 0.05`) first, then by increasing spot count."""
     labels = sorted(set(res["new_assignment"].tolist()))
     p = res["new_p_binom"][:, 0]
     penalty = {}
@@ -164,12 +159,6 @@ def _by_rule(res: dict[str, Any], n_obs: int) -> tuple[np.ndarray, list[int]]:
 
 def _live(res: dict[str, Any], n_obs: int, n_clones: int) -> Any:
     """`res` as `run_cnaster` hands it over: a `CnaHMRFResult`, one column per clone."""
-    from cnaster.cna_hmrf_result import (
-        CloneAssignment,
-        CnaHMRFResult,
-        HMMParams,
-        HMMProfile,
-    )
 
     n_states = res["new_log_mu"].shape[0]
     gamma = res["log_gamma"].reshape(n_states, n_clones, n_obs).transpose(0, 2, 1)
@@ -196,9 +185,7 @@ def _live(res: dict[str, Any], n_obs: int, n_clones: int) -> Any:
 
 @pytest.mark.oracle
 def test_the_reorder_is_the_stated_rule_on_random_fits() -> None:
-    """`reindex_clones` permutes as the loop rule says, exactly, over 50 draws, for
-    `dict` and `CnaHMRFResult`.
-    """
+    """`reindex_clones` permutes as the loop rule says, exactly, over 50 draws, for `dict` and `CnaHMRFResult`."""
     rng = np.random.default_rng(517)
 
     for _ in range(50):

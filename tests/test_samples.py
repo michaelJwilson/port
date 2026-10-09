@@ -9,9 +9,19 @@ import json
 from pathlib import Path
 
 import anndata
+import matplotlib as mpl
 import numpy as np
 import pandas as pd
 import pytest
+from cnaster.io import get_sample_list
+from cnaster.io import get_sample_list as upstream
+from cnaster.spatial import construct_multislice_lattice_adjacency
+from port.extensions.outputs import with_samples
+from port.extensions.samples import Samples, observe, recording, samples_of
+from port.patch.hmrf.core_inference import identity_remap, run_core_inference
+from port.patch.io import get_sample_list as patched
+from port.qa.audit import audit_sample
+from port.sim.fixtures import load_simulated, r0
 
 ORDERS = {
     "sorted": ["A"] * 4 + ["B"] * 3 + ["C"] * 2,
@@ -38,7 +48,6 @@ def _grid(rows: int, columns: int, offset: float = 0.0) -> np.ndarray:
 @pytest.mark.bug
 def test_cnaster_leaves_a_slice_empty_on_interleaved_rows() -> None:
     """`cnaster` on `A, B, A` codes every `A` as 2 and leaves code 0 empty."""
-    from cnaster.io import get_sample_list
 
     sample_list, sample_ids = get_sample_list(_adata(["A", "B", "A"]))
 
@@ -51,9 +60,6 @@ def test_cnaster_leaves_a_slice_empty_on_interleaved_rows() -> None:
 @pytest.mark.parametrize("rows", [["A"] * 30 + ["B"] * 20, ["B"] * 20 + ["A"] * 30])
 def test_contiguous_rows_are_cnasters_bitwise(rows: list[str]) -> None:
     """On contiguous rows the pair and multi-slice adjacency equal `cnaster`'s, bitwise."""
-    from cnaster.io import get_sample_list as upstream
-    from cnaster.spatial import construct_multislice_lattice_adjacency
-    from port.patch.io import get_sample_list as patched
 
     adata = _adata(rows)
     theirs = upstream(adata)
@@ -81,9 +87,6 @@ def test_contiguous_rows_are_cnasters_bitwise(rows: list[str]) -> None:
 @pytest.mark.parametrize("order", sorted(ORDERS))
 def test_every_spot_is_coded_by_its_own_name_in_any_order(order: str) -> None:
     """Codes follow names in first-seen order, `np.unique`-stable, under any row order."""
-    from port.extensions.samples import samples_of
-    from port.patch.hmrf.core_inference import identity_remap
-    from port.patch.io import get_sample_list
 
     rows = ORDERS[order]
     samples = samples_of(_adata(rows))
@@ -95,7 +98,7 @@ def test_every_spot_is_coded_by_its_own_name_in_any_order(order: str) -> None:
     assert np.array_equal(np.unique(samples.ids), np.arange(len(names)))
     identity_remap(samples.ids, list(samples.names))
 
-    sample_list, sample_ids = get_sample_list(_adata(rows))
+    sample_list, sample_ids = patched(_adata(rows))
     assert sample_list == list(samples.names)
     assert np.array_equal(sample_ids, samples.ids)
 
@@ -115,8 +118,6 @@ def test_every_spot_is_coded_by_its_own_name_in_any_order(order: str) -> None:
 @pytest.mark.infra
 def test_a_pair_the_unique_remap_would_renumber_is_refused() -> None:
     """Pairs `np.unique` would renumber, and invalid `Samples`, are refused."""
-    from port.extensions.samples import Samples
-    from port.patch.hmrf.core_inference import identity_remap, run_core_inference
 
     with pytest.raises(ValueError, match="renumber"):
         identity_remap(np.array([2, 1, 2]), ["A", "B", "A"])
@@ -153,8 +154,6 @@ def test_the_outputs_carry_the_recorded_sample_not_the_barcode_suffix(
     tmp_path: Path,
 ) -> None:
     """`sample_id` is the recorded name, not the barcode suffix."""
-    from port.extensions.outputs import with_samples
-    from port.extensions.samples import observe, recording, samples_of
 
     rows = ORDERS["interleaved"]
     adata = _adata(rows)
@@ -195,9 +194,6 @@ def test_a_reversed_sample_sheet_writes_the_same_clones_and_samples(
     tmp_path: Path,
 ) -> None:
     """`dev_tree` r0 with its sheet reversed: same ARI to 1e-12 and same sample per barcode."""
-    import matplotlib as mpl
-    from port.qa.audit import audit_sample
-    from port.sim.fixtures import load_simulated, r0
 
     mpl.use("Agg")
     r0()
