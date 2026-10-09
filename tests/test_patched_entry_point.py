@@ -4,7 +4,6 @@ A whole run writes the same tables and `.npz` byte for byte, and the same figure
 the PDF creation timestamp is removed.
 """
 
-import inspect
 import re
 import shutil
 import subprocess
@@ -14,13 +13,11 @@ from typing import Any
 
 import cnaster.scripts.run_cnaster  # noqa: F401  -- imported for its bindings
 import matplotlib as mpl
-import port.pipeline
 import pytest
 from cnaster import omics
 from port.pipeline import (
     FIGURE_SWAPS,
     SWAPS,
-    Swap,
     instrumented,
     patched,
     swap_sites,
@@ -35,106 +32,6 @@ mpl.use("Agg")
 
 CREATION_DATE = re.compile(rb"/CreationDate \(D:\d+Z?\)")
 """matplotlib's PDF creation clock, removed before comparing (#103)."""
-
-
-def _accepts(function: Any) -> list[tuple[str, Any, Any]]:
-    """A signature as (name, kind, default), annotations dropped."""
-    return [
-        (parameter.name, parameter.kind, parameter.default)
-        for parameter in inspect.signature(function).parameters.values()
-    ]
-
-
-def _resolve(target: str) -> Any:
-    module_name, _, attribute = target.partition(":")
-    __import__(module_name)
-
-    return getattr(sys.modules[module_name], attribute)
-
-
-def _original(swap: Any) -> Any:
-    __import__(swap.module)
-    return getattr(sys.modules[swap.module], swap.name)
-
-
-TABLES: dict[str, tuple[Swap, ...]] = {
-    name: getattr(port.pipeline, name)
-    for name in port.pipeline.__all__
-    if name == "SWAPS" or name.endswith("_SWAPS")
-}
-"""Every table `port.pipeline` exports, so a new one is covered by being exported."""
-
-ROWS = [(table, swap) for table, swaps in TABLES.items() for swap in swaps]
-
-DEPARTURES: dict[tuple[str, str], str] = {}
-"""Rows that do not yet accept what they replace; may only shrink (#517 step 1)."""
-
-
-def _departure(swap: Swap) -> str | None:
-    """How a replacement's signature differs from cnaster's, or `None`.
-
-    Defaults must match; extra parameters only keyword-only with a default (#186).
-    """
-    upstream, replacement = (
-        _accepts(_original(swap)),
-        _accepts(_resolve(swap.replacement)),
-    )
-
-    shared = replacement[: len(upstream)]
-
-    if shared != upstream:
-        return f"takes {shared}, not {upstream}"
-
-    for name, kind, default in replacement[len(upstream) :]:
-        if kind is not inspect.Parameter.KEYWORD_ONLY:
-            return f"{name} is positional and new"
-
-        if default is inspect.Parameter.empty:
-            return f"{name} is new and required"
-
-    return None
-
-
-@pytest.mark.infra
-def test_every_replacement_accepts_what_it_replaces() -> None:
-    """Every swap table's replacement accepts its original's call (#517 E1)."""
-    departing = {
-        (table, swap.name): found
-        for table, swap in ROWS
-        if (found := _departure(swap)) is not None
-    }
-
-    assert set(departing) == set(DEPARTURES), (
-        f"undeclared: { ({k: v for k, v in departing.items() if k not in DEPARTURES}) }; "
-        f"now exact, remove: {sorted(set(DEPARTURES) - set(departing))}"
-    )
-
-
-@pytest.mark.infra
-def test_every_declared_departure_is_a_row() -> None:
-    """A departure whose row was removed is an entry nothing checks."""
-    rows = {(table, swap.name) for table, swap in ROWS}
-
-    assert set(DEPARTURES) <= rows, sorted(set(DEPARTURES) - rows)
-
-
-@pytest.mark.infra
-def test_the_swaps_reach_the_entry_point_and_not_only_the_definition() -> None:
-    """Each `from cnaster.omics import ...` binding in `run_cnaster` is rebound."""
-
-    sites = swap_sites()
-    entry_point = {
-        site.name for site in sites if site.module == "cnaster.scripts.run_cnaster"
-    }
-
-    assert len(sites) > len(SWAPS), (
-        "no name was found bound anywhere but where it is defined"
-    )
-    assert {
-        "load_input_data",
-        "assign_initial_blocks",
-        "summarize_counts_for_bins",
-    } <= entry_point
 
 
 @pytest.mark.infra
@@ -154,16 +51,6 @@ def test_the_context_manager_restores_every_binding() -> None:
 
     for (module, name), original in before.items():
         assert getattr(sys.modules[module], name) is original
-
-
-@pytest.mark.infra
-def test_the_table_names_a_ticket_for_every_replacement() -> None:
-    """Every row cites its measurement."""
-    assert SWAPS, "the table is empty"
-
-    for swap in SWAPS:
-        assert swap.ticket > 0
-        assert ":" in swap.replacement, swap.replacement
 
 
 @pytest.mark.smoke

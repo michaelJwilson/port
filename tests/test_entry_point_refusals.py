@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 import numpy as np
@@ -13,8 +12,6 @@ import pytest
 from port.patch.integer_copy import decode_clone
 from port.pipeline import COPY_SWAPS, SHIFT_SWAPS
 from port.scripts.run_cnaster import _parser, _refusals, _settings, _timed
-
-from tests import ROOT
 
 REFUSALS = {
     ("--no-figure-swaps", "--genomic-colours", "integer"): "--genomic-colours needs",
@@ -57,37 +54,6 @@ def test_the_decode_refuses_its_arguments_before_reading_the_capture(
 
     with pytest.raises(ValueError, match=keyword):
         decode_clone(np.zeros((2, 1)), np.zeros(4), 6, **{keyword: value})
-
-
-@pytest.mark.infra
-def test_the_readme_option_table_is_the_parser() -> None:
-    """Every option in the README's table, and nothing else (T- #617)."""
-
-    flags = {
-        option
-        for action in _parser()._actions
-        for option in action.option_strings
-        if option.startswith("--") and option != "--help"
-    }
-    lines = (ROOT / "README.md").read_text().splitlines()
-    start = next(
-        i for i, line in enumerate(lines) if line.startswith("| Option | Default")
-    )
-    documented: set[str] = set()
-
-    for line in lines[start + 2 :]:
-        if not line.startswith("|"):
-            break
-        documented |= set(re.findall(r"`(--[a-z0-9-]+)`", line.split("|")[1]))
-
-    missing = {
-        flag
-        for flag in flags - documented
-        if not (flag.startswith("--no-") and f"--{flag[5:]}" in documented)
-    }
-
-    assert missing == set(), sorted(missing)
-    assert documented <= flags, sorted(documented - flags)
 
 
 @pytest.mark.infra

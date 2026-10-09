@@ -7,7 +7,7 @@ neither, so this module is where the number and its conditions are kept and
 the badge is what is derived.
 
 Run as `python -m scripts.badges` to rewrite `.badges/*.json` from
-`.badges/measurements.json`. `tests/test_badges_agree.py` is what refuses a
+`.badges/measurements.json`. The `badge-*` rules in `tests/test_rules.py` refuse a
 drift between the two.
 
 ## Why the values are committed rather than computed in the badge

@@ -33,7 +33,7 @@ __all__ = [
 PLOTS = ROOT / ".cache" / "plots"
 """The default root of every generated figure, untracked (`.cache/` is in
 `.gitignore`): a figure is a result, regenerated on demand by the command that
-draws it, and `tests/test_ci_entry.py` guards that no PNG is tracked under
+draws it, and rule `docs-png` (`tests/test_rules.py`) guards that no PNG is tracked under
 `docs/`. Laid out as `docs/plots/` was at `ba34716`; moved from
 `port.qa.provenance.PLOTS` (T- #673 G3)."""
 

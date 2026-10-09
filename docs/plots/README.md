@@ -5,7 +5,7 @@ is regenerated on demand by the command below that draws it.** Every
 generator writes to `.cache/plots/` by default (`port.qa.provenance.PLOTS`),
 untracked; the paths below are relative to it. `lattice/`, `sim/` and
 `sim_qa/` exist only there now.
-`tests/test_ci_entry.py` guards that `docs/` tracks no PNG outside
+`tests/test_rules.py`'s `docs-png` guards that `docs/` tracks no PNG outside
 `docs/plots/paper/`, T- #624's paper set. The population study's one figure is
 `docs/plots/paper/pop_combined.png` (#743); its three-panel predecessor,
 `docs/plots/studies/population_recovery.png`, is retired. The figures committed

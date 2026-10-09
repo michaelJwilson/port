@@ -72,7 +72,7 @@ lineage has lost at 0 across the event's span, and that differs from the
 lineage's state somewhere in it (`admissible`). Its edges are then drawn
 root first, and a placement with no admissible state is redrawn. The rule
 is opt-in, so the manifests before T- #698 keep their hashes, and required
-of every new manifest (`tests/test_sim_loh_rule.py`).
+of every new manifest (rule `manifest-loh`, `tests/test_rules.py`).
 `altered_share` is the share of the genome, in base pairs, where any tumour
 clone is not `(1, 1)`: a union over clones, not a sum of event lengths.
 

@@ -12,7 +12,7 @@ first failure stops the run with that step's exit code.
 | `--figures` | the dev instance's figures, into `.cache/plots` | on a figure change |
 
 The tiers partition the suite -- `critical`, none, `merge`, `release`,
-`deprecate`, at most one per test (`tests/test_marker_discipline.py`) -- so
+`deprecate`, at most one per test (`tests/test_rules.py`, `marker-one-tier`) -- so
 no step runs a test another step ran. A `deprecate` test is too specific to
 run on every change: it has passed where it was merged, and runs again only
 where its module differs from `--base` (`origin/main`), and at a release. `--record` writes the guards' measured figures into

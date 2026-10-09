@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Any
 
@@ -11,8 +10,6 @@ import numpy as np
 import pytest
 import scipy.sparse as sp
 from port.extensions import cnamaste as c
-
-from tests import ROOT
 
 SIZES = {"n_samples": 2, "n_spots": 7, "n_genes": 11, "channel": 2, "xy": 2, "n_obs": 5, "n_clones": 3,
          "n_states": 4, "n_integer_clones": 2, "n_segments": 5, "n_field_clones": 4, "n_contigs": 2,
@@ -196,12 +193,3 @@ def test_a_global_axis_holds_across_groups(tmp_path: Path) -> None:
     c.write(path, "inputs", _inputs(2), **PATHS)
     with pytest.raises(ValueError, match="n_spots is 2, got 3"):
         c.write(path, "adjacency", {"adjacency": sp.eye(3, format="csr")})
-
-
-@pytest.mark.infra
-def test_the_document_is_the_schema() -> None:
-    """`docs/cnamaste-h5.md`'s tables are `render()` of both schemas, verbatim."""
-
-    text = (ROOT / "docs" / "cnamaste-h5.md").read_text()
-    tables = re.findall(r"(\| Group \|.*?)\n\n", text, flags=re.DOTALL)
-    assert tables == [c.render(c.GROUPS), c.render(c.TRUTH_GROUPS)]

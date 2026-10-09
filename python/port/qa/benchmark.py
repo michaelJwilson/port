@@ -526,7 +526,7 @@ def figures(out: Path, *, cnaster: bool = False) -> list[Path]:
     **CI runs this on every pull request and uploads the result** as a workflow
     artifact (`.github/workflows/figures.yml`), so the figures a pull request's
     code draws can be read beside it. They are not committed: `docs/` tracks
-    no PNG outside two exceptions (`tests/test_ci_entry.py`).
+    no PNG outside two exceptions (rule `docs-png`, `tests/test_rules.py`).
 
     They are not a referee. Nothing here compares a figure against a previous
     one. **They are PNG** (#452): a matplotlib PDF carries a creation timestamp,
