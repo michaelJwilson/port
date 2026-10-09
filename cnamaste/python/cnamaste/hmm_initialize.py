@@ -8,6 +8,7 @@ from sklearn.mixture import GaussianMixture
 from cnamaste.config import get_global_config, start_time
 from cnamaste.hmm_phased import hmm_phased
 from cnamaste.hmrf_utils import clone_stack_obs
+from cnamaste.lattice_start import lattice_start
 from cnamaste.logger import get_logger
 
 logger = get_logger(__name__, start_time=start_time)
@@ -292,6 +293,38 @@ def cna_mixture_init(
 
 
 # TODO FINAL utilize state posteriors to determine most populated
+RADIUS = 1.0
+"""Mahalanobis distance under which two components are one state (port #348)."""
+
+
+def distinct_weights(means, covariances, posteriors):
+    """`posteriors` with each component's mass moved onto a heavier twin; row sums unchanged.
+    Copied from port c17cd26 (PR- #832) `python/port/patch/hmm_initialize/distinct.py:28`."""
+    merged = np.array(posteriors, dtype=np.float64, copy=True)
+    kept = []
+    for component in np.argsort(-merged.sum(axis=0), kind="stable"):
+        for head in kept:
+            difference = means[component] - means[head]
+            pooled = 0.5 * (covariances[component] + covariances[head])
+            if difference @ np.linalg.solve(pooled, difference) < RADIUS**2:
+                merged[:, head] += merged[:, component]
+                merged[:, component] = 0.0
+                break
+        else:
+            kept.append(int(component))
+    return merged
+
+
+class DistinctMixture(GaussianMixture):
+    """`GaussianMixture` whose `predict_proba` merges indistinguishable components (T- #836 K4)."""
+
+    def predict_proba(self, X):
+        covariances = np.asarray(self.covariances_)
+        if self.covariance_type == "diag":
+            covariances = np.stack([np.diag(c) for c in covariances])
+        return distinct_weights(np.asarray(self.means_), covariances, super().predict_proba(X))
+
+
 def gmm_init(
     n_states,
     X,
@@ -309,6 +342,11 @@ def gmm_init(
     logger.info(
         f"Initializing HMM emission with GMM (only_minor={only_minor}, log_space={in_log_space}, mirrored_baf={mirrored_baf_augmentation})."
     )
+
+    # NB the read-depth fit starts from the integer lattice (T- #836 K4, port #540, #547).
+    if "m" in params and not only_minor and X.shape[2] == 1:
+        log_mu, p_binom = lattice_start(n_states, X[:, 0, 0], X[:, 1, 0], base_nb_mean[:, 0], total_bb_RD[:, 0])
+        return log_mu.reshape(-1, 1), p_binom.reshape(-1, 1), None, None
 
     X_gmm_rdr, X_gmm_baf = None, None
     n_samples = X.shape[2]
@@ -410,7 +448,11 @@ def gmm_init(
 
         X_gmm_fit = np.vstack([X_gmm_original, X_gmm_flipped])
 
-    gmm = GaussianMixture(
+    # NB with `only_minor=False` the heaviest of `2K` components are near-duplicates of the normal
+    #    cluster on a mostly normal genome: components within `RADIUS` of a heavier one are merged
+    #    into it first (T- #836 K4, port #348).
+    mixture = GaussianMixture if only_minor else DistinctMixture
+    gmm = mixture(
         n_components=n_components_fit,
         max_iter=max_iter,
         random_state=random_state,

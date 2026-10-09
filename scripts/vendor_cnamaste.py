@@ -35,6 +35,7 @@ ENTRY = "cnaster.scripts.run_cnaster"
 DEPARTED: dict[str, str] = {
     "normal_spot.py": "PR1, #105: a removed bin's genes leave the gene-level output",
     "spatial.py": "PR1, #692: rectangular clones that admit no assignment are banded",
+    "hmm_initialize.py": "K4, #540 #547 #348: the lattice start for read depth; distinct components otherwise",
     "scripts/run_cnamaste.py": "K1, #313 #362: integer copies by copy_decode.lattice_decode",
     "utils.py": "PR1, T- #692: write_fig releases each Text's cached renderer",
 }
@@ -42,6 +43,7 @@ DEPARTED: dict[str, str] = {
 
 ADDED: dict[str, str] = {
     "copy_decode.py": "K1 #313 #362, K2 T- #817: the lattice decode and integer clones, from port c17cd26",
+    "lattice_start.py": "K4, #540 #547: the read-depth HMM's lattice start, from port c17cd26",
 }
 """File cnamaste owns beyond the copy -> the T- #836 PR that adds it."""
 
