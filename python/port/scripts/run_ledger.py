@@ -119,7 +119,7 @@ def record_sample(arguments: argparse.Namespace, *, dirty: bool) -> int:
     #    costs no run
     digest = realization_hash(path)
     fixture = arguments.fixture or arguments.sample
-    directory = ledger.CNASTER_DIR if arguments.cnaster else ledger.LEDGER_DIR
+    directory = ledger.CNASTER_DIR if arguments.cnaster else None
     ledger.check_identity(fixture, digest, ledger.ledger(directory))
 
     audit = [

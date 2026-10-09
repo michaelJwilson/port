@@ -138,14 +138,16 @@ def append_tsv(
         out.writelines(lines)
 
 
-def runs(directory: Path = LEDGER_DIR) -> list[dict[str, str]]:
-    """`directory`'s `runs.tsv`: port's, or `CNASTER_DIR`'s."""
-    return read_tsv(directory / RUNS.name, RUN_COLUMNS)
+def runs(directory: Path | None = None) -> list[dict[str, str]]:
+    """`RUNS`, or `directory`'s `runs.tsv` (`CNASTER_DIR`)."""
+    return read_tsv(RUNS if directory is None else directory / RUNS.name, RUN_COLUMNS)
 
 
-def ledger(directory: Path = LEDGER_DIR) -> list[dict[str, str]]:
-    """`directory`'s `ledger.tsv`: port's, or `CNASTER_DIR`'s."""
-    return read_tsv(directory / LEDGER.name, LEDGER_COLUMNS)
+def ledger(directory: Path | None = None) -> list[dict[str, str]]:
+    """`LEDGER`, or `directory`'s `ledger.tsv` (`CNASTER_DIR`)."""
+    return read_tsv(
+        LEDGER if directory is None else directory / LEDGER.name, LEDGER_COLUMNS
+    )
 
 
 def definitions() -> list[dict[str, str]]:
@@ -288,10 +290,10 @@ def write(
     dirty: bool,
     test: str = TEST,
     benchmark: bool = False,
-    directory: Path = LEDGER_DIR,
+    directory: Path | None = None,
 ) -> str:
     """Append a run to `runs` and `ledger`, after `check_identity`; returns
-    the run's id. `directory` is the ledger's: port's, or `CNASTER_DIR`."""
+    the run's id. `directory` is the ledger's: port's where `None`, or `CNASTER_DIR`."""
     recorded = ledger(directory)
     check_identity(fixture, recovery["fixture_hash"], recorded)
     run, lines = entries(
@@ -306,8 +308,10 @@ def write(
         test=test,
         benchmark=benchmark,
     )
-    append_tsv(directory / RUNS.name, RUN_COLUMNS, [run])
-    append_tsv(directory / LEDGER.name, LEDGER_COLUMNS, lines)
+    append_tsv(RUNS if directory is None else directory / RUNS.name, RUN_COLUMNS, [run])
+    append_tsv(
+        LEDGER if directory is None else directory / LEDGER.name, LEDGER_COLUMNS, lines
+    )
     print("\t".join(run[c] for c in RUN_COLUMNS))
     for line in lines:
         print("\t".join(line[c] for c in LEDGER_COLUMNS))

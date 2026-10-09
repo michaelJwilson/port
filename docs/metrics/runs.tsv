@@ -207,4 +207,3 @@ b816552-dev_tree_1s_easy_r0-1508	2026-10-07T15:08Z	b816552	--sal --png-copies	te
 4c05c5f-dev_tree_1s_dense_r0-1853	2026-10-08T18:53Z	4c05c5f	-- --sal --no-plots	tests/sim_audit.py::main	supported sweep: --sal at sal 5d59752c (#815), study15 r0 added	true
 4c05c5f-study15_r0-1856	2026-10-08T18:56Z	4c05c5f	-- --sal --no-plots	tests/sim_audit.py::main	supported sweep: --sal at sal 5d59752c (#815), study15 r0 added	true
 4c05c5f-dev_tree_r0-1859	2026-10-08T18:59Z	4c05c5f	-- --sal --no-plots	tests/sim_audit.py::main	supported sweep: --sal, sal 5d59752c (#815), CalicoST benchmark	true
-abcdef0-dev-0108	2026-10-09T01:08Z	abcdef0	-- --sal	tests/recovery_audit.py::main	a test run	false
