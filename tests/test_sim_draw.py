@@ -102,7 +102,7 @@ def test_lambda_is_each_genes_share_of_normal_spot_umi() -> None:
     assert baseline["gene"].is_unique
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 @pytest.mark.parametrize(
     ("table", "key"),
     [
@@ -119,7 +119,7 @@ def test_a_manifest_that_omits_an_assumption_is_refused(table: str, key: str) ->
         from_document(document, SIM_MANIFESTS)
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 def test_an_unknown_counts_sampler_is_refused() -> None:
     """`[model] counts_sampler` names one of `COUNT_SAMPLERS` (#549)."""
     document = extended(SIM_MANIFESTS / "dev_tree.toml")
@@ -129,7 +129,7 @@ def test_an_unknown_counts_sampler_is_refused() -> None:
         from_document(document, SIM_MANIFESTS)
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 def test_an_unknown_array_kind_is_refused() -> None:
     """`[array] kind` names one of `ARRAYS`: `hex` or `square` (#569)."""
     document = extended(SIM_MANIFESTS / "dev_tree.toml")
@@ -492,7 +492,7 @@ def test_clone_sizes_follow_the_stated_law_across_seeds() -> None:
     assert np.quantile(ratios, 0.05) > 0.9, np.quantile(ratios, [0.05, 0.5, 0.95])
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 def test_a_seed_draws_the_same_sizes_and_an_unknown_law_is_refused() -> None:
     """The layout is a function of the seed; `[layout.size]` names a law it has."""
     manifest = _sized({"law": "lognormal", "median": 200, "sigma": 0.5, "edge": "grow"})
@@ -602,7 +602,7 @@ def test_felsenstein_trees_are_uniform_over_rooted_shapes_with_the_expected_even
     assert totals.min() >= 3
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 def test_felsenstein_refuses_fewer_expected_events_than_clones() -> None:
     """`expected_cnas` below `n_clones` cannot hold one event per leaf edge."""
     document = extended(SIM_MANIFESTS / "dev_tree_1s_easy.toml")

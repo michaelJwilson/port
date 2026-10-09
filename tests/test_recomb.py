@@ -70,7 +70,7 @@ def test_switch_probability_increases_with_distance(nu: float) -> None:
     assert np.all(np.diff(interior) > 0.0)
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 def test_a_chromosome_boundary_carries_no_distance() -> None:
     """Across chromosomes the kernel falls to its floor."""
 
@@ -154,7 +154,7 @@ def test_centimorgans_interpolate_linearly_between_them() -> None:
     np.testing.assert_allclose(assigned, [2.0, 4.0], rtol=0.0, atol=TOLERANCE)
 
 
-@pytest.mark.smoke
+@pytest.mark.warning
 def test_centimorgans_sort_their_input_in_place() -> None:
     """`assign_centiMorgans` sorts its input list in place."""
 

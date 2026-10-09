@@ -107,7 +107,7 @@ def _beta_binomial_bins(truth: Any) -> tuple[np.ndarray, np.ndarray]:
     return observed, expected
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 @pytest.mark.parametrize(
     "binned",
     [_negative_binomial_bins, _beta_binomial_bins],
@@ -255,7 +255,7 @@ def test_the_pseudobulk_recovers_the_mean_and_not_the_dispersion() -> None:
     )
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 def test_a_spot_s_counts_come_from_its_own_stream() -> None:
     """Column `s` equals a direct draw from `default_rng([seed, s])`."""
 
@@ -276,7 +276,7 @@ def test_a_spot_s_counts_come_from_its_own_stream() -> None:
     np.testing.assert_array_equal(drawn[..., 1], truth.counts_bb[:, spot])
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 def test_the_fixture_is_bitwise_reproducible() -> None:
     """The same arguments give the same instance, every array of it."""
     first, second = core_inference_truth(), core_inference_truth()

@@ -20,7 +20,7 @@ def draw(seed: int, n_states: int, clone_lengths: list[int]) -> tuple[np.ndarray
     )
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 def test_is_constant_within_a_clone() -> None:
     """One shift per clone, constant over its positions."""
 

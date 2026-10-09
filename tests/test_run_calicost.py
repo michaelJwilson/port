@@ -73,7 +73,7 @@ def _document(tmp_path: Path) -> tuple[dict[str, Any], Path]:
     return yaml.safe_load(config.read_text()), config
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_every_shared_key_carries_the_run_cnaster_value(tmp_path: Path) -> None:
     """27 keys equal, the inputs are the sample's, and one initialization runs."""
 
@@ -94,7 +94,7 @@ def test_every_shared_key_carries_the_run_cnaster_value(tmp_path: Path) -> None:
     assert config["np_threshold"] == -math.inf
 
 
-@pytest.mark.infra
+@pytest.mark.analytic
 def test_calicost_reads_back_the_written_configuration(tmp_path: Path) -> None:
     """CalicoST's own parser returns every translated value, typed."""
     pytest.importorskip("calicost")
@@ -112,7 +112,7 @@ def test_calicost_reads_back_the_written_configuration(tmp_path: Path) -> None:
         assert read[key] == value, key
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 def test_a_colon_in_a_value_is_refused(tmp_path: Path) -> None:
     """A value containing `:` is refused, since CalicoST splits lines on it."""
 
@@ -213,7 +213,7 @@ def test_calicosts_initializer_does_not_terminate_on_an_l_shaped_clone() -> None
         subprocess.run([sys.executable, "-c", script], timeout=20, check=True)
 
 
-@pytest.mark.infra
+@pytest.mark.patch
 def test_the_guard_refuses_the_l_and_passes_a_square_through() -> None:
     """The refusal names the block and the floor; a square grid is CalicoST's."""
     pytest.importorskip("calicost")
@@ -241,7 +241,7 @@ def test_the_guard_refuses_the_l_and_passes_a_square_through() -> None:
         np.testing.assert_array_equal(ours, theirs)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_the_aligned_palette_colours_every_pair_up_to_the_cap() -> None:
     """CalicoST's own colours kept; `(5, 2)`, which failed a run, now has one."""
     pytest.importorskip("calicost")
@@ -262,7 +262,7 @@ def test_the_aligned_palette_colours_every_pair_up_to_the_cap() -> None:
     assert len(ordered) == len(set(ordered)) == len(ours)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_the_aligned_palette_is_callable_while_installed(tmp_path: Path) -> None:
     """Called through CalicoST's module inside `aligned`, it returns, not recurses."""
     pytest.importorskip("calicost")
@@ -279,7 +279,7 @@ def test_the_aligned_palette_is_callable_while_installed(tmp_path: Path) -> None
     assert (5, 2) in palette
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_the_shipped_configuration_keeps_every_value_but_the_paths(
     tmp_path: Path,
 ) -> None:
@@ -309,7 +309,7 @@ def test_the_shipped_configuration_keeps_every_value_but_the_paths(
     )
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_a_sheet_of_several_slices_takes_the_joint_file(tmp_path: Path) -> None:
     """Two slices take the joint `input_filelist`; each file is refused on the other's sheet (#494)."""
 

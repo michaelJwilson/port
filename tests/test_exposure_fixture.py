@@ -100,7 +100,7 @@ def test_the_binner_does_not_carry_the_exposure() -> None:
     )
 
 
-@pytest.mark.smoke
+@pytest.mark.warning
 @pytest.mark.parametrize(
     ("low", "a", "b", "match"),
     [
@@ -144,7 +144,7 @@ def test_only_the_weierstrass_mode_survives_aggregation_with_structure() -> None
     )
 
 
-@pytest.mark.smoke
+@pytest.mark.warning
 def test_an_unknown_exposure_mode_is_refused() -> None:
     """An unknown exposure mode is refused."""
     with pytest.raises(ValueError, match="unknown exposure"):

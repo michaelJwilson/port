@@ -112,7 +112,7 @@ def test_the_he_image_loads_and_renders(
     assert plot_he(pixels) is not None
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 def test_the_clone_annotations_load_and_assign(
     written: tuple[Any, Any], planted: CoreInferenceTruth, tmp_path: Path
 ) -> None:

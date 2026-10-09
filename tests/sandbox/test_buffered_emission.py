@@ -93,9 +93,10 @@ def test_the_buffers_are_written_in_full_so_a_reused_one_needs_no_clearing() -> 
     assert not np.isnan(out_baf).any()
 
 
-@pytest.mark.smoke
+@pytest.mark.patch
+@pytest.mark.usefixtures("cnaster_config")
 def test_what_the_buffers_hold_is_what_cnaster_allocates_per_call() -> None:
-    """Buffer bytes equal what `cnaster` allocates per call, by shape arithmetic (#90)."""
+    """Buffer bytes equal what `cnaster` allocates per call: its returned pair, and by shape arithmetic (#90)."""
 
     n_states, n_obs, n_spots = 7, 3_000, 2_000
 
@@ -107,4 +108,17 @@ def test_what_the_buffers_hold_is_what_cnaster_allocates_per_call() -> None:
     )
     assert megabytes(emission_buffers(n_states, n_obs, n_spots, phased=True)) == (
         pytest.approx(4 * n_states * n_obs * n_spots * 8 / 1e6)
+    )
+
+    inputs = _inputs(3)
+    n_obs, n_spots = inputs.shape
+    unphased = cnaster_emission_pair(inputs.columns())
+    phased = cnaster_emission_pair(
+        inputs.columns(n_spots), phased=True, clone_stack=False
+    )
+    assert megabytes(emission_buffers(3, n_obs, n_spots, phased=False)) == (
+        megabytes(unphased)
+    )
+    assert megabytes(emission_buffers(3, n_obs, n_spots, phased=True)) == (
+        megabytes(phased)
     )

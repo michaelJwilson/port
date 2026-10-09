@@ -189,7 +189,7 @@ def test_run_cnaster_scores_with_sal_s_kernels_where_the_shift_reads_them(
     assert seen == [expected]
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.parametrize("flag", ["--sal-emission", "--distinct-init"])
 def test_a_flag_the_shift_rows_read_is_refused_without_them(
     flag: str, tmp_path: Path

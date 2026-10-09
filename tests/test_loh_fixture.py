@@ -96,7 +96,7 @@ def test_loh_off_draws_what_the_lattice_drew() -> None:
     assert again.mirrored == ()
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 def test_loh_is_refused_where_it_cannot_be_mirrored() -> None:
     with pytest.raises(ValueError, match="needs copy_lattice"):
         dev_instance(loh=True)

@@ -10,7 +10,7 @@ import pytest
 from port.qa.benchmark import STAGED, staged
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_a_staged_root_is_reused_not_restaged(tmp_path: Path) -> None:
     """With the marker present, `staged` returns what it records and writes nothing.
 

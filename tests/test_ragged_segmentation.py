@@ -30,7 +30,7 @@ def test_the_dev_instance_plants_unequal_chromosomes() -> None:
     assert truth.lengths.max() / truth.lengths.min() == pytest.approx(3.64, abs=0.01)
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 def test_upstream_accepts_the_planted_genome() -> None:
     """The partition constructs as upstream's `Ragged`."""
     truth = dev_instance()
@@ -42,7 +42,7 @@ def test_upstream_accepts_the_planted_genome() -> None:
     assert [len(segment) for segment in batch.segments()] == list(truth.lengths)
 
 
-@pytest.mark.smoke
+@pytest.mark.warning
 def test_a_chromosome_below_the_floor_is_refused() -> None:
     """Upstream admits one bin since sal #1233; `ragged_lengths` keeps its floor of two."""
     assert Ragged(values=np.zeros(4), lengths=(1, 3)).n_segments == 2

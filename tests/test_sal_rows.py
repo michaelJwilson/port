@@ -102,7 +102,7 @@ def test_the_fusion_is_no_worse_than_either_proposal() -> None:
     assert fused.cost <= min(expanded, descended) + 1e-9
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_the_flag_binds_the_rows_solver_and_leaves_the_default_cnasters(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -118,7 +118,7 @@ def test_the_flag_binds_the_rows_solver_and_leaves_the_default_cnasters(
     assert solver_for(default) == "icm"
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_list_prints_the_sal_row(capsys: pytest.CaptureFixture[str]) -> None:
     """`--list` names each row with its ticket and the flag that adds it."""
 

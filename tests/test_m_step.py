@@ -141,7 +141,7 @@ def test_the_two_dispersion_branches_coincide_at_one_state() -> None:
     np.testing.assert_allclose(shared.beta, upstream.beta, rtol=SOLVER_AGREEMENT)
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 def test_the_design_carries_the_posterior_to_the_right_state(
     chains: BetaBinomialChains,
 ) -> None:

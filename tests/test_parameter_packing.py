@@ -37,7 +37,7 @@ def named_parameters(n_states: int, flags: dict[str, bool]) -> dict[str, np.ndar
     return params
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 @pytest.mark.parametrize("flags", FLAG_SETS)
 @pytest.mark.parametrize("n_states", [1, 2, 4])
 def test_unpacking_what_was_packed_returns_it(
@@ -77,7 +77,7 @@ def test_unpacking_what_was_packed_returns_it(
         )
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 @pytest.mark.parametrize("flags", FLAG_SETS)
 @pytest.mark.parametrize("n_states", [1, 3])
 def test_bounds_match_the_packed_vector(flags: dict[str, bool], n_states: int) -> None:

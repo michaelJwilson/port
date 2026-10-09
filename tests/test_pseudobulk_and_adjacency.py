@@ -73,7 +73,7 @@ def test_adjacency_is_symmetric_and_has_no_self_edges() -> None:
     assert adjacency.diagonal().sum() == 0
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 def test_adjacency_does_not_join_slices_by_default() -> None:
     """Two distant slices share no edge unless one is supplied."""
 

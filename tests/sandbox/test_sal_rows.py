@@ -19,7 +19,7 @@ from tests.fixtures import (
 )
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 @pytest.mark.merge
 def test_the_sequence_keeps_cnasters_clone_floor() -> None:
     """No returned clone is under `min_clone_spots` at coupling 0.6 (#45)."""
@@ -42,7 +42,7 @@ def test_the_sequence_keeps_cnasters_clone_floor() -> None:
     assert np.all((sizes == 0) | (sizes >= 200)), f"clone sizes {sizes}"
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 def test_the_merge_keeps_cnasters_clone_floor_without_cnaster() -> None:
     """`alpha-rust-merge` leaves no clone under `min_clone_spots`, using sal alone."""
 
@@ -72,7 +72,7 @@ def test_the_argmax_descent_is_the_argmax_without_coupling() -> None:
     np.testing.assert_array_equal(labelling, np.argmax(field, axis=1))
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 def test_the_argmax_descent_keeps_the_clone_floor() -> None:
     """No clone the argmax row returns is under `min_clone_spots`."""
 

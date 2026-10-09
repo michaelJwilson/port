@@ -18,7 +18,7 @@ SAMPLES = 4
 """Validation rows to synthesize: two groups of two, so a group mean exists."""
 
 
-@pytest.mark.smoke
+@pytest.mark.oracle
 # NB one figure's form (#403): reruns where this module or the lock changes
 @pytest.mark.deprecate
 def test_the_smoother_fills_where_there_is_no_coverage() -> None:
@@ -41,7 +41,7 @@ def test_the_smoother_fills_where_there_is_no_coverage() -> None:
     assert 0.4 < smoothed[0, 1] < 0.6
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 # NB one figure's form (#403): reruns where this module or the lock changes
 @pytest.mark.deprecate
 def test_the_validation_metrics_load_and_render(

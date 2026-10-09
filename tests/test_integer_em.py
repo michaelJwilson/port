@@ -118,7 +118,7 @@ def test_the_viterbi_em_recovers_a_planted_tumour_fraction(seed: int) -> None:
         np.testing.assert_array_equal(pairs, LOH_PAIRS[planted])
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.parametrize("seed", [0, 1])
 def test_the_decode_reports_why_it_stopped(seed: int) -> None:
     """EM converges at a fixed point; without EM one pass stops on budget (T- #617)."""

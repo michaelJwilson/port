@@ -118,7 +118,7 @@ def test_the_compare_figures_draw_what_their_inputs_hold(tmp_path: Path) -> None
     assert all(p.stat().st_size > 0 for p in written)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_the_solver_panel_draws_only_the_tables_solvers() -> None:
     """T- #660: the solver panel draws only `potts_plot.TABLE`'s solvers."""
 

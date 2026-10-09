@@ -41,7 +41,7 @@ def test_a_mirror_image_at_one_half_is_the_same_component() -> None:
     assert (merged.sum(axis=0) > 0).sum() == 3
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_the_initializer_is_handed_over_only_under_its_option(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

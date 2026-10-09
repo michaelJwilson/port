@@ -65,7 +65,7 @@ def test_the_fused_field_carries_the_relative_channel_weight() -> None:
     )
 
 
-@pytest.mark.smoke
+@pytest.mark.patch
 def test_the_fused_field_allocates_no_emission_array() -> None:
     """The output is a fraction of the two-step's emission bytes, by shape arithmetic."""
     fixture = spot_clone_field()
@@ -82,9 +82,10 @@ def test_the_fused_field_allocates_no_emission_array() -> None:
     assert ratio == pytest.approx(
         fixture.n_clones / (2 * fixture.n_states * fixture.n_obs), rel=1e-9
     )
+    np.testing.assert_array_equal(field, _cnaster_two_step(fixture, weight))
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 def test_the_fused_field_scores_only_the_decoded_states() -> None:
     """Changing a state the profiles never decode to does not move the field.
 

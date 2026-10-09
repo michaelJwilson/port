@@ -42,7 +42,7 @@ def test_a_class_row_counts_only_what_it_overrides() -> None:
     assert not lines("get_state_posteriors") & spans[path]
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_the_share_is_executed_lines_inside_patched_spans() -> None:
     """Three executed lines in one file, two of them patched: 2 of 3."""
 

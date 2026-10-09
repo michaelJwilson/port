@@ -194,7 +194,7 @@ def test_the_sweep_is_not_reproducible_without_seeding_a_global() -> None:
     assert not np.array_equal(first[0], second[0])
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 def test_the_mask_is_exact_under_the_edge_term() -> None:
     """`-inf + finite == -inf`, which makes the fold exact."""
     edge = np.array([0.0, 1e300, -1e300, np.finfo(np.float64).max])
@@ -214,7 +214,7 @@ def test_the_fold_leaves_the_field_it_was_given() -> None:
     np.testing.assert_array_equal(witness, field)
 
 
-@pytest.mark.smoke
+@pytest.mark.warning
 @pytest.mark.parametrize(
     ("kwargs", "match"),
     [
@@ -251,7 +251,7 @@ def test_the_graph_is_the_matrixs_own_arrays() -> None:
     assert wrapped.n_spots == N_SPOTS
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_the_sweep_reports_convergence_with_its_sweep_count() -> None:
     """`icm_sweep_deque` has no cap, so every return is its criterion met (T- #617)."""
     field, graph, assignment, _ = _problem()

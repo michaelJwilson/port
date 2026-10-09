@@ -216,7 +216,7 @@ def test_the_defaults_are_the_calibrated_settings() -> None:
     assert copy_state_stream.SETTINGS.parent == potts_stream.SETTINGS.parent == CONFIGS
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_a_start_is_sampled_at_the_runs_own_stickiness_and_dispersions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -45,7 +45,7 @@ def test_the_triple_survives_an_empty_row() -> None:
     assert 1 not in actual[0].tolist()
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 def test_the_triple_is_the_graph_it_came_from() -> None:
     """The triple rebuilds the matrix it came from."""
     matrix = _lattice(8, seed=3)

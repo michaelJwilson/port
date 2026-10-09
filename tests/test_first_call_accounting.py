@@ -8,7 +8,7 @@ import pytest
 from port.pipeline import Spent, Swap, instrumented
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_the_first_call_is_recorded_apart_from_the_rest() -> None:
     """One slow call then three fast: `first` is 1.0, `warm` averages 0.1333."""
     entry = Spent()
@@ -26,7 +26,7 @@ def test_the_first_call_is_recorded_apart_from_the_rest() -> None:
     assert entry.warm / entry.warm_calls == pytest.approx(0.1333, rel=1e-3)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_a_single_call_reports_no_warm_average() -> None:
     """A single call has a first call and no warm average."""
     entry = Spent(calls=1, seconds=2.5, first=2.5)
@@ -35,7 +35,7 @@ def test_a_single_call_reports_no_warm_average() -> None:
     assert entry.warm_calls == 0
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_the_timer_attributes_the_first_call_to_the_first_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

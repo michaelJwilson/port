@@ -41,7 +41,7 @@ def _settings(*flags: str) -> tuple[bool, bool, bool, str]:
     )
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.parametrize("flags", list(ARMS), ids=" ".join)
 def test_each_arm_resolves_port_defaults(flags: tuple[str, ...]) -> None:
     """On in every patched arm, off with its flag; `--sal` adds only its start."""
@@ -59,7 +59,7 @@ def test_the_defaults_table_names_settings_and_flags() -> None:
         assert getattr(settings, default.setting) is False
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 def test_the_segment_floor_is_refused_where_its_row_is_not_installed() -> None:
     """`--no-patch` leaves `create_bin_ranges` out, so asking for its floor is an error."""
 
@@ -71,7 +71,7 @@ def test_the_segment_floor_is_refused_where_its_row_is_not_installed() -> None:
     assert any("--min-segment-normal-umi" in refusal for refusal in refused)
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 def test_an_hmm_start_is_refused_without_the_shift_row_that_reads_it() -> None:
     """`--sal --no-shift` printed an HMM start it never bound (T- #617)."""
 
@@ -83,7 +83,7 @@ def test_an_hmm_start_is_refused_without_the_shift_row_that_reads_it() -> None:
     assert any(refusal.startswith("--hmm-start") for refusal in refused)
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 def test_an_option_for_a_row_not_selected_is_refused() -> None:
     """`with_options` dropped it silently, so the option never reached the run."""
 
@@ -112,7 +112,7 @@ def _selected(monkeypatch: pytest.MonkeyPatch, tmp_path: Any, *flags: str) -> An
     return selected
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.parametrize("figures", ["--figure-swaps", "--no-figure-swaps"])
 def test_the_shift_draws_its_genomic_line_with_or_without_the_figure_swaps(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Any, figures: str
@@ -129,7 +129,7 @@ def test_the_shift_draws_its_genomic_line_with_or_without_the_figure_swaps(
     assert ("logmu_shift", True) in rows[0].options
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_without_the_shift_or_the_figures_cnaster_draws_its_own_genomic_figure(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Any
 ) -> None:

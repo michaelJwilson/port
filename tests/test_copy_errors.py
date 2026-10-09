@@ -11,7 +11,7 @@ from port.qa.errors import pinned_errors, pseudobulk
 from port.scripts.run_cnaster import main
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 def test_the_copy_decode_without_the_shift_is_refused(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

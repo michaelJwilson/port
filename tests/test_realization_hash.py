@@ -55,7 +55,7 @@ def test_plain_gzipped_and_both_read_one_hash(tmp_path: Path) -> None:
     assert found == dict.fromkeys(layouts, digest.hexdigest()[:8])
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 def test_plain_and_gzipped_copies_that_differ_are_refused(tmp_path: Path) -> None:
     """A `.gz` decoding to other bytes than its plain copy names the file."""
     root = _write(tmp_path, plain=True, packed=True)

@@ -120,7 +120,7 @@ def test_without_the_flag_the_decode_is_bitwise_the_default_lattice_decode() -> 
     assert after.log_likelihood == before.log_likelihood
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 def test_a_negative_parsimony_is_refused() -> None:
     with pytest.raises(ValueError, match="non-negative"):
         _decode(_clones(), parsimony=-0.5)

@@ -20,7 +20,7 @@ SIGN_TOLERANCE = 1e-12
 """Absolute tolerance on `cost + energy == 0`: float64 reassociation (measured 7.1e-15)."""
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 def test_the_edge_set_survives_the_csr_conversion(lattice: PottsLabels) -> None:
     """The CSR adjacency holds each undirected edge twice, symmetric, no self-loops (#12)."""
     matrix = cnaster_potts_adjacency(lattice)
@@ -45,7 +45,7 @@ def test_the_edge_set_survives_the_csr_conversion(lattice: PottsLabels) -> None:
     assert seen == pytest.approx(expected)
 
 
-@pytest.mark.smoke
+@pytest.mark.oracle
 @pytest.mark.parametrize("coupling", [0.0, 0.5, 2.0])
 def test_cnaster_maximises_what_upstream_minimises(coupling: float) -> None:
     """`calc_assignment_cost` is the negation of upstream `energy`, to `SIGN_TOLERANCE`."""
@@ -97,7 +97,7 @@ def test_the_planted_labelling_is_not_the_optimum(enumerable: PottsLabels) -> No
     assert not np.array_equal(optimum, enumerable.labels)
 
 
-@pytest.mark.smoke
+@pytest.mark.warning
 def test_enumeration_refuses_what_it_cannot_search() -> None:
     """Enumeration past `MAX_ENUMERABLE_CONFIGURATIONS` raises."""
     too_large = potts_labels(shape=(6, 6), n_clones=3)
@@ -135,7 +135,7 @@ def test_icm_never_lowers_the_objective_it_maximises(signal: float) -> None:
     )
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 def test_icm_is_reproducible_only_because_the_adapter_seeds_it(
     enumerable: PottsLabels,
 ) -> None:

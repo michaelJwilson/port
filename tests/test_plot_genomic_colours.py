@@ -98,7 +98,7 @@ def test_unset_is_upstreams_choice() -> None:
     np.testing.assert_array_equal(unset, integer)
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 def test_a_mode_without_its_input_is_refused() -> None:
     instance = _instance()
     common: dict[str, Any] = {
@@ -122,7 +122,7 @@ def test_a_mode_without_its_input_is_refused() -> None:
         )
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_the_preference_reaches_a_figure_and_falls_back_where_it_cannot() -> None:
     """Preferring "states" recolours the figure; "integer" without `df_cnv` falls back to states."""
 
@@ -157,7 +157,7 @@ def test_the_preference_reaches_a_figure_and_falls_back_where_it_cannot() -> Non
     assert len(np.unique(recoloured, axis=0)) == len(PAIRS)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_run_cnaster_port_refuses_the_colours_without_the_figure_swaps() -> None:
     with pytest.raises(SystemExit):
         main(["config.yaml", "--no-figure-swaps", "--genomic-colours", "states"])

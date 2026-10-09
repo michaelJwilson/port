@@ -119,7 +119,7 @@ def test_zero_phase_switching_decouples_the_phases() -> None:
     )
 
 
-@pytest.mark.smoke
+@pytest.mark.warning
 def test_switch_outside_the_unit_interval_is_refused() -> None:
     """The assembly refuses a kernel that is not a probability."""
     fixture = phased_chains()

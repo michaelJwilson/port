@@ -29,8 +29,8 @@ BUDGET = {
     "run": 14842,
     "qa": 17339,
     "sandbox": 7843,
-    "tests": 26978,
-    "tests_sandbox": 2486,
+    "tests": 26987,
+    "tests_sandbox": 2499,
 }
 """Non-blank lines per tree (T- #831), lowered as packages land; a move between trees transfers its lines."""
 

@@ -9,7 +9,7 @@ import pytest
 from port.sandbox.extensions import copy_errors
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_copy_sets_go_beside_the_fit_this_run_wrote(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -43,7 +43,7 @@ def test_copy_sets_go_beside_the_fit_this_run_wrote(
     assert placed == [ours]
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 def test_a_refused_fit_leaves_the_run_and_says_so(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

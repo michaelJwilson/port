@@ -89,7 +89,7 @@ def test_every_lognormal_manifest_states_the_derived_sigma() -> None:
         assert length["sigma"] == expected, path
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 @pytest.mark.parametrize("keys", [("mean", "median"), ()])
 def test_a_lognormal_law_states_exactly_one_of_mean_or_median(
     keys: tuple[str, ...],
@@ -103,7 +103,7 @@ def test_a_lognormal_law_states_exactly_one_of_mean_or_median(
         from_document(document, MANIFESTS)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_a_stated_law_replaces_the_base_length_table_whole() -> None:
     """A stated law replaces the base length table whole."""
     length = extended(MANIFESTS / "dev_tree_1s_hard.toml")["cna"]["length"]

@@ -140,7 +140,7 @@ def test_installed_every_call_form_returns_cnasters_lattice(phased: bool) -> Non
                 _agree(getattr(owner, which)(*arguments), reference)
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 def test_lengths_that_do_not_cover_the_emission_are_refused() -> None:
     """`cnaster` would index past the end; the binding says why instead."""
 

@@ -23,7 +23,7 @@ def test_the_warm_up_compiles_every_kernel_it_names() -> None:
         assert kernel.nopython_signatures, f"{target} was not compiled"
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_a_kernel_that_cannot_be_warmed_is_reported_and_not_raised(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -41,7 +41,7 @@ def test_a_kernel_that_cannot_be_warmed_is_reported_and_not_raised(
     assert "not a compiled kernel" in warmed.missed[0]
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_the_report_names_what_was_missed() -> None:
     """`--warm-up` prints this line, so it has to say both numbers."""
     report = Warmed(1.5, ("a", "b"), ("c (TypeError: no)",)).report()

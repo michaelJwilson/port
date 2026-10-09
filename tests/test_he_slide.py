@@ -89,7 +89,7 @@ def test_ports_labels_are_the_num_labels_asked_for(tmp_path: Path) -> None:
     assert (labels[upstream == 5] == 4).all()
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_patched_every_cnaster_caller_reads_labels_one_to_num_labels(
     tmp_path: Path,
 ) -> None:

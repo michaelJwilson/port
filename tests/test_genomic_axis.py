@@ -186,7 +186,7 @@ def test_ticks_land_on_exact_10_mb_multiples() -> None:
         assert labels == [f"{v / 1e6:g}" for v in expected]
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_an_unlabelled_axis_marks_its_ticks_and_labels_none() -> None:
     """`labels=False` draws every 10 Mb mark and no label; the default labels them (#701)."""
 
@@ -307,7 +307,7 @@ def test_on_the_metric_a_cna_is_drawn_at_twice_its_extent() -> None:
     plt.close(figure)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_a_warped_figure_states_its_scale_in_its_label() -> None:
     """`disclose` labels a warped figure with its scale and leaves a linear one unlabelled (#743)."""
 

@@ -9,7 +9,7 @@ import pytest
 from port.qa import records
 
 
-@pytest.mark.infra
+@pytest.mark.analytic
 def test_a_record_reads_back_as_written_with_arrays_as_lists(tmp_path: Path) -> None:
     """Rows with sparse keys and a dict setting, problems by realization, settings as JSON."""
 

@@ -143,7 +143,7 @@ def test_the_hatch_turns_with_the_major_allele_and_normal_is_plain() -> None:
     assert turns.count(None) >= 1
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_the_hatch_is_clipped_to_its_segment_at_its_angle_and_spacing() -> None:
     """Hatch lines are clipped to their segment, at `HATCH_ANGLE`, `HATCH_SPACING` apart."""
 
@@ -176,7 +176,7 @@ def test_the_hatch_is_clipped_to_its_segment_at_its_angle_and_spacing() -> None:
         np.testing.assert_allclose(np.diff(starts), HATCH_SPACING * figure.dpi)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.parametrize("span", [None, 16.0])
 def test_the_mirror_key_starts_on_the_axis_and_is_labelled_on_its_right(
     span: float | None,
