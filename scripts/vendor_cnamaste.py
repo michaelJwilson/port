@@ -111,7 +111,8 @@ def check(tree: dict[str, str]) -> list[str]:
     found = {
         str(p.relative_to(OUT))
         for p in OUT.rglob("*")
-        if p.is_file() and "__pycache__" not in p.parts
+        # NB `.so` is the built `oxicnamaste` beside the package, not a copy (K0)
+        if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".so"
     }
     problems = [f"extra: {p}" for p in sorted(found - set(tree))]
     problems += [f"missing: {p}" for p in sorted(set(tree) - found)]

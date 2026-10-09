@@ -142,3 +142,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
+      # NB `cnamaste/`'s own crate, `oxicnamaste` (T- #836 K0): its own
+      #    manifest and lock, held to the same two checks.
+      - run: cargo fmt --check --manifest-path cnamaste/Cargo.toml
+      - run: cargo clippy --all-targets --manifest-path cnamaste/Cargo.toml -- -D warnings

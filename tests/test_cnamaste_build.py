@@ -58,3 +58,17 @@ def test_cnamastes_environment_holds_none_of_them() -> None:
     }
     assert locked & (FORBIDDEN | {"snakes-and-ladders"}) == set()
     assert "cnamaste" in locked
+
+
+@pytest.mark.infra
+def test_oxicnamaste_depends_on_no_port_crate() -> None:
+    """`cnamaste/Cargo.toml` names no `oxiport` and no path dependency: the crate builds on its own (K0)."""
+    import tomllib
+
+    dependencies = tomllib.loads((ROOT / "cnamaste" / "Cargo.toml").read_text())[
+        "dependencies"
+    ]
+    assert "oxiport" not in dependencies
+    assert [
+        k for k, v in dependencies.items() if isinstance(v, dict) and "path" in v
+    ] == []

@@ -4,18 +4,18 @@
 #   uv sync --locked && uv run run_cnamaste CONFIG
 #   uv build --wheel
 #
-# `python/cnamaste/` is the package, laid out as `port`'s is so that
-# `oxicnamaste` (K0) binds beside it.
+# `python/cnamaste/` is the package and `src/` the crate `oxicnamaste`,
+# bound as `cnamaste.oxicnamaste` (T- #836 K0), laid out as `port`'s is.
 #
 # The dependencies are `cnaster`'s at its locked pin `4adad4d`, so the copy
 # runs wherever `cnaster` does.
 [build-system]
-requires = ["setuptools>=77"]  # NB 77: an SPDX `license` string (PEP 639)
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1,<2"]
+build-backend = "maturin"
 
 [project]
 name = "cnamaste"
-version = "0.1.0"
+dynamic = ["version"]  # NB `Cargo.toml`'s, read across by maturin
 description = "cnaster's run path at its pin, renamed, fixed and patched (T- #836)"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -43,9 +43,10 @@ dependencies = [
 # `cnaster`'s `run_cnaster = "cnaster.scripts.run_cnaster:main"`, renamed.
 run_cnamaste = "cnamaste.scripts.run_cnamaste:main"
 
-[tool.setuptools]
-package-dir = { "" = "python" }
-packages = ["cnamaste", "cnamaste.scripts"]
+[tool.maturin]
+# NB as `port`'s: the Python package under `python/`, the crate bound beside it.
+python-source = "python"
+module-name = "cnamaste.oxicnamaste"
 
 [tool.uv]
 # NB the versions `port`'s uv.lock (a7ff616) runs `cnaster` 4adad4d under, where

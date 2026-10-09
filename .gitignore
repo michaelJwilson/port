@@ -45,3 +45,5 @@ sim/generated/
 #    rebuilt.
 .cache/
 cnamaste/.venv/
+cnamaste/target/
+cnamaste/python/cnamaste/*.so

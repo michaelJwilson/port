@@ -73,7 +73,6 @@ wheels = [
 
 [[package]]
 name = "cnamaste"
-version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "anndata" },
