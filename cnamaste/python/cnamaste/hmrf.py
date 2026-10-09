@@ -818,7 +818,9 @@ def reindex_clones(res_combine, posterior=None, single_tumor_prop=None):
     else:
         n_obs = pred_cnv.shape[0]
 
-    assert res_combine["new_p_binom"].shape[1] == 1
+    # NB all four are reordered below; cnaster checked `new_p_binom` alone (T- #836 D5, #362).
+    for key in ("new_log_mu", "new_alphas", "new_p_binom", "new_taus"):
+        assert res_combine[key].shape[1] == 1, f"{key} has shape {res_combine[key].shape}"
 
     baf_profile_list = []
     for c in range(n_clones):

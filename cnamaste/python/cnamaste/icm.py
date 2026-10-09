@@ -821,6 +821,15 @@ def icm_sweep_deque(
     min_clone_spots=200,
     epsilon=0.0,
 ):
+    """ICM over a two-queue BFS; returns `(niter, cost)` and writes the labelling into
+    `new_assignment`, in place (T- #836 D5, #45): a caller keeping the array it passed sees it
+    rewritten.
+
+    A clone under `min_clone_spots` is dissolved smallest first, each spot to the live clone of
+    highest `single_llf`, until every clone clears the floor (T- #836 D5, #81, #348). cnaster
+    dissolved every undersized clone at once, at random, into those already over it: a clone the
+    field supports was scattered, and 25 + 15 x 9 spots at a floor of 20 left one clone.
+    """
     n_spots, n_clones = single_llf.shape
     cost = cost_zeropoint
 
@@ -923,50 +932,46 @@ def icm_sweep_deque(
             f"Completed icm sweep epoch with a sweep edit rate={sweep_edit_rate:.6e}."
         )
 
-        # Minimum Spot Enforcement
-        if (min_clone_spots > 0) and (0 < clone_counts.min() < min_clone_spots):
-            eligible_clones_global = np.where(clone_counts >= min_clone_spots)[0]
+        # Minimum Spot Enforcement: smallest first, best field (T- #836 D5, #81, #348).
+        while min_clone_spots > 0:
+            live_clones = np.where(clone_counts > 0)[0]
+            small = live_clones[clone_counts[live_clones] < min_clone_spots]
+            if len(live_clones) <= 1 or len(small) == 0:
+                break
 
-            for c in range(n_clones):
-                if (
-                    clone_counts[c] > 0
-                    and clone_counts[c] < min_clone_spots
-                    and len(eligible_clones_global) > 0
-                ):
-                    spot_indices = np.where(new_assignment == c)[0]
+            c = small[np.argmin(clone_counts[small])]
+            others = live_clones[live_clones != c]
 
-                    for idx in spot_indices:
-                        if onehot_allowed_clones is not None:
-                            valid_for_spot = eligible_clones_global[
-                                onehot_allowed_clones[idx, eligible_clones_global]
-                            ]
-                            if len(valid_for_spot) == 0:
-                                continue
-                        else:
-                            valid_for_spot = eligible_clones_global
+            for idx in np.where(new_assignment == c)[0]:
+                valid_for_spot = others
+                if onehot_allowed_clones is not None:
+                    valid_for_spot = others[onehot_allowed_clones[idx, others]]
+                if len(valid_for_spot) == 0:
+                    continue
 
-                        new_label = np.random.choice(valid_for_spot)
+                new_label = valid_for_spot[np.argmax(single_llf[idx, valid_for_spot])]
 
-                        new_assignment[idx] = new_label
-                        clone_counts[c] -= 1
-                        clone_counts[new_label] += 1
+                new_assignment[idx] = new_label
+                clone_counts[c] -= 1
+                clone_counts[new_label] += 1
 
-                        # Add forced edit's neighbors to SECOND queue
-                        start_idx = adj_indptr[idx]
-                        end_idx = adj_indptr[idx + 1]
-                        for k in range(start_idx, end_idx):
-                            neighbor = adj_indices[k]
-                            if not in_queue[neighbor]:
-                                q_next.append(neighbor)
-                                in_queue[neighbor] = True
+                # Add forced edit's neighbors to SECOND queue
+                for k in range(adj_indptr[idx], adj_indptr[idx + 1]):
+                    neighbor = adj_indices[k]
+                    if not in_queue[neighbor]:
+                        q_next.append(neighbor)
+                        in_queue[neighbor] = True
 
             logger.warning(
-                f"For enforcing min_clone_spot={min_clone_spots} with n_spots={n_spots}, found {len(eligible_clones_global)} valid clones. New clone proportion:\n{clone_counts / clone_counts.sum()}"
+                f"For enforcing min_clone_spot={min_clone_spots} with n_spots={n_spots}, dissolved clone {c}. New clone proportion:\n{clone_counts / clone_counts.sum()}"
             )
 
-            if len(eligible_clones_global) > 1:
-                sweep_edit_rate = np.inf
-                min_spot_guard += 1
+            sweep_edit_rate = np.inf
+            min_spot_guard += 1
+
+            # NB a clone whose spots have no allowed alternative keeps them.
+            if clone_counts[c] > 0:
+                break
 
         niter += 1
 
