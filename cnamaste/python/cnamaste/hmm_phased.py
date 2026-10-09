@@ -122,6 +122,10 @@ class hmm_phased(hmm_nophasing):
         log_emit_baf_list = []
 
         for s in range(n_spots):
+            # NB the clone-stacked fit has one parameter column for every spot; indexing column `s`
+            #    ran past it, so the default HMM class raised on any run with two or more spots
+            #    (T- #836 D6). Column `s` where there is one per spot, as `run_cnamaste` reads them.
+            c = s if log_mu.shape[1] > 1 else 0
             nb_endog = nbEncoder.get_unique_obs(s)
             nb_exposure = nbEncoder.get_unique_total(s)
             bb_endog = bbEncoder.get_unique_obs(s)
@@ -142,20 +146,20 @@ class hmm_phased(hmm_nophasing):
                 _nb_logpmf_1d(
                     nb_endog,
                     nb_exposure,
-                    exp(log_mu[i, s]),
-                    alphas[i, s],
+                    exp(log_mu[i, c]),
+                    alphas[i, c],
                     log_emit_rdr_uniq[i, :],
                 )
                 _bb_logpmf_1d(
                     bb_endog,
                     bb_exposure,
-                    p_binom[i, s],
-                    taus[i, s],
+                    p_binom[i, c],
+                    taus[i, c],
                     log_emit_baf_uniq[i, :],
                 )
 
             log_emit_baf_uniq_switched = _switch_betabinom_1d(
-                log_emit_baf_uniq, bb_endog, bb_exposure, p_binom[:, s], taus[:, s]
+                log_emit_baf_uniq, bb_endog, bb_exposure, p_binom[:, c], taus[:, c]
             )
 
             phased_rdr_uniq = np.vstack((log_emit_rdr_uniq, log_emit_rdr_uniq))
