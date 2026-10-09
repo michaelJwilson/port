@@ -265,20 +265,36 @@ def pipeline_clone_assignment(
 
     # NB computes the log likelihood for each spot, for all clones, given the "pooling" strategy,
     #    no longer IID and erroneously weights rdr and baf according to number of non-zero segments.
-    loglike_spot_clone_assignment = compute_loglike_spot_assignment(
-        N,
-        num_valid_nb_spotwise,
-        num_valid_bb_spotwise,
-        _tumor_prop,
-        is_tumor_mixed,
-        tmp_log_emission_rdr,
-        tmp_log_emission_baf,
-        pred,
-        n_obs,
-        n_clones,
-        smooth_indices=smooth_mat.indices if smooth_mat is not None else None,
-        smooth_indptr=smooth_mat.indptr if smooth_mat is not None else None,
-    )
+    def spot_loglike(log_emission_rdr):
+        return compute_loglike_spot_assignment(
+            N,
+            num_valid_nb_spotwise,
+            num_valid_bb_spotwise,
+            _tumor_prop,
+            is_tumor_mixed,
+            log_emission_rdr,
+            tmp_log_emission_baf,
+            pred,
+            n_obs,
+            n_clones,
+            smooth_indices=smooth_mat.indices if smooth_mat is not None else None,
+            smooth_indptr=smooth_mat.indptr if smooth_mat is not None else None,
+        )
+
+    shift = res["new_log_mu_shift"]
+    if shift is None or len(shift) != n_clones:
+        loglike_spot_clone_assignment = spot_loglike(tmp_log_emission_rdr)
+    else:
+        # NB a shifted fit's read depth is scored per clone at `log_mu - log Z_c`, as the HMM fitted
+        #    it; the rates alone carry a scale the shifted likelihood leaves free (T- #836 K3, port
+        #    #206). The allele channel is unchanged.
+        loglike_spot_clone_assignment = np.empty((N, n_clones))
+        for c in range(n_clones):
+            shifted_rdr, _ = hmmclass.compute_emission_probability_nb_betabinom(
+                pooled_X, pooled_base_nb_mean, res["new_log_mu"] - shift[c], res["new_alphas"],
+                pooled_total_bb_RD, res["new_p_binom"], res["new_taus"],
+            )  # fmt: skip
+            loglike_spot_clone_assignment[:, c] = spot_loglike(shifted_rdr)[:, c]
 
     # assert np.allclose(single_llf, new_single_llf), "BUG: single_llf mismatch"
 
