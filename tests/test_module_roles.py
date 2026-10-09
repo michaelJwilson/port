@@ -90,6 +90,7 @@ ROLES: dict[str, Role] = {
     # qa: what measures and records a run (T- #673), reached from no row or script
     "port.qa.audit": "tool",
     "port.qa.benchmark": "tool",
+    "port.qa.cnaster_arm": "tool",
     "port.qa.ledger": "tool",
     "port.qa.provenance": "tool",
     "port.qa.scoring": "tool",

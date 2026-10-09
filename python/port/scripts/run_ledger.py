@@ -7,6 +7,10 @@ one `ledger` line per measured metric under its latest definition. The note
 is at most `NOTE_CHARS` characters, written as a commit subject, stating what
 change the run measures.
 
+`--cnaster` records `port.qa.cnaster_arm` (`cnaster` at its pin) into
+`docs/metrics/cnaster/` instead, its own ledger in the same format (T- #833),
+and `--fixture NAME` names a `--sample` path in either ledger.
+
 `--benchmark` marks a recorded run as one of a sweep over every fixture, and
 `--last-benchmark` prints the latest sweep's runs. `run_ledger --best
 clone_ari [--fixture dev [--fixture-hash H]]` prints the ledger line, joined
@@ -45,6 +49,11 @@ def record(arguments: argparse.Namespace) -> int:
         print("inputs are uncommitted; commit them, or pass --dirty")
         return 1
 
+    if arguments.cnaster:
+        if arguments.sample is None:
+            print("--cnaster records a --sample run")
+            return 1
+        return record_sample(arguments, dirty=dirty)
     if arguments.sample is not None:
         return record_sample(arguments, dirty=dirty)
 
@@ -109,7 +118,9 @@ def record_sample(arguments: argparse.Namespace, *, dirty: bool) -> int:
     # NB checked before the run as well as at the write, so a refused name
     #    costs no run
     digest = realization_hash(path)
-    ledger.check_identity(arguments.sample, digest, ledger.ledger())
+    fixture = arguments.fixture or arguments.sample
+    directory = ledger.CNASTER_DIR if arguments.cnaster else None
+    ledger.check_identity(fixture, digest, ledger.ledger(directory))
 
     audit = [
         *(item for entry in arguments.set for item in ("--set", entry)),
@@ -117,7 +128,8 @@ def record_sample(arguments: argparse.Namespace, *, dirty: bool) -> int:
     ]
     flags = [f for f in arguments.flags if f != "--"]
     command = [
-        sys.executable, "-m", "port.scripts.run_audit", "--sim", "--sample", sample,
+        sys.executable, "-m", "port.qa.cnaster_arm" if arguments.cnaster else "port.scripts.run_audit",
+        "--sim", "--sample", sample,
         *audit, "--", *flags,
     ]  # fmt: skip
     completed = subprocess.run(
@@ -132,12 +144,13 @@ def record_sample(arguments: argparse.Namespace, *, dirty: bool) -> int:
     recovery["fixture_hash"] = digest
     ledger.write(
         recovery,
-        fixture=arguments.sample,
+        fixture=fixture,
         args=shlex.join([*audit, "--", *flags]),
         note=arguments.note,
         dirty=dirty,
         benchmark=arguments.benchmark,
         test=ledger.SIM_TEST,
+        directory=directory,
     )
     return 0
 
@@ -150,7 +163,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--best", choices=list(ledger.METRICS), help="the line maximizing it"
     )
-    parser.add_argument("--fixture", default=None, help="with --best, one fixture")
+    parser.add_argument("--fixture", default=None,
+                        help="with --best, one fixture; with --record --sample, the ledger's name for it")  # fmt: skip
+    parser.add_argument("--cnaster", action="store_true",
+                        help="with --record --sample, cnaster's arm (port.qa.cnaster_arm) into its own ledger, "
+                             "docs/metrics/cnaster/ (T- #833)")  # fmt: skip
     parser.add_argument(
         "--fixture-hash",
         default=None,
