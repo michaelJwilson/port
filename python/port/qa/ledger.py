@@ -52,6 +52,7 @@ KEYS = ("commit", "timestamp", "fixture", "fixture_hash", "test", "args", "bench
 METRICS = {
     "clone_ari": ("ari", 4),
     "clone_ari_int": ("ari_integer", 4),
+    "clone_ari_int_99": ("ari_integer_99", 4),
     "copy_ari": ("copy_ari", 4),
     "copy_ari_loh": ("copy_ari_loh", 4),
     "copy_ari_bgain": ("copy_ari_balanced_gain", 4),

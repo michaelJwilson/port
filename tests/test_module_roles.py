@@ -61,7 +61,7 @@ ROLES: dict[str, Role] = {
     "port.scripts.run_study": "script",
     # extensions
     "port.extensions.adjacency": "extension",
-    "port.extensions.combined_figure": "tool",
+    "port.extensions.combined_figure": "extension",
     "port.extensions.cnamaste": "extension",
     "port.extensions.config_audit": "extension",
     "port.extensions.figure_record": "extension",
@@ -70,7 +70,7 @@ ROLES: dict[str, Role] = {
     "port.extensions.copy_likelihood": "extension",
     "port.extensions.emission_family": "oracle",
     "port.extensions.figure_style": "extension",
-    "port.extensions.spatial_page": "tool",
+    "port.extensions.spatial_page": "extension",
     "port.extensions.repository": "extension",
     "port.extensions.run_record": "extension",
     "port.extensions.genomic_axis": "extension",

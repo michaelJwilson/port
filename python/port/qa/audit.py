@@ -42,7 +42,6 @@ from port.qa.scoring import (
     class_ari,
     copy_confusion,
     exact_by_class,
-    integer_clones,
     matched,
     overlap,
     phase_free,
@@ -114,6 +113,10 @@ class SimRecovery:
     copy_ari_unbalanced_gain_pf: float
     n_clones: int
     n_integer_clones: int
+    ari_integer_99: float
+    """`ari` after merging clones whose decoded `(A, B)` agree at 99 per cent of bins,
+    the run's default merge (`AGREEMENT_99`, #518, T- #817)."""
+    n_integer_clones_99: int
     exact: float
     exact_altered: float
     exact_altered_minor: float
@@ -153,12 +156,101 @@ def clone_labels(directory: Path) -> pd.Series:
     )
 
 
+def run_file(directory: Path) -> Path | None:
+    """The `cnamaste.h5` of the run whose outputs are in `directory` (or its `output_dir`), if it wrote one."""
+    from port.extensions.cnamaste import FILE
+
+    for where in (directory, directory.parent):
+        if (where / FILE).is_file():
+            return where / FILE
+    return None
+
+
+AGREEMENT_99 = 0.99
+"""The threshold `ari_integer_99` merges at: `outputs.MERGE_AGREEMENT`'s default, fixed so the metric is
+one quantity whatever a run configured (#518, T- #817)."""
+
+
+def integer_labels(a: np.ndarray, b: np.ndarray, agreement: float = 1.0) -> np.ndarray:
+    """Each fitted clone's integer clone: `outputs.integer_clones` at `agreement`, the one rule.
+
+    At 1.0, copies alike at every bin (#344); at `AGREEMENT_99`, at 99 per
+    cent of bins, the run's default merge (#518).
+    """
+    from port.extensions.outputs import integer_clones
+
+    frame = pd.DataFrame(
+        {
+            f"clone{c} {k}": v[:, c]
+            for c in range(a.shape[1])
+            for k, v in (("A", a), ("B", b))
+        }
+    )
+    names = integer_clones(frame, agreement)
+    return np.array([int(names[str(c)]) for c in range(a.shape[1])], dtype=np.int64)
+
+
+def run_tables(directory: Path) -> tuple[pd.Series, pd.DataFrame, dict[str, Any]]:
+    """A run's clone labels by barcode, its integer table and its final fit: from `cnamaste.h5` (T- #817).
+
+    The labels are the run's final clones (`/clone_assignment`), as
+    `cnaster`'s `clone_labels.tsv` reports them; integer clones are
+    `integer_labels`'. The table is
+    `cnv_seglevel.tsv`'s `CHR`, `START`, `END` and each clone's `A`, `B`; the
+    fit is the RDR+BAF stage's, its clones in `reindex_clones`' order, as
+    the final npz holds it. A run that wrote no file -- `cnaster`'s,
+    CalicoST's, a kept population output -- is read from those files.
+    """
+    from port.extensions import cnamaste
+
+    path = run_file(directory)
+    if path is None:
+        table = pd.read_csv(directory / "clone_labels.tsv", sep="\t", comment="#")
+        barcodes = table["barcode"] if "barcode" in table else table.iloc[:, 0]
+        labels = pd.Series(
+            table["clone_label"].to_numpy(), index=pd.Index(barcodes.astype(str))
+        )
+        seglevel = pd.read_csv(directory / "cnv_seglevel.tsv", sep="\t")
+        npz = next(directory.glob("rdrbaf_final_nstates*_smp.npz"), None)
+        fit: dict[str, Any] = {}
+        if npz is not None:
+            with np.load(npz, allow_pickle=True) as held:
+                fit = {
+                    k: np.asarray(held[k])
+                    for k in ("new_log_mu", "new_p_binom", "pred_cnv")
+                    if k in held.files
+                }
+        return labels, seglevel, fit
+
+    spots, _ = cnamaste.read(path, "inputs")
+    final, _ = cnamaste.read(path, "clone_assignment")
+    labels = pd.Series(final["assignment"], index=pd.Index(spots["barcodes"]))
+    copies, attrs = cnamaste.read(path, "integer_copy")
+    columns: dict[str, Any] = {
+        "CHR": copies["contig"].astype(np.int64) if attrs["contig_numeric"] else copies["contig"].astype(object),
+        "START": copies["start"], "END": copies["end"],
+    }  # fmt: skip
+    for k, clone in enumerate(copies["clones"]):
+        columns[f"clone{clone} A"] = copies["A"][:, k].astype(np.int64)
+        columns[f"clone{clone} B"] = copies["B"][:, k].astype(np.int64)
+    stage, shape = cnamaste.read(path, "rdrbaf")
+    # NB the stage's clones before `reindex_clones`, the final ones after: one permutation
+    order = dict(
+        zip(final["assignment"].tolist(), stage["assignment"].tolist(), strict=True)
+    )
+    pred = stage["pred_cnv"][:, [order[k] for k in range(stage["pred_cnv"].shape[1])]]
+    fit = {"new_log_mu": stage["log_mu"].reshape(shape["mu_shape"]),
+           "new_p_binom": stage["p_binom"].reshape(shape["mu_shape"]),
+           "pred_cnv": pred.T.ravel() if shape["pred_layout"] == "stacked" else pred}  # fmt: skip
+    return labels, pd.DataFrame(columns), fit
+
+
 def read_tables(sample: SimulatedSample, directory: Path) -> dict[str, Any]:
     """Fitted labels per truth spot (`-1` where the run dropped it), and the
-    `cnv_seglevel.tsv` rows with each fitted clone's `A` and `B` per bin.
+    integer table's rows with each fitted clone's `A` and `B` per bin (`run_tables`).
     """
-    labels = clone_labels(directory).reindex(sample.barcodes, fill_value=-1)
-    seglevel = pd.read_csv(directory / "cnv_seglevel.tsv", sep="\t")
+    found, seglevel, _ = run_tables(directory)
+    labels = found.reindex(sample.barcodes, fill_value=-1)
     n_fitted = int(labels.max()) + 1
     # NB CalicoST leaves out the column of a clone whose integer fit it
     #    skipped (#494); its bins read as -1, never as a planted pair.
@@ -172,11 +264,15 @@ def read_tables(sample: SimulatedSample, directory: Path) -> dict[str, Any]:
     return {"labels": labels.to_numpy(), "seglevel": seglevel, "a": a, "b": b}
 
 
+def _run_directory(output: Path) -> Path:
+    return next(output.rglob("cnv_seglevel.tsv")).parent
+
+
 def read_run(sample: SimulatedSample, output: Path) -> dict[str, Any]:
     """`read_tables`, with the decoded state `Z` per bin and fitted clone."""
-    run = next(output.rglob("rdrbaf_final_nstates*_smp.npz"))
-    fit = np.load(run, allow_pickle=True)
-    tables = read_tables(sample, run.parent)
+    directory = _run_directory(output)
+    _, _, fit = run_tables(directory)
+    tables = read_tables(sample, directory)
     n_fitted = tables["a"].shape[1]
     n_states = np.asarray(fit["new_log_mu"]).shape[0]
     pred = np.asarray(fit["pred_cnv"]).reshape(len(tables["seglevel"]), -1) % n_states
@@ -254,20 +350,9 @@ def score_sample(
     fitted = run["labels"]
     scored = fitted >= 0
     ari = float(adjusted_rand_score(sample.labels[scored], fitted[scored]))
-    merged = integer_clones(run["a"], run["b"])
-    integer = merged[fitted[scored]]
-    written = next(output.rglob("clone_labels_integer.tsv"), None)
-
-    if written is not None:
-        # NB the run's own integer clones, under the merge agreement its
-        #    configuration states (#518); the exact rule where none is written.
-        table = pd.read_csv(written, sep="\t", comment="#")
-        by_barcode = pd.Series(
-            table["integer_clone_label"].to_numpy(),
-            index=pd.Index(table["barcode"].astype(str)),
-        )
-        integer = by_barcode.loc[sample.barcodes[scored]].to_numpy()
-
+    integer = integer_labels(run["a"], run["b"])[fitted[scored]]
+    integer_99 = integer_labels(run["a"], run["b"], AGREEMENT_99)[fitted[scored]]
+    ari_integer_99 = float(adjusted_rand_score(sample.labels[scored], integer_99))
     ari_integer = float(adjusted_rand_score(sample.labels[scored], integer))
 
     clone_of = matched(
@@ -322,6 +407,8 @@ def score_sample(
         copy_ari_unbalanced_gain_pf=class_ari(t_pf, ab_pf, unbalanced),
         n_clones=int(np.unique(fitted[scored]).size),
         n_integer_clones=int(np.unique(integer).size),
+        ari_integer_99=round(ari_integer_99, 4),
+        n_integer_clones_99=int(np.unique(integer_99).size),
         exact=round(float(np.mean(t == ab)), 4),
         exact_altered=round(float(np.mean((t == ab)[altered])), 4),
         exact_altered_minor=round(float(np.mean(either[altered])), 4),
@@ -404,8 +491,12 @@ class Recovery:
     on a fixture whose states are not integer as well as on `copy_lattice`."""
     ari_integer: float
     """`ari` after merging fitted clones whose decoded `(A, B)` agree at every
-    bin (#344): clones told apart by the fit and not by their copies are one."""
+    bin (#344): `outputs.integer_clones` at 1.0 (`integer_labels`)."""
     n_integer_clones: int
+    ari_integer_99: float
+    """`ari` after merging clones whose decoded `(A, B)` agree at 99 per cent of bins,
+    the run's default merge (`AGREEMENT_99`, #518, T- #817)."""
+    n_integer_clones_99: int
     state_ari: float
     """ARI of the fitted continuous state (`pred_cnv`) against the planted
     state, per matched clone-bin: `copy_ari` before integer decoding."""
@@ -511,10 +602,8 @@ def _copies(
 
 
 def read_cnaster(truth: CoreInferenceTruth, output: Path) -> Reading:
-    """A `run_cnaster` or `run_cnaster_port` run's outputs."""
-    run = next(output.rglob("rdrbaf_final_nstates*_smp.npz"))
-    fit = np.load(run, allow_pickle=True)
-    labels = clone_labels(run.parent)
+    """A `run_cnaster` or `run_cnaster_port` run's outputs: its `cnamaste.h5` where it wrote one (`run_tables`)."""
+    labels, seglevel, fit = run_tables(_run_directory(output))
     fitted = np.empty(truth.labels.size, dtype=np.int64)
     fitted[_spots(labels.index.to_series())] = labels.to_numpy()
     n_fitted = int(fitted.max()) + 1
@@ -525,7 +614,6 @@ def read_cnaster(truth: CoreInferenceTruth, output: Path) -> Reading:
     p_binom = p_binom.reshape(p_binom.shape[0], -1)[:, :1]
     n_states = log_mu.shape[0]
 
-    seglevel = pd.read_csv(run.parent / "cnv_seglevel.tsv", sep="\t")
     rows = planted_rows(seglevel, truth)
     pred = np.where(
         rows[:, None] >= 0, np.asarray(fit["pred_cnv"])[rows] % n_states, -1
@@ -647,8 +735,10 @@ def score_truth(
     total = a + b
     copy_ari = float(adjusted_rand_score(planted, a * 1_000 + b))
     state_ari = float(adjusted_rand_score(planted, decoded))
-    merged = integer_clones(reading.a, reading.b)
+    merged = integer_labels(reading.a, reading.b)
     ari_integer = float(adjusted_rand_score(truth.labels, merged[fitted]))
+    merged_99 = integer_labels(reading.a, reading.b, AGREEMENT_99)
+    ari_integer_99 = float(adjusted_rand_score(truth.labels, merged_99[fitted]))
     expected = np.rint(2.0 * mu_true[planted])
     altered = planted != 0
     # NB `cnaster` shares one `(mu, p)` per state, so its first column is all
@@ -665,6 +755,8 @@ def score_truth(
         copy_ari=round(copy_ari, 4),
         ari_integer=round(ari_integer, 4),
         n_integer_clones=int(np.unique(merged).size),
+        ari_integer_99=round(ari_integer_99, 4),
+        n_integer_clones_99=int(np.unique(merged_99[fitted]).size),
         state_ari=round(state_ari, 4),
         state_match=round(state_match, 4),
         mu_error_median=round(float(np.median(mu_error)), 4),

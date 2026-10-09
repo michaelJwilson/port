@@ -1,14 +1,14 @@
-"""`port.extensions.outputs`: the fitted and the decoded views of a run (#331).
+"""`port.extensions.outputs`: the run's integer-clone rule and configuration keys, and a run read from `cnamaste.h5`.
 
-A synthetic run directory in `cnaster`'s formats -- `cnv_seglevel.tsv`,
-`cnv_perstate.tsv` and the `.npz` -- whose clone ids are not their positions,
-so each claim below is read against a layout the writer has to resolve rather
-than one it can assume.
+Port writes no table of its own beside `cnaster`'s (T- #817): what
+`cnv_states.tsv`, `cnv_segments.tsv`, `cnv_binlevel.tsv`,
+`clone_labels_integer.tsv`, `gene_segments.tsv` and `manifest.json` held is in
+`cnamaste.h5`. A synthetic fit whose clone ids are not their positions stands
+in for a run where a claim is about the arithmetic, not the run.
 """
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -84,139 +84,6 @@ def _run(tmp_path: Path, seed: int = 3, shift: np.ndarray | None = None) -> Path
     return run
 
 
-def _load(run: Path) -> Any:
-    from port.extensions.outputs import _load as load
-
-    return load(run)
-
-
-@pytest.mark.infra
-def test_each_clone_is_matched_to_its_column_by_its_path(tmp_path: Path) -> None:
-    """`clone0`, `clone2`, `clone5` sit at positions 1, 2, 0 of `pred_cnv`."""
-    from port.extensions.outputs import clone_columns
-
-    seglevel, _, fit = _load(_run(tmp_path))
-
-    assert clone_columns(seglevel, fit["pred_cnv"]) == dict(
-        zip(IDS, POSITIONS, strict=True)
-    )
-
-
-@pytest.mark.analytic
-def test_the_segments_expand_back_to_every_bin_s_pair(tmp_path: Path) -> None:
-    """Each clone's runs tile its bins without gap or overlap, never cross a
-    chromosome, and carry the `(A, B)` and states of every bin they span."""
-    from port.extensions.outputs import segments
-
-    seglevel, _, fit = _load(_run(tmp_path))
-    table = segments(seglevel, fit)
-
-    for clone in IDS:
-        runs = table[table.clone == clone]
-        expanded = np.repeat(runs[["A", "B"]].to_numpy(), runs.n_bins, axis=0)
-        cover = np.concatenate(
-            [
-                np.arange(a, b + 1)
-                for a, b in zip(runs.first_bin, runs.last_bin, strict=True)
-            ]
-        )
-
-        np.testing.assert_array_equal(cover, np.arange(N_BINS))
-        np.testing.assert_array_equal(
-            expanded, seglevel[[f"clone{clone} A", f"clone{clone} B"]].to_numpy()
-        )
-        for _, row in runs.iterrows():
-            span = seglevel.iloc[row.first_bin : row.last_bin + 1]
-            assert np.all(span.CHR.to_numpy() == span.CHR.to_numpy()[0])
-            assert row.states == ",".join(
-                str(s) for s in np.unique(span[f"clone{clone} Z"])
-            )
-
-        # NB adjacent runs on one chromosome differ in their pair: runs are
-        #    maximal.
-        same = runs.CHR.to_numpy()[1:] == runs.CHR.to_numpy()[:-1]
-        differ = np.any(
-            runs[["A", "B"]].to_numpy()[1:] != runs[["A", "B"]].to_numpy()[:-1], axis=1
-        )
-        assert np.all(differ[same])
-
-
-@pytest.mark.analytic
-def test_the_states_carry_the_fit_the_decoding_and_the_shares(tmp_path: Path) -> None:
-    """Per clone, one row per state: `logmu` and `p` from the `.npz`, `(A, B)`
-    from `cnv_perstate.tsv`, agreeing with every bin the state holds, and
-    shares summing to one."""
-    from port.extensions.outputs import states
-
-    seglevel, perstate, fit = _load(_run(tmp_path))
-    table = states(seglevel, perstate, fit)
-
-    assert len(table) == N_STATES * len(IDS)
-
-    for clone in IDS:
-        rows = table[table.clone == clone].set_index("state")
-        np.testing.assert_array_equal(rows.logmu, fit["new_log_mu"][:, 0])
-        np.testing.assert_array_equal(rows.p, fit["new_p_binom"][:, 0])
-        assert rows.share.sum() == pytest.approx(1.0, abs=1e-12)
-
-        path = seglevel[f"clone{clone} Z"].to_numpy()
-        for state in np.unique(path):
-            held = seglevel[path == state]
-            assert set(held[f"clone{clone} A"]) == {rows.A[state]}
-            assert set(held[f"clone{clone} B"]) == {rows.B[state]}
-
-
-@pytest.mark.analytic
-def test_the_posterior_means_lie_within_the_states(tmp_path: Path) -> None:
-    """A posterior mean is the posterior's weights on the states' `p`, to
-    1e-12 against the weights taken from the `.npz` directly, and so lies
-    within the states' range."""
-    from port.extensions.outputs import binlevel
-
-    seglevel, _, fit = _load(_run(tmp_path))
-    table = binlevel(seglevel, fit)
-    p = fit["new_p_binom"][:, 0]
-
-    for clone in IDS:
-        assert np.all(
-            (table[f"clone{clone} p"] >= p.min() - 1e-12)
-            & (table[f"clone{clone} p"] <= p.max() + 1e-12)
-        )
-        position = POSITIONS[IDS.index(clone)]
-        weights = np.exp(fit["log_gamma"][:, :, position])
-        np.testing.assert_allclose(table[f"clone{clone} p"], p @ weights, rtol=1e-12)
-
-
-@pytest.mark.infra
-def test_the_writer_leaves_cnaster_s_files_and_writes_valid_json(
-    tmp_path: Path,
-) -> None:
-    """Four files beside `cnaster`'s, which are byte for byte untouched; the
-    manifest is strict JSON, `total_llf`'s NaN written as null."""
-    from port.extensions.outputs import run_directories, write_outputs
-
-    run = _run(tmp_path)
-    before = {path.name: path.read_bytes() for path in run.iterdir()}
-
-    assert list(run_directories(tmp_path)) == [run]
-    written = write_outputs(run, flags={"shift": True})
-
-    assert {path.name for path in written} == {
-        "cnv_states.tsv",
-        "cnv_segments.tsv",
-        "cnv_binlevel.tsv",
-        "manifest.json",
-    }
-    assert {name: (run / name).read_bytes() for name in before} == before
-
-    manifest = json.loads(
-        (run / "manifest.json").read_text(), parse_constant=pytest.fail
-    )
-    assert manifest["total_llf"] is None
-    assert manifest["clones"] == dict(zip(IDS, POSITIONS, strict=True))
-    assert manifest["run_cnaster_port"] == {"shift": True}
-
-
 @pytest.mark.analytic
 def test_clones_that_decode_alike_are_one_integer_clone() -> None:
     """Equal `(A, B)` at every bin is one clone, named by its smallest id;
@@ -234,81 +101,6 @@ def test_clones_that_decode_alike_are_one_integer_clone() -> None:
     assert integer_clones(frame) == {"5": "2", "0": "0", "2": "2", "7": "0"}
 
 
-@pytest.mark.infra
-def test_the_integer_labels_keep_every_spot_s_fitted_label(tmp_path: Path) -> None:
-    """`clone_labels_integer.tsv` is `clone_labels.tsv` column for column,
-    plus each spot's integer clone; a spot with no clone keeps none."""
-    from port.extensions.outputs import integer_clones, write_outputs
-
-    run = _run(tmp_path)
-    seglevel, _, _ = _load(run)
-    # NB clone 5 decodes as clone 0 does.
-    for column in ("A", "B"):
-        seglevel[f"clone5 {column}"] = seglevel[f"clone0 {column}"]
-    seglevel.to_csv(run / "cnv_seglevel.tsv", sep="\t", index=False)
-
-    labels = pd.DataFrame(
-        {
-            "barcode": [f"BC{k}" for k in range(5)],
-            "sample_id": "S1",
-            "x": range(5),
-            "y": 0,
-            "clone_label": [0, 2, 5, np.nan, 5],
-        }
-    )
-    labels.to_csv(run / "clone_labels.tsv", sep="\t", index=False)
-    write_outputs(run)
-    written = pd.read_csv(run / "clone_labels_integer.tsv", sep="\t")
-
-    pd.testing.assert_frame_equal(written[labels.columns], labels)
-    assert integer_clones(seglevel)["5"] == "0"
-    np.testing.assert_array_equal(
-        written.integer_clone_label.to_numpy(), [0, 2, 0, np.nan, 0]
-    )
-
-
-@pytest.mark.infra
-def test_a_merge_rewrites_clone_labels_and_keeps_cnaster_s(tmp_path: Path) -> None:
-    """Merged clones are `clone_labels.tsv`'s `clone_label`; `cnaster`'s is kept.
-
-    Run twice, the writer reads `cnaster`'s labels back rather than its own,
-    so the file is the same after the second pass (#518). Where nothing
-    merges, `clone_labels.tsv` is `cnaster`'s byte for byte.
-    """
-    from port.extensions.outputs import CNASTER_LABEL, write_outputs
-
-    run = _run(tmp_path)
-    labels = pd.DataFrame(
-        {
-            "barcode": [f"BC{k}" for k in range(5)],
-            "sample_id": "S1",
-            "x": range(5),
-            "y": 0,
-            "clone_label": [0, 2, 5, np.nan, 5],
-        }
-    )
-    labels.to_csv(run / "clone_labels.tsv", sep="\t", index=False)
-    untouched = (run / "clone_labels.tsv").read_bytes()
-
-    write_outputs(run)
-
-    assert (run / "clone_labels.tsv").read_bytes() == untouched
-
-    seglevel, _, _ = _load(run)
-    for column in ("A", "B"):
-        seglevel[f"clone5 {column}"] = seglevel[f"clone0 {column}"]
-    seglevel.to_csv(run / "cnv_seglevel.tsv", sep="\t", index=False)
-
-    write_outputs(run)
-    once = (run / "clone_labels.tsv").read_bytes()
-    write_outputs(run)
-    rewritten = pd.read_csv(run / "clone_labels.tsv", sep="\t")
-
-    assert (run / "clone_labels.tsv").read_bytes() == once
-    np.testing.assert_array_equal(rewritten.clone_label, [0, 2, 0, np.nan, 0])
-    np.testing.assert_array_equal(rewritten[CNASTER_LABEL], labels.clone_label)
-
-
 def _truth() -> Any:
     from port.sim.truth import core_inference_truth
 
@@ -322,26 +114,18 @@ def _truth() -> Any:
 # NB one whole run at a time: four at once exceed 15 GB (#403).
 @pytest.mark.xdist_group("pipeline")
 def test_a_run_s_outputs_recover_the_planted_clones_and_the_flat_normal(
-    cnaster_config: None, tmp_path: Path
+    tmp_path: Path,
 ) -> None:
-    """The writer on a whole `run_cnaster` run, read against the planted truth.
+    """`run_cnaster_port` on the round trip's instance, its `cnamaste.h5` read against the planted truth.
 
-    The round trip's instance (two clones, three states, 40 bins). Each
-    fitted clone's spots are one planted clone to 95 per cent (1.000 on this
-    host), and the planted normal clone reads flat in `cnv_binlevel.tsv`:
-    `mu`, its state's rate with the clone's shift, constant to 1 per cent
-    about its own mean -- `run_cnaster` leaves `mu`'s scale unpinned -- and
-    `p` 1/2 to 0.02 (0.499 here, 0.487 on CI's
-    runner). The segments reproduce `cnaster`'s own table bin for bin.
-
-    The tumour clone's amplification is not judged here: at this run's three
-    iterations its recovery differs by machine -- `mu` ratio 4.41 on this
-    host, 1.18 on CI's runner, and its BAF likewise -- which is `run_cnaster`'s
-    fit (#293), not the writer. `test_the_writer_returns_the_planted_states_
-    of_a_perfect_decode` judges the writer on the amplification, exactly.
+    Two clones, three states, 40 bins. Each fitted clone's spots are one
+    planted clone to 95 per cent, and the planted normal clone reads flat:
+    its rate `exp(log_mu[Z] - shift)` constant to 1 per cent about its mean --
+    the fit leaves `mu`'s scale unpinned -- and its state's `p` 1/2 to 0.02.
+    Read from `/rdrbaf` and `/clone_assignment`; the per-bin posterior-mean
+    `p` the removed `cnv_binlevel.tsv` held is the decoded state's `p` here.
     """
-    from port.extensions.outputs import run_directories, write_outputs
-    from port.sim.inputs import GENE_SPACING
+    from port.extensions import cnamaste
     from port.sim.run_config import run_written
 
     truth = _truth()
@@ -350,126 +134,39 @@ def test_a_run_s_outputs_recover_the_planted_clones_and_the_flat_normal(
     state = np.random.get_state()  # noqa: NPY002
     np.random.seed(11)  # noqa: NPY002
     try:
-        (run,) = run_directories(
-            run_written(
-                truth, tmp_path, port=False, plots=False, max_iter_outer=1, max_iter=3
-            )
+        output = run_written(
+            truth, tmp_path, port=True, plots=False, max_iter_outer=1, max_iter=3
         )
     finally:
         np.random.set_state(state)  # noqa: NPY002
-    write_outputs(run)
 
-    bins = pd.read_csv(run / "cnv_binlevel.tsv", sep="\t")
-    seglevel = pd.read_csv(run / "cnv_seglevel.tsv", sep="\t", comment="#")
-    segments = pd.read_csv(run / "cnv_segments.tsv", sep="\t")
-    labels = pd.read_csv(run / "clone_labels.tsv", sep="\t", comment="#")
-    offset = np.concatenate([[0], np.cumsum(truth.lengths)[:-1]])
-    planted_bin = (
-        offset[bins.CHR.to_numpy() - 1] + bins.START.to_numpy() // GENE_SPACING
+    h5 = Path(output) / cnamaste.FILE
+    spots, _ = cnamaste.read(h5, "inputs")
+    final, _ = cnamaste.read(h5, "clone_assignment")
+    fit, _ = cnamaste.read(h5, "rdrbaf")
+    order = dict(
+        zip(final["assignment"].tolist(), fit["assignment"].tolist(), strict=True)
     )
+    # NB the spots in the order the instance writes them, which is `/inputs`'
+    assert spots["barcodes"].size == truth.labels.size
+    labels = truth.labels
+    shift = fit.get("logmu_shift", np.zeros(fit["pred_cnv"].shape[1]))
     normal = 0
 
-    for clone in np.unique(labels.clone_label):
-        spots = labels.clone_label.to_numpy() == clone
-        planted = pd.Series(truth.labels[spots]).value_counts(normalize=True)
+    for clone in np.unique(final["assignment"]):
+        chosen = final["assignment"] == clone
+        planted = pd.Series(labels[chosen]).value_counts(normalize=True)
         assert planted.iloc[0] >= 0.95, f"clone {clone}: {planted.to_dict()}"
 
-        runs = segments[segments.clone.astype(str) == str(clone)]
-        np.testing.assert_array_equal(
-            np.repeat(runs[["A", "B"]].to_numpy(), runs.n_bins, axis=0),
-            seglevel[[f"clone{clone} A", f"clone{clone} B"]].to_numpy(),
-        )
-
-        if np.all(truth.states[int(planted.index[0]), planted_bin] == 0):
+        column = order[int(clone)]
+        path = fit["pred_cnv"][:, column]
+        if np.all(truth.states[int(planted.index[0])] == 0):
             normal += 1
-            mu = bins[f"clone{clone} mu"].to_numpy()
+            mu = np.exp(fit["log_mu"][path] - shift[column])
             np.testing.assert_allclose(mu, mu.mean(), rtol=1e-2)
-            np.testing.assert_allclose(bins[f"clone{clone} p"], 0.5, atol=0.02)
+            np.testing.assert_allclose(fit["p_binom"][path], 0.5, atol=0.02)
 
     assert normal == 1, "the planted normal clone was not recovered as one clone"
-
-
-@pytest.mark.analytic
-def test_the_writer_returns_the_planted_states_of_a_perfect_decode(
-    tmp_path: Path,
-) -> None:
-    """A run directory written from the planted truth itself -- each clone's
-    path its planted states, the posterior one-hot on them, one `(A, B)` per
-    state, a shift per clone -- is read back as the truth: every bin's `p`
-    the planted state's, its `logmu` through `Z` in `cnv_states.tsv` the
-    planted state's, and its and its segment's `mu` the planted rate over
-    `exp(shift)`, the amplification's `mu` 5.0 and `p` 0.88 exactly, and the
-    segments the planted runs of state within each chromosome."""
-    from port.extensions.outputs import binlevel, segments, states
-
-    truth = _truth()
-    n_states, n_bins = len(np.ravel(truth.log_mu)), truth.states.shape[1]
-    chromosome = np.repeat(np.arange(1, len(truth.lengths) + 1), truth.lengths)
-    start = np.concatenate([np.arange(n) for n in truth.lengths]) * 1000
-    pairs = np.array([[1, 1], [2, 1], [4, 1]])[:n_states]
-    seglevel = pd.DataFrame({"CHR": chromosome, "START": start, "END": start + 999})
-    perstate = pd.DataFrame(index=range(n_states))
-
-    for clone in range(truth.states.shape[0]):
-        path = truth.states[clone]
-        seglevel[f"clone{clone} Z"] = path
-        seglevel[f"clone{clone} A"] = pairs[path, 0]
-        seglevel[f"clone{clone} B"] = pairs[path, 1]
-        perstate[f"clone{clone} A"] = pairs[:, 0]
-        perstate[f"clone{clone} B"] = pairs[:, 1]
-
-    gamma = np.zeros((n_states, n_bins, truth.states.shape[0]))
-    for clone in range(truth.states.shape[0]):
-        gamma[truth.states[clone], np.arange(n_bins), clone] = 1.0
-
-    fit = {
-        "n_states": n_states,
-        "new_log_mu": np.ravel(truth.log_mu)[:, None],
-        "new_p_binom": np.ravel(truth.p_binom)[:, None],
-        "log_gamma": np.log(np.maximum(gamma, 1e-300)),
-        "pred_cnv": truth.states.T,
-        # NB per position in `pred_cnv`, which here is the clone.
-        "new_log_mu_shift": np.array([0.0, 0.2])[: truth.states.shape[0]],
-    }
-    mu_planted = np.exp(np.ravel(truth.log_mu))
-    p_planted = np.ravel(truth.p_binom)
-    table = binlevel(seglevel, fit)
-    fitted = states(seglevel, perstate, fit)
-
-    for clone in range(truth.states.shape[0]):
-        path = truth.states[clone]
-        rates = fitted[fitted.clone == str(clone)].set_index("state").logmu
-        np.testing.assert_allclose(
-            rates.to_numpy()[table[f"clone{clone} Z"].to_numpy()],
-            np.ravel(truth.log_mu)[path],
-            rtol=1e-12,
-        )
-        scale = np.exp(fit["new_log_mu_shift"][clone])
-        np.testing.assert_allclose(
-            table[f"clone{clone} mu"], mu_planted[path] / scale, rtol=1e-12
-        )
-        np.testing.assert_allclose(
-            table[f"clone{clone} p"], p_planted[path], rtol=1e-12
-        )
-
-        runs = segments(seglevel, fit)
-        runs = runs[runs.clone == str(clone)]
-        breaks = np.flatnonzero(
-            (path[1:] != path[:-1]) | (chromosome[1:] != chromosome[:-1])
-        )
-        np.testing.assert_array_equal(runs.first_bin, np.concatenate([[0], breaks + 1]))
-        np.testing.assert_array_equal(
-            runs.states, [str(s) for s in path[runs.first_bin]]
-        )
-        np.testing.assert_allclose(
-            runs.mu, mu_planted[path[runs.first_bin]] / scale, rtol=1e-12
-        )
-
-    amplified = int(np.argmax(mu_planted))
-    held = fitted[(fitted.state == amplified) & (fitted.share > 0)]
-    assert len(held) >= 1
-    assert np.exp(held.logmu.iloc[0]) == pytest.approx(5.0, rel=1e-12)
-    assert held.p.iloc[0] == pytest.approx(0.88, rel=1e-12)
 
 
 def _profiles(disagreeing: dict[str, int], n_bins: int = 1000) -> pd.DataFrame:
@@ -512,8 +209,8 @@ def test_an_agreement_outside_the_unit_interval_is_refused(agreement: float) -> 
 
 
 @pytest.mark.infra
-def test_the_configured_agreement_is_what_write_outputs_uses(tmp_path: Path) -> None:
-    """`int_copy_num.merge_agreement` reaches `config_keys` and the manifest (#518)."""
+def test_the_configured_agreement_is_what_config_keys_reads(tmp_path: Path) -> None:
+    """`int_copy_num.merge_agreement` reaches `config_keys` (#518)."""
     from port.extensions.outputs import config_keys
 
     config = tmp_path / "config.yaml"
@@ -536,35 +233,6 @@ def test_a_directory_an_earlier_run_left_is_not_this_run_s(tmp_path: Path) -> No
     assert list(run_directories(tmp_path)) == [run]
     assert list(run_directories(tmp_path, since=1_000.0)) == [run]
     assert list(run_directories(tmp_path, since=1_001.0)) == []
-
-
-@pytest.mark.infra
-def test_two_fits_of_different_k_in_one_directory_are_told_apart(
-    tmp_path: Path,
-) -> None:
-    """`n_states` names the fit; without it two fits are refused, not guessed."""
-    import shutil
-
-    from port.extensions.outputs import final_fit, write_outputs
-
-    run = _run(tmp_path)
-    shutil.copy(
-        run / f"rdrbaf_final_nstates{N_STATES}_smp.npz",
-        run / f"rdrbaf_final_nstates{N_STATES + 3}_smp.npz",
-    )
-
-    assert final_fit(run, N_STATES).name == f"rdrbaf_final_nstates{N_STATES}_smp.npz"
-    with pytest.raises(ValueError, match="2 fits"):
-        final_fit(run)
-    with pytest.raises(FileNotFoundError):
-        final_fit(run, N_STATES + 1)
-
-    config = tmp_path / "config.yaml"
-    config.write_text(f"hmm:\n  n_states: {N_STATES}\n")
-    written = write_outputs(run, config)
-
-    assert json.loads((run / "manifest.json").read_text())["n_states"] == N_STATES
-    assert run / "manifest.json" in written
 
 
 @pytest.mark.infra
@@ -634,81 +302,23 @@ def test_a_refused_fit_leaves_the_run_and_says_so(
 SHIFT = np.array([0.0, 0.11, -0.07])
 
 
-@pytest.mark.analytic
-def test_a_bin_s_mu_is_its_state_s_rate_with_the_clone_s_shift(
-    tmp_path: Path,
-) -> None:
-    """`clone{c} mu` is `exp(logmu[Z] - shift_c)` to 1e-12, from the `.npz`
-    directly, and differs from the posterior mean of the state rates where
-    the posterior splits; a segment's `mu` is that rate's mean over its bins
-    (#613)."""
-    from port.extensions.outputs import binlevel, segments
-
-    seglevel, _, fit = _load(_run(tmp_path, shift=SHIFT))
-    table = binlevel(seglevel, fit)
-    runs = segments(seglevel, fit)
-    log_mu = fit["new_log_mu"][:, 0]
-
-    for clone, position in zip(IDS, POSITIONS, strict=True):
-        path = seglevel[f"clone{clone} Z"].to_numpy()
-        expected = np.exp(log_mu[path] - SHIFT[position])
-        mu = table[f"clone{clone} mu"].to_numpy()
-        np.testing.assert_allclose(mu, expected, rtol=1e-12)
-
-        averaged = np.exp(log_mu) @ np.exp(fit["log_gamma"][:, :, position])
-        assert np.all(np.abs(mu - averaged) > 1e-3)
-
-        own = runs[runs.clone == clone]
-        np.testing.assert_allclose(
-            own.mu,
-            [
-                expected[a : b + 1].mean()
-                for a, b in zip(own.first_bin, own.last_bin, strict=True)
-            ],
-            rtol=1e-12,
-        )
-
-
-@pytest.mark.infra
-def test_written_mu_joins_cnv_states_and_the_manifest_shift(tmp_path: Path) -> None:
-    """On file, `clone{c} mu` is `exp(logmu - log_mu_shift)`: `logmu` from
-    `cnv_states.tsv` joined on `(clone, state)` with `clone{c} Z`, the shift
-    from `manifest.json` at the clone's position; a run recording no shift
-    writes `exp(logmu)` (#613)."""
-    from port.extensions.outputs import write_outputs
-
-    for name, shift in (("shifted", SHIFT), ("unshifted", None)):
-        (tmp_path / name).mkdir()
-        run = _run(tmp_path / name, shift=shift)
-        write_outputs(run)
-        bins = pd.read_csv(run / "cnv_binlevel.tsv", sep="\t")
-        fitted = pd.read_csv(run / "cnv_states.tsv", sep="\t")
-        manifest = json.loads((run / "manifest.json").read_text())
-
-        for clone, position in manifest["clones"].items():
-            logmu = fitted[fitted.clone.astype(str) == clone].set_index("state").logmu
-            offset = 0.0 if shift is None else manifest["log_mu_shift"][position]
-            np.testing.assert_allclose(
-                bins[f"clone{clone} mu"],
-                np.exp(logmu.to_numpy()[bins[f"clone{clone} Z"].to_numpy()] - offset),
-                rtol=1e-12,
-            )
-
-
 @pytest.mark.oracle
 def test_a_bin_s_mu_is_the_rate_the_shifted_emission_evaluates(
     tmp_path: Path,
 ) -> None:
     """Per clone, port's shifted emission of each bin's state scores the bin
-    as `cnaster`'s unshifted emission does at exposure `base * clone{c} mu`
-    and `log_mu = 0`: the written `mu` is the rate the fit used (#613)."""
+    as `cnaster`'s unshifted emission does at exposure `base * mu` and
+    `log_mu = 0`, `mu = exp(log_mu[Z] - shift)`: the rate a reader of
+    `cnamaste.h5` derives from `/rdrbaf` is the rate the fit used (#613)."""
     from cnaster.hmm_nophasing import hmm_nophasing as upstream
-    from port.extensions.outputs import binlevel
     from port.patch.hmm_nophasing import hmm_nophasing
     from port.pipeline import with_attributes
 
-    seglevel, _, fit = _load(_run(tmp_path, shift=SHIFT))
-    table = binlevel(seglevel, fit)
+    run = _run(tmp_path, shift=SHIFT)
+    with np.load(
+        run / f"rdrbaf_final_nstates{N_STATES}_smp.npz", allow_pickle=True
+    ) as held:
+        fit = {k: held[k] for k in held.files}
     shifted = with_attributes(hmm_nophasing, apply_logmu_shift=True)
     rng = np.random.default_rng(7)
     X = np.stack(
@@ -720,22 +330,69 @@ def test_a_bin_s_mu_is_the_rate_the_shifted_emission_evaluates(
     previous = hmm_nophasing._row_shift
 
     try:
-        for clone, position in zip(IDS, POSITIONS, strict=True):
+        for position in POSITIONS:
             hmm_nophasing._row_shift = np.full(N_BINS, SHIFT[position])
             ours = shifted.compute_emission_probability_nb_betabinom(
                 X, base, fit["new_log_mu"], alphas, total, fit["new_p_binom"], taus
             )[0]
             theirs = upstream.compute_emission_probability_nb_betabinom(
                 X,
-                base * table[f"clone{clone} mu"].to_numpy()[:, None],
+                base
+                * np.exp(
+                    fit["new_log_mu"][fit["pred_cnv"][:, position], 0] - SHIFT[position]
+                )[:, None],
                 np.zeros((N_STATES, 1)),
                 alphas,
                 total,
                 fit["new_p_binom"],
                 taus,
             )[0]
-            path = table[f"clone{clone} Z"].to_numpy()
+            path = fit["pred_cnv"][:, position]
             bins = np.arange(N_BINS)
             np.testing.assert_allclose(ours[path, bins], theirs[path, bins], rtol=1e-12)
     finally:
         hmm_nophasing._row_shift = previous
+
+
+@pytest.mark.patch
+def test_the_run_rule_at_one_is_the_exact_rule_it_replaces() -> None:
+    """`outputs.integer_clones(frame, 1.0)` against `qa.scoring.integer_clones` as it stood (T- #817).
+
+    The exact rule, inlined as it was deleted: on 2,000 random decodes of 2 to
+    9 clones over 1 to 40 bins, copies drawn from 0..3 so that equal profiles
+    are common, the two merge every clone alike.
+    """
+    from port.extensions.outputs import integer_clones
+
+    def exact(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+        merged = np.arange(a.shape[1])
+        seen: dict[bytes, int] = {}
+        for clone in range(a.shape[1]):
+            profile = np.stack([a[:, clone], b[:, clone]]).astype(np.int64)
+            merged[clone] = seen.setdefault(profile.tobytes(), clone)
+        return merged
+
+    rng = np.random.default_rng(817)
+    joined = 0
+    for _ in range(2_000):
+        n_bins, n_clones = int(rng.integers(1, 41)), int(rng.integers(2, 10))
+        a = rng.integers(0, 4, size=(n_bins, n_clones)) * (
+            rng.random(n_bins)[:, None] < 0.3
+        )
+        b = rng.integers(0, 4, size=(n_bins, n_clones)) * (
+            rng.random(n_bins)[:, None] < 0.3
+        )
+        frame = pd.DataFrame(
+            {
+                f"clone{c} {k}": v[:, c]
+                for c in range(n_clones)
+                for k, v in (("A", a), ("B", b))
+            }
+        )
+        names = integer_clones(frame, 1.0)
+        ours = np.array([int(names[str(c)]) for c in range(n_clones)])
+        theirs = exact(a, b)
+        np.testing.assert_array_equal(ours, theirs)
+        joined += int((theirs != np.arange(n_clones)).any())
+    # NB 185 of the 2,000 draws merge at least one pair, measured: the comparison is not vacuous
+    assert joined > 100

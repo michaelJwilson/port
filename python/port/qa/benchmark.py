@@ -35,10 +35,10 @@ from port.extensions.repository import ROOT
 from port.qa import provenance
 from port.qa.statistics import measured, median_wall, peak_gb
 from port.sim.files import located
-from port.sim.truth import COPY_LATTICE, CoreInferenceTruth, dev_instance
+from port.sim.truth import COPY_LATTICE, dev_instance
 
 if TYPE_CHECKING:
-    from port.extensions.combined_figure import Recorded
+    pass
 
 TIMEOUT = 1800
 """CalicoST's budget per case, in seconds (#494)."""
@@ -513,59 +513,6 @@ chr7's two events were decoded as one state (#313).
 """
 
 
-def _write_combined(
-    recorded: Recorded, truth: CoreInferenceTruth, root: Path, output: Path
-) -> None:
-    """The genomic and spatial figures, and both on one page (#309, #339).
-
-    The slide is mocked from the planted labels and read back through
-    `port.patch.he.he_image`, as `run_cnaster` reads one (T- #771). It is written
-    beside the run's inputs rather than into them: `load_input_data` would
-    otherwise find it and refine the initial clones by it, and the figures
-    would stop being the ones the dev instance's run draws.
-    """
-    from port.extensions.combined_figure import (
-        combined_figure,
-        genomic_figure,
-        page_style,
-        spatial_figure,
-    )
-    from port.patch.he import he_image
-    from port.patch.utils import write_fig
-    from port.pipeline import FIGURE_DPI
-    from port.sim.he_slide import mock_he, write_he_slide
-
-    # NB what the run's `FIGURE_SWAPS` row and `--png-copies` bind (#517).
-    PAGE: dict[str, Any] = {
-        "bbox_inches": None,
-        "dpi": FIGURE_DPI,
-        "group_rasters": True,
-        "png_copy": True,
-    }
-
-    slide = mock_he(truth.labels, truth.lattice, seed=truth.seed)
-    write_he_slide(slide, root / "slide")
-    frame = he_image(str(root / "slide"), res="hires", pos=None)
-
-    plots = next(output.rglob("clones_spatial.pdf")).parent
-    # NB at its declared size, not a tight box: the page is drawn at the text
-    #    width and included at 1:1, so a box that grows past it is rescaled.
-    # NB written as drawn: the run has set seaborn's theme, which a page
-    #    written under it would follow where a style is read at draw time.
-    with page_style():
-        write_fig(str(plots / "genomic.pdf"), genomic_figure(recorded), **PAGE)
-        write_fig(
-            str(plots / "spatial.pdf"),
-            spatial_figure(recorded, frame),
-            **PAGE,
-        )
-        write_fig(
-            str(plots / "combined.pdf"),
-            combined_figure(recorded, frame),
-            **PAGE,
-        )
-
-
 def figures(out: Path, *, cnaster: bool = False) -> list[Path]:
     """The dev instance's figures, and its copy lattice's under `out/lattice`; the directories written.
 
@@ -594,7 +541,6 @@ def figures(out: Path, *, cnaster: bool = False) -> list[Path]:
     import matplotlib as mpl
 
     mpl.use("Agg")
-    from port.extensions.combined_figure import recording
     from port.sim.run_config import run_written
 
     written = []
@@ -615,19 +561,17 @@ def figures(out: Path, *, cnaster: bool = False) -> list[Path]:
             )
         else:
             # NB in process, through `port.scripts.run_cnaster.main`, with its
-            #    defaults: the figures are the ones a user of the entry point gets.
-            with recording() as recorded:
-                output = run_written(
-                    truth,
-                    root,
-                    port=True,
-                    max_iter_outer=1,
-                    max_iter=3,
-                    n_states=STATES,
-                    flags=("--png-copies",),
-                )
-
-            _write_combined(recorded, truth, root, output)
+            #    defaults: the figures are the ones a user of the entry point gets,
+            #    `genomic`, `spatial` and `combined` among them (T- #817).
+            output = run_written(
+                truth,
+                root,
+                port=True,
+                max_iter_outer=1,
+                max_iter=3,
+                n_states=STATES,
+                flags=("--png-copies",),
+            )
 
         destination.mkdir(parents=True, exist_ok=True)
         # NB PDFs are not kept (#452). PNGs are overwritten by name rather
