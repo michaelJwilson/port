@@ -89,6 +89,9 @@ def test_definitions_are_numbered_from_one_and_cover_every_metric() -> None:
         assert found == list(range(1, len(found) + 1)), metric
 
 
+ADDED = frozenset({"clone_ari_int_99"})
+"""Metrics added after the conversion (T- #817): no converted run measured them."""
+
 CONVERTED_ROWS = 73
 CONVERTED_SHA256 = "0bcb7c57193ac696ed08cca106200ab817914289c3900ba35187373810b44e10"
 """SHA-256 of the 73 data lines of `docs/metrics.md` at ef2261d, read from git (#620)."""
@@ -99,10 +102,13 @@ def test_the_render_rebuilds_the_converted_rows() -> None:
     """`--render`'s first 73 rows, in the old table's form, hash to `TABLE_HASH`."""
     rows = parse(render())[:CONVERTED_ROWS]
     kept = {"note": lambda v: v.split(CONVERTED)[0]}
+    # NB the converted table's columns: a metric added since (`ADDED`) has none
     lines = [
         "| "
         + " | ".join(
-            kept.get(c, lambda v: v)(row[c]) for c in COLUMNS if c != "benchmark"
+            kept.get(c, lambda v: v)(row[c])
+            for c in COLUMNS
+            if c != "benchmark" and c not in ADDED
         )
         + " |"
         for row in rows
@@ -349,3 +355,15 @@ def test_a_run_of_unchanged_merges_keeps_its_first_and_last_tick(
     assert text == SKIP
     assert 0 < x < 1
     assert rotation == 0
+
+
+@pytest.mark.infra
+def test_the_cnaster_ledger_is_its_own_in_the_same_format() -> None:
+    """`docs/metrics/cnaster/` (T- #833): its lines name its runs and a shared definition, its runs are the arm's, and no run is port's."""
+    runs = metrics.runs(metrics.CNASTER_DIR)
+    lines = metrics.ledger(metrics.CNASTER_DIR)
+    current = metrics.latest()
+    assert {line["run_id"] for line in lines} <= {r["run_id"] for r in runs}
+    assert all(current[line["metric"]] == line["definition"] for line in lines)
+    assert all(r["arm"].startswith("-- --no-patch") for r in runs)
+    assert not {r["run_id"] for r in runs} & {r["run_id"] for r in metrics.runs()}

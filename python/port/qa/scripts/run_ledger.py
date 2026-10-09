@@ -1,9 +1,9 @@
 """`run_ledger`: record a run into the metrics ledger, render it, or query it (#409, #620).
 
-`run_ledger --record --note "..." [--instance dev] [--lattice] [--benchmark] -- [flags]`
-runs `run_audit --recovery` (or `--sim` with `--sample`) in its own process and
-appends its `runs` and `ledger` lines; inputs must be committed unless `--dirty`.
-`run_ledger --best clone_ari [--fixture dev [--fixture-hash H]]`,
+`run_ledger --record --note "..." [--instance dev] [--lattice] [--benchmark] [--cnaster] [--fixture NAME] -- [flags]`
+runs `run_audit --recovery` (or `--sim` with `--sample`; `--cnaster` runs `port.qa.cnaster_arm` into
+`docs/metrics/cnaster/`, T- #833) in its own process and appends its `runs` and `ledger` lines; inputs must
+be committed unless `--dirty`. `run_ledger --best clone_ari [--fixture dev [--fixture-hash H]]`,
 `run_ledger --last-benchmark`, `run_ledger --render [--out PATH]`.
 """
 
@@ -31,6 +31,11 @@ def record(arguments: argparse.Namespace) -> int:
         print("inputs are uncommitted; commit them, or pass --dirty")
         return 1
 
+    if arguments.cnaster:
+        if arguments.sample is None:
+            print("--cnaster records a --sample run")
+            return 1
+        return record_sample(arguments, dirty=dirty)
     if arguments.sample is not None:
         return record_sample(arguments, dirty=dirty)
 
@@ -91,7 +96,9 @@ def record_sample(arguments: argparse.Namespace, *, dirty: bool) -> int:
 
     # NB checked before the run too, so a refused name costs no run
     digest = realization_hash(path)
-    ledger.check_identity(arguments.sample, digest, ledger.ledger())
+    fixture = arguments.fixture or arguments.sample
+    directory = ledger.CNASTER_DIR if arguments.cnaster else None
+    ledger.check_identity(fixture, digest, ledger.ledger(directory))
 
     audit = [
         *(item for entry in arguments.set for item in ("--set", entry)),
@@ -99,7 +106,8 @@ def record_sample(arguments: argparse.Namespace, *, dirty: bool) -> int:
     ]
     flags = [f for f in arguments.flags if f != "--"]
     command = [
-        sys.executable, "-m", "port.qa.scripts.run_audit", "--sim", "--sample", sample,
+        sys.executable, "-m", "port.qa.cnaster_arm" if arguments.cnaster else "port.qa.scripts.run_audit",
+        "--sim", "--sample", sample,
         *audit, "--", *flags,
     ]  # fmt: skip
     completed = subprocess.run(
@@ -114,12 +122,13 @@ def record_sample(arguments: argparse.Namespace, *, dirty: bool) -> int:
     recovery["fixture_hash"] = digest
     ledger.write(
         recovery,
-        fixture=arguments.sample,
+        fixture=fixture,
         args=shlex.join([*audit, "--", *flags]),
         note=arguments.note,
         dirty=dirty,
         benchmark=arguments.benchmark,
         test=ledger.SIM_TEST,
+        directory=directory,
     )
     return 0
 
@@ -132,7 +141,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--best", choices=list(ledger.METRICS), help="the line maximizing it"
     )
-    parser.add_argument("--fixture", default=None, help="with --best, one fixture")
+    parser.add_argument("--fixture", default=None,
+                        help="with --best, one fixture; with --record --sample, the ledger's name for it")  # fmt: skip
+    parser.add_argument("--cnaster", action="store_true",
+                        help="with --record --sample, cnaster's arm (port.qa.cnaster_arm) into its own ledger, "
+                             "docs/metrics/cnaster/ (T- #833)")  # fmt: skip
     parser.add_argument(
         "--fixture-hash",
         default=None,

@@ -40,6 +40,9 @@ LEDGER_DIR = ROOT / "docs" / "metrics"
 LEDGER = LEDGER_DIR / "ledger.tsv"
 RUNS = LEDGER_DIR / "runs.tsv"
 DEFINITIONS = LEDGER_DIR / "definitions.tsv"
+CNASTER_DIR = LEDGER_DIR / "cnaster"
+"""`cnaster`'s own ledger (T- #833): `ledger.tsv` and `runs.tsv` as above, under `definitions.tsv` above; `runs`,
+`ledger` and `write` take it as their `directory`."""
 
 LEDGER_COLUMNS = ("run_id", "fixture", "fixture_hash", "metric", "definition", "value")
 RUN_COLUMNS = ("run_id", "timestamp", "commit", "arm", "test", "note", "benchmark")
@@ -49,6 +52,7 @@ KEYS = ("commit", "timestamp", "fixture", "fixture_hash", "test", "args", "bench
 METRICS = {
     "clone_ari": ("ari", 4),
     "clone_ari_int": ("ari_integer", 4),
+    "clone_ari_int_99": ("ari_integer_99", 4),
     "copy_ari": ("copy_ari", 4),
     "copy_ari_loh": ("copy_ari_loh", 4),
     "copy_ari_bgain": ("copy_ari_balanced_gain", 4),
@@ -135,12 +139,16 @@ def append_tsv(
         out.writelines(lines)
 
 
-def runs() -> list[dict[str, str]]:
-    return read_tsv(RUNS, RUN_COLUMNS)
+def runs(directory: Path | None = None) -> list[dict[str, str]]:
+    """`RUNS`, or `directory`'s `runs.tsv` (`CNASTER_DIR`)."""
+    return read_tsv(RUNS if directory is None else directory / RUNS.name, RUN_COLUMNS)
 
 
-def ledger() -> list[dict[str, str]]:
-    return read_tsv(LEDGER, LEDGER_COLUMNS)
+def ledger(directory: Path | None = None) -> list[dict[str, str]]:
+    """`LEDGER`, or `directory`'s `ledger.tsv` (`CNASTER_DIR`)."""
+    return read_tsv(
+        LEDGER if directory is None else directory / LEDGER.name, LEDGER_COLUMNS
+    )
 
 
 def definitions() -> list[dict[str, str]]:
@@ -283,10 +291,11 @@ def write(
     dirty: bool,
     test: str = TEST,
     benchmark: bool = False,
+    directory: Path | None = None,
 ) -> str:
     """Append a run to `runs` and `ledger`, after `check_identity`; returns
-    the run's id."""
-    recorded = ledger()
+    the run's id. `directory` is the ledger's: port's where `None`, or `CNASTER_DIR`."""
+    recorded = ledger(directory)
     check_identity(fixture, recovery["fixture_hash"], recorded)
     run, lines = entries(
         recovery,
@@ -295,13 +304,15 @@ def write(
         note=note,
         commit=provenance.head() + ("+" if dirty else ""),
         timestamp=datetime.datetime.now(datetime.UTC).strftime(TIMESTAMP),
-        taken={r["run_id"] for r in runs()},
+        taken={r["run_id"] for r in runs(directory)},
         current=latest(),
         test=test,
         benchmark=benchmark,
     )
-    append_tsv(RUNS, RUN_COLUMNS, [run])
-    append_tsv(LEDGER, LEDGER_COLUMNS, lines)
+    append_tsv(RUNS if directory is None else directory / RUNS.name, RUN_COLUMNS, [run])
+    append_tsv(
+        LEDGER if directory is None else directory / LEDGER.name, LEDGER_COLUMNS, lines
+    )
     print("\t".join(run[c] for c in RUN_COLUMNS))
     for line in lines:
         print("\t".join(line[c] for c in LEDGER_COLUMNS))

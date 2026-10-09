@@ -34,10 +34,12 @@ mpl.use("Agg")
 
 
 def baf_ari(sample: Any, output: Path) -> float:
-    """The BAF stage's clone ARI against the planted labels."""
-    labels = pd.read_csv(
-        next(output.glob("*/baf_clone_labels.tsv")), sep="\t", index_col=0
-    )["clone_label"]
+    """The BAF stage's clone ARI against the planted labels, from the run's `cnamaste.h5` (T- #817)."""
+    from port.extensions import cnamaste
+
+    spots, _ = cnamaste.read(output / cnamaste.FILE, "inputs")
+    stage, _ = cnamaste.read(output / cnamaste.FILE, "baf")
+    labels = pd.Series(stage["assignment"], index=pd.Index(spots["barcodes"]))
     return shared_ari(pd.Series(sample.labels, index=sample.barcodes), labels)[0]
 
 

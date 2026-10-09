@@ -1,11 +1,7 @@
 """`cnamaste.h5`: a run's one output `port` reads, written stage by stage (T- #817).
 
-`GROUPS`/`TRUTH_GROUPS` (`truth.h5`) declare every group's datasets, axes,
-types and required attributes; `write` refuses the undeclared, `read` returns
-only complete groups, `render` is `docs/cnamaste-h5.md`'s table. Each stage
-writes its group whole, marking it `complete` last. `GLOBAL` axes are one size
-per file; spots follow `/inputs/barcodes`, genes `/segments/genes` (#438).
-"""
+`GROUPS`/`TRUTH_GROUPS` declare each group; `write` refuses the undeclared, `read` returns
+only complete groups. Spots follow `/inputs/barcodes`, genes `/segments/genes` (#438)."""
 
 from __future__ import annotations
 
@@ -53,7 +49,7 @@ LEVELS = {
     "bins-floored": "min_segment_normal_umi",
     "bins.2": "normal_candidates",
 }
-"""Each lineage level's name in the file: the configuration key of the step that makes it."""
+"""Lineage level name -> its name in the file."""
 
 
 def level_name(name: str) -> str:
@@ -62,10 +58,8 @@ def level_name(name: str) -> str:
 
 
 ROOT_ATTRS = ("schema", "commit", "port", "cnaster", "sal", "sample_hash")
-"""What `create` requires of `cnamaste.h5`; `stages` is the writer's."""
 
 TRUTH_ROOT_ATTRS = ("schema", "sample_hash")
-"""What `create` requires of `truth.h5`: the hash a scorer joins the two files on."""
 
 DTYPES = ("int64", "int16", "float64", "numeric", "bool", "str", "csr")
 """`numeric` keeps an integer or float array's own type, int64 or float64, where a page's input may be either."""
@@ -75,8 +69,6 @@ ANY = ("...",)
 
 
 class Dataset(NamedTuple):
-    """One dataset: its name, its axes, its type and what it holds."""
-
     name: str
     dims: tuple[str, ...]
     dtype: str
@@ -110,7 +102,6 @@ _FIT = (
 """A fit as `cnaster` returns it, one column per clone."""
 
 _FIT_ATTRS = ("level", "counts", "pred_layout", "mu_shape")
-"""The fit's level, its `/counts` group, and `cnaster`'s `pred_cnv`/`new_log_mu` layouts."""
 
 _STAGE = (
     _d("clone_index", ("n_spots",), "int64", "the stage's initial clones, where not `/initial_clones`", optional=True),
@@ -492,7 +483,6 @@ def _attr_declared(name: str, declared: tuple[str, ...]) -> bool:
 
 
 _ACTIVE: list[Path] = []
-"""The file `stage` writes to: `writing`'s, innermost last."""
 
 
 @contextmanager
@@ -506,7 +496,6 @@ def writing(path: Path) -> Iterator[Path]:
 
 
 def active() -> Path | None:
-    """The file `stage` writes to, or `None` outside `writing`."""
     return _ACTIVE[-1] if _ACTIVE else None
 
 
@@ -534,7 +523,6 @@ def create(path: Path, *, schema: str = SCHEMA, **attrs: Any) -> None:
 
 
 def _attr(value: Any) -> Any:
-    """An attribute value h5py stores as given: a scalar, a string, or a 1-d list of either."""
     import h5py
 
     if isinstance(value, Mapping):
@@ -552,10 +540,7 @@ def _attr(value: Any) -> Any:
 
 
 def write(path: Path, group: str, arrays: Mapping[str, Any], **attrs: Any) -> None:
-    """`group` into the file at `path`, whole: checked against the schema, then marked complete.
-
-    Raises ValueError on undeclared/missing datasets or attributes, or axis mismatches.
-    """
+    """`group` into the file at `path`, whole, checked against the schema, then marked complete; ValueError on mismatch."""
     import h5py
 
     with h5py.File(path, "a") as handle:
@@ -654,7 +639,6 @@ def _put(node: Any, spec: Dataset, value: Any) -> None:
         sub.attrs["dims"] = list(spec.dims)
         return
     data = value.astype(h5py.string_dtype()) if spec.dtype == "str" else value
-    # NB byte-shuffled, deflated at level 4; chunking needs a nonzero size
     deflate = (
         {"chunks": True, "shuffle": True, "compression": "gzip", "compression_opts": 4}
         if value.size
@@ -737,7 +721,6 @@ def _plain(value: Any) -> Any:
 
 
 def levels(path: Path) -> dict[str, tuple[dict[str, Any], dict[str, Any]]]:
-    """The segment levels, in the order the run recorded them."""
     found = {
         s.removeprefix("segments/levels/"): read(path, s)
         for s in stages(path)

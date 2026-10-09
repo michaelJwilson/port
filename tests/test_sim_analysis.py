@@ -17,6 +17,7 @@ import pytest
 from matplotlib.markers import TICKDOWN
 from matplotlib.patches import Rectangle
 from matplotlib.text import Text
+from port.extensions.combined_figure import FONT_SIZE, PANELS, clone_symbol
 from port.extensions.figure_style import (
     CAPTION_ROOM,
     PAPER_WIDTH,
@@ -24,7 +25,6 @@ from port.extensions.figure_style import (
     TRACK_FONT_SIZE,
 )
 from port.extensions.genomic_axis import CONTIG_PAD, STAGGERED
-from port.qa.combined_figure import FONT_SIZE, PANELS, clone_symbol
 from port.sim import analysis
 from port.sim.analysis import (
     BARCODE_SHOWN,

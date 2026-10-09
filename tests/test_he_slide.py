@@ -13,9 +13,9 @@ import numpy as np
 import pandas as pd
 import pytest
 from cnaster.he import get_he_image
+from port.extensions.combined_figure import he_classes
 from port.patch.he import he_image
 from port.pipeline import SWAPS, patched, swap_sites
-from port.qa.combined_figure import he_classes
 from port.sim.he_slide import mock_he, write_he_slide
 from port.sim.truth import clone_bands
 

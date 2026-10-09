@@ -1,4 +1,10 @@
-"""#460: a manifest written from a run's outputs, against the manifest that planted them."""
+"""#460: a version-3 manifest written from a run's outputs recovers what planted them.
+
+`port.sandbox.sim_from_run` reads a run's `cnamaste.h5` into a `Run`. Here
+the `Run` is made from a draw's own truth, so the
+referee is the manifest the draw was made from: its clone count, its shared
+and unique events, its states, its array and which clones each slice holds.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +13,7 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from port.sandbox.sim_from_run import read_run, to_toml
+from port.sandbox.sim_from_run import Run, to_toml
 from port.sim.draw import Drawn, draw, extended, from_document
 from port.sim.fixtures import SIM_ROOT, references
 
@@ -16,14 +22,13 @@ from tests.fixtures import draw_manifest
 MANIFESTS = SIM_ROOT / "manifests"
 
 
-def _as_run(drawn: Drawn, into: Path) -> Path:
-    """Write the draw's truth as a run's `clone_labels.tsv` and `cnv_segments.tsv`."""
+def _as_run(drawn: Drawn, into: Path) -> Run:
+    """The draw's truth as the `Run` a run's file reads to."""
     truth = pd.read_csv(drawn.path / "truth_clone_labels.tsv", sep="\t")
     profile = pd.read_csv(drawn.path / "truth_acn_profile.tsv", sep="\t")
     number = {clone: k for k, clone in enumerate(drawn.clones)}
 
-    into.mkdir(parents=True)
-    pd.DataFrame(
+    labels = pd.DataFrame(
         {
             "barcode": truth["barcode"],
             "sample_id": truth["sample_id"],
@@ -31,8 +36,8 @@ def _as_run(drawn: Drawn, into: Path) -> Path:
             "y": truth["y"],
             "clone_label": truth["labels"].map(number),
         }
-    ).to_csv(into / "clone_labels.tsv", sep="\t", index=False)
-    pd.concat(
+    )
+    segments = pd.concat(
         pd.DataFrame(
             {
                 "clone": number[clone],
@@ -44,8 +49,8 @@ def _as_run(drawn: Drawn, into: Path) -> Path:
             }
         )
         for clone in drawn.clones
-    ).to_csv(into / "cnv_segments.tsv", sep="\t", index=False)
-    return into
+    )
+    return Run(name=into.name, labels=labels, segments=segments)
 
 
 @pytest.mark.end2end
@@ -59,7 +64,7 @@ def test_a_manifest_from_a_run_recovers_the_one_that_planted_it(
     source = draw_manifest("dev_shared_unique")
     drawn = draw(source, tmp_path / "drawn", resources=resources)
 
-    text = to_toml(read_run(_as_run(drawn, tmp_path / "run")))
+    text = to_toml(_as_run(drawn, tmp_path / "run"))
     stated = text.replace("# offset = [?, ?]", "offset = [0.0, 0.0]").replace(
         'extends = "calicost_grch38.toml"',
         f'extends = "{MANIFESTS / "calicost_grch38.toml"}"',

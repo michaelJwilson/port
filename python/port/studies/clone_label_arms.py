@@ -263,7 +263,7 @@ def _heat_bath(
     _, graph = potts_graph(HELD["capture"].spatial_weight)
     run = anneal_potts(graph, field, ConstantTempSchedule(temperature, 20),
                        np.random.default_rng([seed, 7]), start=labels)  # fmt: skip
-    return np.asarray(run.final, dtype=np.int64)
+    return np.asarray(run.best, dtype=np.int64)
 
 
 def _joint_arm(job: Job) -> list[dict[str, Any]]:

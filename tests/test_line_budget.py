@@ -23,7 +23,7 @@ TREES = {
 }
 """Each budgeted tree's paths under `python/port`; `tests` is the repository's `tests/`."""
 
-BUDGET = {"run": 13_996, "qa": 18_473, "sandbox": 7_827, "tests": 29331}
+BUDGET = {"run": 14842, "qa": 17339, "sandbox": 7843, "tests": 29344}
 """Non-blank lines per tree (T- #831), lowered as packages land; a move between trees transfers its lines."""
 
 SLACK = 0.02

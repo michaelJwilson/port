@@ -93,7 +93,7 @@ below as (b) and (c) -- `truth_combined.png`'s order, the clones' structure,
 then the profile, then the tracks (`combined_figure.PANELS`). Its key, rows and tracks
 name the clones in one order, the fitted clone index, normal first
 (`combined_figure.clone_order`); a clone merged under integer labels is
-named in its group's key entry, `$m_N$, $m_3$` (PR- #715). No captions. `port.qa.combined_figure` redraws the run's own calls and
+named in its group's key entry, `$m_N$, $m_3$` (PR- #715). No captions. `port.extensions.combined_figure` redraws the run's own calls and
 writes each page at exactly its size, so it is included at
 `width=\linewidth` unscaled. A figure at a share of the page takes its size
 from `figure_style.page_size`: a "third", "half", "three_quarters" or "full"

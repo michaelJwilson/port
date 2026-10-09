@@ -365,7 +365,7 @@ def outline(
 
 def clone_name(clone: str, clones: tuple[str, ...]) -> str:
     """The paper's name for `clone`: $m_N$ for `normal`, $m_k$ for `clone_k`'s numeral (T- #791)."""
-    from port.qa.combined_figure import clone_symbol
+    from port.extensions.combined_figure import clone_symbol
 
     return str(clone_symbol(display(clone, clones)))
 
@@ -404,9 +404,9 @@ def slice_frame(r: Realization) -> SliceFrame:
 
 
 def frame_panels(axes: Any, frame: SliceFrame, *, fontsize: float = 8.0) -> None:
-    """Each slice's panel in the shared format (`port.qa.spatial_page`):
+    """Each slice's panel in the shared format (`port.extensions.spatial_page`):
     its limits, its id as title, and the region the slices share dashed."""
-    from port.qa.spatial_page import format_panel, overlap_box
+    from port.extensions.spatial_page import format_panel, overlap_box
 
     for k, (ax, sid) in enumerate(zip(axes, frame.slices, strict=True)):
         if frame.shared is not None:
@@ -443,11 +443,11 @@ def plot_spatial(r: Realization, out: Path) -> Path:
     Slices that overlap image one piece of tissue, so a clone on both shows
     inside the dashed region in both panels. Clones are named by the key
     alone, as the paper names them (`clone_name`): a name on the tissue covers
-    the spots it names. Drawn in `port.qa.spatial_page`'s format.
+    the spots it names. Drawn in `port.extensions.spatial_page`'s format.
     """
+    from port.extensions.combined_figure import page_style
     from port.extensions.figure_style import fit_to_content
-    from port.qa.combined_figure import page_style
-    from port.qa.spatial_page import panel_row, spatial_key
+    from port.extensions.spatial_page import panel_row, spatial_key
 
     frame = slice_frame(r)
     with page_style():

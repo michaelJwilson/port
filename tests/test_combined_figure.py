@@ -1,4 +1,4 @@
-"""`port.qa.combined_figure`: two figures from a run (#309, #339).
+"""`port.extensions.combined_figure`: two figures from a run (#309, #339).
 
 Subfigure tracks match the standalone `clones_genomic` page bitwise; recording wrappers
 call through and are removed on exit. Page-layout checks are `smoke`.
@@ -21,6 +21,21 @@ import port.patch.plotting as spatial
 import pytest
 from matplotlib.collections import PathCollection, PolyCollection
 from matplotlib.text import Text
+from port.extensions.combined_figure import (
+    FONT_SIZE,
+    HE_PALETTE,
+    LABEL_GAP,
+    NAME_INSET,
+    PANELS,
+    Call,
+    clone_order,
+    clone_symbol,
+    combined_figure,
+    genomic_figure,
+    plot_clones_genomic_he,
+    recording,
+    spatial_figure,
+)
 from port.extensions.figure_style import (
     CAPTION_ROOM,
     FIT_MARGIN,
@@ -38,21 +53,6 @@ from port.patch.plot_copy_number_profile import (
 from port.patch.plot_genomic import plot_clones_genomic
 from port.patch.plotting.spatial import plot_clones_spatial, spot_colours
 from port.patch.utils import write_fig
-from port.qa.combined_figure import (
-    FONT_SIZE,
-    HE_PALETTE,
-    LABEL_GAP,
-    NAME_INSET,
-    PANELS,
-    Call,
-    clone_order,
-    clone_symbol,
-    combined_figure,
-    genomic_figure,
-    plot_clones_genomic_he,
-    recording,
-    spatial_figure,
-)
 from port.sim.inputs import written_config
 
 from tests.adapters import drawn
@@ -326,7 +326,10 @@ def test_the_spatial_labels_are_integer_by_default_or_continuous(
 
 @pytest.mark.bug
 def test_the_figure_merges_clones_at_the_runs_agreement(tmp_path: Path) -> None:
-    """Clones agreeing at 23/24 bins merge at `merge_agreement=0.9`, not at 0.99 (#749 WP0)."""
+    """Two clones that agree at 23 of 24 bins (0.958) stay two at the default
+    0.99 and are one at a configured `merge_agreement` of 0.9, as
+    the run's `/integer_clones` merges (#749 WP0, T- #817). Before, the figure
+    merged at the default whatever the run's configuration said."""
 
     mpl.use("Agg")
 

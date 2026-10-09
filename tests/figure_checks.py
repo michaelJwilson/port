@@ -11,8 +11,8 @@ import numpy as np
 import pandas as pd
 import pytest
 from cnaster.he import get_he_image
+from port.extensions.combined_figure import Call, Recorded
 from port.patch.plot_copy_number_profile import MIRROR, TITLE
-from port.qa.combined_figure import Call, Recorded
 from port.sim.he_slide import mock_he, write_he_slide
 from port.sim.truth import clone_bands
 

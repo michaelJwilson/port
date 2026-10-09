@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import dataclasses
 import os
+import shutil
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -10,14 +12,21 @@ import numpy as np
 import pandas as pd
 import pytest
 from port.extensions import cnamaste as c
+from port.extensions.cnamaste import FILE
+from port.extensions.combined_figure import PAGES, recording, run_slide, write_pages
+from port.extensions.outputs import integer_clones
 from port.qa import stage
-from port.qa.audit import drawn_config
+from port.qa.audit import drawn_config, run_tables, score_sample
 from port.scripts.run_cnaster import main as run_cnaster_main
 from port.scripts.run_plots import main
 
 from tests import ROOT
 
 MANIFEST = Path("sim/manifests/dev_tree_1s_hard.toml")
+SAMPLES: dict[Path, object] = {}
+RECORDED: dict[Path, object] = {}
+"""The run's last genomic, spatial and profile calls, recorded from outside it."""
+"""The drawn sample of each fixture run, for the audits' truth."""
 
 
 @pytest.fixture(scope="module")
@@ -31,7 +40,12 @@ def output(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
     try:
         member = next(stage.members(MANIFEST, root / "sim", n=1))
         assert member.hash == "9ec90dc2"
-        run_cnaster_main(["--sal", str(drawn_config(member.sample, root / "run", {}))])
+        with recording() as recorded:
+            run_cnaster_main(
+                ["--sal", str(drawn_config(member.sample, root / "run", {}))]
+            )
+        RECORDED[root / "run" / "output"] = recorded
+        SAMPLES[root / "run" / "output"] = member.sample
         yield root / "run" / "output"
     finally:
         os.chdir(here)
@@ -50,7 +64,10 @@ def test_run_plots_draws_every_page_the_run_wrote_byte_for_byte(
 
     assert main([str(output / "cnamaste.h5"), "--out", str(tmp_path)]) == 0
 
-    wrote = sorted(p.relative_to(output) for p in output.rglob("*.pdf"))
+    # NB the run's own pages after `cnaster`'s (`combined_figure.PAGES`) are drawn from its calls, not the file
+    wrote = sorted(
+        p.relative_to(output) for p in output.rglob("*.pdf") if p.stem not in PAGES
+    )
     drawn = sorted(p.relative_to(tmp_path) for p in tmp_path.rglob("*.pdf"))
     assert len(wrote) == 19
     assert drawn == wrote
@@ -62,7 +79,14 @@ def test_run_plots_draws_every_page_the_run_wrote_byte_for_byte(
 @pytest.mark.merge
 @pytest.mark.smoke
 def test_the_stages_are_what_the_run_wrote(output: Path) -> None:
-    """Each stage group equals the file the run wrote for it, in run order."""
+    """Each stage group against the file the run wrote for it, exactly, and every group in run order.
+
+    `/clone_assignment` is `cnaster`'s `clone_labels.tsv`, `/integer_copy`
+    `cnv_seglevel.tsv`'s `A`, `B`, `/rdrbaf` the final fit's npz up to
+    `reindex_clones`' permutation, and `/integer_clones` the run's rule,
+    `outputs.integer_clones`, on `cnv_seglevel.tsv` at its `merge_agreement`.
+    Port writes no table of its own beside them (T- #817).
+    """
 
     h5 = output / c.FILE
     run = next(output.glob("clone*"))
@@ -90,8 +114,16 @@ def test_the_stages_are_what_the_run_wrote(output: Path) -> None:
     labels = pd.read_csv(run / "clone_labels.tsv", sep="\t", comment="#")
     at = pd.Index(spots["barcodes"]).get_indexer(labels["barcode"].astype(str))
     final, final_attrs = c.read(h5, "clone_assignment")
-    column = "cnaster_clone_label" if "cnaster_clone_label" in labels else "clone_label"
-    np.testing.assert_array_equal(final["assignment"][at], labels[column].to_numpy())
+    assert "cnaster_clone_label" not in labels, (
+        "port rewrote cnaster's clone_labels.tsv"
+    )
+    np.testing.assert_array_equal(
+        final["assignment"][at], labels["clone_label"].to_numpy()
+    )
+    written = {p.name for p in run.iterdir()}
+    for name in ("cnv_states.tsv", "cnv_segments.tsv", "cnv_binlevel.tsv", "clone_labels_integer.tsv",
+                 "gene_segments.tsv", "manifest.json"):  # fmt: skip
+        assert name not in written, f"port wrote {name}"
 
     seglevel = pd.read_csv(run / "cnv_seglevel.tsv", sep="\t", comment="#")
     copies, _ = c.read(h5, "integer_copy")
@@ -118,7 +150,78 @@ def test_the_stages_are_what_the_run_wrote(output: Path) -> None:
     assert fit_attrs["level"] == final_attrs["level"] == "normal_candidates"
     assert fit["pred_cnv"].shape[0] == len(seglevel)
 
-    merged = pd.read_csv(run / "clone_labels_integer.tsv", sep="\t", comment="#")
-    integer, _ = c.read(h5, "integer_clones")
-    at = pd.Index(spots["barcodes"]).get_indexer(merged["barcode"].astype(str))
-    np.testing.assert_array_equal(integer["integer_ids"][integer["assignment"]][at], merged["integer_clone_label"].to_numpy())  # fmt: skip
+    integer, integer_attrs = c.read(h5, "integer_clones")
+    names = integer_clones(seglevel, integer_attrs["merge_agreement"])
+    expected = np.array([int(names[str(k)]) for k in final["assignment"]])
+    np.testing.assert_array_equal(
+        integer["integer_ids"][integer["assignment"]], expected
+    )
+
+
+@pytest.mark.merge
+@pytest.mark.patch
+def test_the_audits_score_the_file_as_they_scored_the_tables(
+    output: Path, tmp_path: Path
+) -> None:
+    """`run_audit --sim`'s every metric from `cnamaste.h5` against the same from the CalicoST tables, exactly.
+
+    The run's directory copied without its file is read the way a run that
+    wrote none is, from `clone_labels.tsv`, `cnv_seglevel.tsv` and the final
+    fit's npz: the hand-rolled readers the file replaces (T- #817). Every
+    field is equal, both integer ARIs included, and the 0.99 merge QA scores
+    holds as many clones as the run's own `/integer_clones`.
+    """
+
+    tables = tmp_path / "output"
+    shutil.copytree(output, tables, ignore=shutil.ignore_patterns(FILE, "plots"))
+    run = next(output.glob("clone*"))
+
+    labels, seglevel, fit = run_tables(run)
+    their_labels, their_seglevel, their_fit = run_tables(next(tables.glob("clone*")))
+    assert labels.loc[their_labels.index].tolist() == their_labels.tolist()
+    # NB `cnv_seglevel.tsv` writes copies as floats; the file holds them as the integers they are
+    assert (
+        seglevel["CHR"].astype(str).tolist()
+        == their_seglevel["CHR"].astype(str).tolist()
+    )
+    for column in seglevel.columns.drop("CHR"):
+        np.testing.assert_array_equal(
+            seglevel[column].to_numpy(dtype=float),
+            their_seglevel[column].to_numpy(dtype=float),
+        )
+    for key in fit:
+        np.testing.assert_array_equal(
+            fit[key], np.asarray(their_fit[key]).reshape(fit[key].shape)
+        )
+
+    sample = SAMPLES[output]
+    ours = dataclasses.asdict(score_sample(sample, output, "sal", 0.0))  # type: ignore[arg-type]
+    theirs = dataclasses.asdict(score_sample(sample, tables, "sal", 0.0))  # type: ignore[arg-type]
+    assert ours.keys() == theirs.keys()
+    for key in ours:
+        assert repr(ours[key]) == repr(theirs[key]), key
+    # NB the 0.99 merge QA scores is the run's own, its default `merge_agreement`
+    held, attrs = c.read(output / FILE, "integer_clones")
+    assert attrs["merge_agreement"] == 0.99
+    assert ours["n_integer_clones_99"] == held["integer_ids"].size
+
+
+@pytest.mark.merge
+@pytest.mark.backend
+def test_the_run_draws_the_paper_pages_from_its_own_calls(
+    output: Path, tmp_path: Path
+) -> None:
+    """`genomic.pdf`, `spatial.pdf`, `combined.pdf` in the run's `plots/`, the same bytes as
+    `combined_figure.write_pages` on the calls recorded from outside the run (T- #817).
+
+    dev_tree_1s_hard has no slide, so `run_slide` is `None` and the slide panel is left empty.
+    """
+
+    plots = next(output.glob("clone*")) / "plots"
+    config = output.parent / "config.yaml"
+    assert run_slide(config) is None
+    redrawn = write_pages(RECORDED[output], tmp_path, None)  # type: ignore[arg-type]
+
+    assert [p.name for p in redrawn] == [f"{n}.pdf" for n in PAGES]
+    for page in redrawn:
+        assert (plots / page.name).read_bytes() == page.read_bytes(), page.name

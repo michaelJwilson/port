@@ -1,11 +1,4 @@
-r"""Two figures from a run, and both on one page, at the paper's text width (#309, #339, T- #740).
-
-`genomic_figure`: (a) copy-number profile, (b) RDR/BAF tracks per clone.
-`spatial_figure`: (a) H&E slide, (b) fitted clones per spot. `combined_figure`
-stacks them in `PANELS` order (PR- #715). Drawn at `PAPER_WIDTH`, text at
-`FONT_SIZE`, from the run's own calls kept by `recording`. Clones are named
-$m_N$ (normal) and $m_1$, $m_2$, ...
-"""
+r"""Genomic, spatial and combined pages from a run's recorded calls; clones named $m_N$ (normal), $m_1$, ... (#309, #339, T- #740)."""
 
 from __future__ import annotations
 
@@ -13,6 +6,7 @@ import contextlib
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from itertools import pairwise
+from pathlib import Path
 from typing import Any, NamedTuple
 
 import numpy as np
@@ -27,10 +21,9 @@ from port.patch.plot_copy_number_profile import KEY_GROWTH
 from port.patch.plot_copy_number_profile import LINEWIDTH as PROFILE_LINEWIDTH
 
 FONT_SIZE = MIN_FONT_SIZE
-"""Every text on the page, in points (#743)."""
+"""Text size, points (#743)."""
 
 LABEL_SIZE = FONT_SIZE
-"""The panel letters, at the page's size and not bold."""
 
 LABEL_GAP = 2.0
 """Points between a label and what it labels."""
@@ -39,7 +32,7 @@ GAP_CLOSED = 0.5
 """The fraction of white closed between the genomic figure's clones, and above its tracks."""
 
 NAME_INSET = 3 * LABEL_GAP
-"""Points from the genomic figure's left edge to its left column of names, labels and letters."""
+"""Points from the genomic figure's left edge to its names column."""
 
 SPATIAL_GAP = 0.17
 """Inches between the slide and the clones' extent ticks."""
@@ -51,29 +44,22 @@ LEGEND_BOX = 0.2
 """Inches, one box of the profile's key."""
 
 LEGEND_ROW = 0.24 * KEY_GROWTH
-"""The profile's key row against the profile's base height (PR- #715)."""
 
 PROFILE_ROWS = 0.8
-"""The profile's axis against its base height; the difference goes to the tracks."""
 
 PANELS = ("clones", "profile", "tracks")
-"""The panels of `combined_figure` and `truth_combined_figure`, top to bottom (PR- #715)."""
 
 TOP_LINE = 0.1
 """Inches above the tracks for the top clone's statistics line."""
 
 
 class Call(NamedTuple):
-    """One plotting call's arguments."""
-
     args: tuple[Any, ...]
     kwargs: dict[str, Any]
 
 
 @dataclass
 class Recorded:
-    """The run's last call to each function the page redraws."""
-
     genomic: Call | None = None
     spatial: Call | None = None
     profile: Call | None = None
@@ -82,12 +68,8 @@ class Recorded:
 
 @contextlib.contextmanager
 def recording() -> Iterator[Recorded]:
-    """Keep the arguments of the run's plotting calls for the block; enter before `patched`.
-
-    Wrappers call through, so the run's figures are unchanged.
-    """
-    import cnaster.scripts.run_cnaster as script
-
+    """Record the run's last plotting calls, calling through; enter before `patched` (T- #817)."""
+    import port.patch.plot_copy_number_profile as profile
     import port.patch.plot_genomic as genomic
     import port.patch.plotting as spatial
 
@@ -109,9 +91,20 @@ def recording() -> Iterator[Recorded]:
         setattr(module, name, wrapper)
 
     try:
-        wrap(genomic, "plot_clones_genomic", "genomic", lambda kw: "df_cnv" in kw)
+        # NB a call drawing into another page's axes (`figure=`, `ax=`) is a page's part, not the run's
+        wrap(
+            genomic,
+            "plot_clones_genomic",
+            "genomic",
+            lambda kw: "df_cnv" in kw and kw.get("figure") is None,
+        )
         wrap(spatial, "plot_clones_spatial", "spatial")
-        wrap(script, "plot_copy_number_profile", "profile")
+        wrap(
+            profile,
+            "plot_copy_number_profile",
+            "profile",
+            lambda kw: kw.get("ax") is None,
+        )
         yield recorded
     finally:
         for module, name, original in reversed(undo):
@@ -142,7 +135,6 @@ def slide_image(frame: Any) -> tuple[np.ndarray, tuple[float, float, float, floa
 
 
 HE_CLASSES = 4
-"""`cnaster.he.get_he_image`'s `num_labels`, the gray-level classes `run_cnaster` reads."""
 
 HE_PALETTE = "mako"
 """The H&E classes' palette, distinct from the clones' `rocket` (T- #771)."""
@@ -167,7 +159,6 @@ def he_classes(
 
 
 def set_font_size(panel: Any, size: float) -> None:
-    """Every text in `panel` at `size`: one size per panel, not a cap."""
     from matplotlib.text import Text
 
     for text in panel.findobj(Text):
@@ -175,7 +166,6 @@ def set_font_size(panel: Any, size: float) -> None:
 
 
 def _fractions(ax: Any, handles: Any, labels: list[str], columns: int) -> Any:
-    """A clone's state fractions on its statistics line, right-justified, in `columns` columns."""
     from matplotlib.legend_handler import HandlerTuple
 
     legend = ax.legend(
@@ -184,7 +174,6 @@ def _fractions(ax: Any, handles: Any, labels: list[str], columns: int) -> Any:
         loc="lower right",
         bbox_to_anchor=(1.0, 1.0),
         ncol=columns,
-        # NB a tuple of dots side by side: the states behind one entry.
         handler_map={tuple: HandlerTuple(ndivide=None, pad=0.1)},
         frameon=False,
         borderpad=0.0,
@@ -229,7 +218,6 @@ def _colour_by_state(top: Any, genomic: Any) -> None:
                 ) == len(colours):
                     collection.set_color([tuple(c) for c in colours])
 
-        # NB one entry per decoded pair, a dot per state decoding to it.
         decoded: dict[tuple[int, int] | None, list[int]] = {}
 
         for k in np.unique(path):
@@ -273,11 +261,7 @@ def _colour_by_state(top: Any, genomic: Any) -> None:
 
 
 def fit_track_furniture(panel: Any) -> None:
-    """The genomic tracks' furniture, at a track a third of an inch tall.
-
-    Labels only the y ticks' ends (#743), moves the clone name and legend to
-    the statistics line above each RDR track, out of the layout.
-    """
+    """Shrink the tracks' furniture: end y ticks only (#743), clone name and legend onto the statistics line."""
     for ax in panel.axes:
         ticks = ax.get_yticks()
 
@@ -297,7 +281,6 @@ def fit_track_furniture(panel: Any) -> None:
         names = [t for t in ax.texts if t.get_rotation() == 90.0]
         stats = [t for t in ax.texts if t.get_rotation() == 0.0]
 
-        # NB the clone's name heads its statistics line (#339).
         for name in names:
             if stats:
                 stats[0].set_text(clone_symbol(name.get_text()))
@@ -309,7 +292,6 @@ def fit_track_furniture(panel: Any) -> None:
                 text.set_y(1.0)
                 text.set_in_layout(False)
             if text.get_text().startswith("chr"):
-                # NB the last track names the contigs (`name_contigs`).
                 text.set_visible(False)
                 text.set_in_layout(False)
 
@@ -363,7 +345,6 @@ def clone_order(ids: Any) -> list[str]:
 
 
 def _clone_key(ax: Any, names: list[str], colours: list[str]) -> None:
-    """The clones' key in one column, `names` against `colours`; placed by `_place_spatial`."""
     from matplotlib.lines import Line2D
 
     entries = [
@@ -403,7 +384,6 @@ def _extents(ax: Any, coords: np.ndarray) -> None:
 
 
 def _frame(ax: Any, x: tuple[float, float], y: tuple[float, float]) -> None:
-    """Left and bottom spines bound to the data's `y` and `x`, no top or right; images clipped to it (PR- #715)."""
     from matplotlib.patches import Rectangle
 
     for image in ax.get_images():
@@ -423,7 +403,6 @@ def place_in_inches(
     y0: float | None = None,
     height: float | None = None,
 ) -> None:
-    """Set `ax`'s box in inches on the page; what is not given is kept."""
     from matplotlib.transforms import Bbox
 
     figure = ax.get_figure(root=True)
@@ -439,7 +418,6 @@ def place_in_inches(
 
 
 def _up(ax: Any, inches: float) -> None:
-    """Move `ax` up by `inches`, its size kept."""
     dpi = ax.get_figure(root=True).dpi
     here = ax.get_window_extent(ax.get_figure(root=True).canvas.get_renderer())
     place_in_inches(
@@ -448,7 +426,6 @@ def _up(ax: Any, inches: float) -> None:
 
 
 def _inches(figure: Any, artists: Any, edge: str) -> list[float]:
-    """Each visible, non-empty artist's `edge` (`x0`, `x1`, `y0`, `y1`), in inches from the page's foot or left."""
     renderer = figure.canvas.get_renderer()
     return [
         getattr(a.get_window_extent(renderer), edge) / figure.dpi
@@ -463,16 +440,12 @@ def _cut(
     letters: list[tuple[Any, float, float, str]],
     head: Any = (),
 ) -> None:
-    """Cut `foot` inches off the page, set each letter, and cut the head to a `LABEL_GAP` over the highest text.
-
-    Each letter is `(text, x, y, alignment)`, in inches on the uncut page.
-    """
+    """Cut `foot` inches off the page, place each `(text, x, y, va)` letter (inches, uncut page), trim the head to `LABEL_GAP`."""
     renderer = figure.canvas.get_renderer()
     dpi = figure.dpi
     width = figure.get_size_inches()[0]
 
     def resize(below: float, above: float) -> None:
-        # NB a head already at its cut reads a float's width short of it.
         below, above = (0.0 if -1e-6 < v < 0.0 else v for v in (below, above))
         if min(below, above) < 0.0:
             msg = (
@@ -502,7 +475,6 @@ def _cut(
 
         figure.canvas.draw()
 
-    # NB foot then measured head: one reckoned cut can shift an image edge a pixel.
     resize(foot, 0.0)
     place()
     highest = max(_inches(figure, [*(text for text, *_ in letters), *head], "y1"))
@@ -513,7 +485,6 @@ def _cut(
 def _left_column(
     figure: Any, tracks: list[Any], profile_ax: Any
 ) -> tuple[float, float]:
-    """The left column, `NAME_INSET` in, and the nearest common left edge the labels and ticks allow."""
     renderer = figure.canvas.get_renderer()
     dpi = figure.dpi
     gap = LABEL_GAP / 72.0
@@ -543,11 +514,7 @@ def _place_genomic(
     legend_ax: Any,
     contigs: tuple[list[float], list[str]],
 ) -> None:
-    """(a)'s profile over (b)'s tracks, on one left and one right edge, once the layout is frozen.
-
-    The right edge is pulled in until no contig name overruns; keys, rows
-    and letters are stacked `LABEL_GAP` apart, and the page cut to its text.
-    """
+    """(a)'s profile over (b)'s tracks on shared edges, contig names inside the page, page cut to its text."""
     from matplotlib.transforms import blended_transform_factory
 
     from port.extensions.genomic_axis import name_contigs
@@ -579,11 +546,9 @@ def _place_genomic(
 
     name_contigs(foot_ax, *contigs, size=FONT_SIZE)
 
-    # NB a clone with many states wraps its key onto rows.
     for ax in tracks:
         legend = ax.get_legend()
 
-        # NB a legend lays out its box once, so a narrower one is a new one.
         while (
             legend is not None
             and legend._ncols > 1
@@ -602,7 +567,6 @@ def _place_genomic(
         axis="y", which="major", pad=(left - column) * 72.0, length=0
     )
 
-    # NB a y label anchors on its axis side, so offset it by its own width.
     for ax in tracks:
         if ax.get_ylabel():
             at = column + ax.yaxis.label.get_window_extent(renderer).width / dpi
@@ -623,8 +587,6 @@ def _place_genomic(
         span=right - left,
     )
 
-    # NB key a `gap` under the head; white between clones closed by `GAP_CLOSED`;
-    #    tracks a letter's row and a `gap` under the profile.
     figure.canvas.draw()
     raised = max(t.get_window_extent(renderer).height for t in letters) / dpi + gap
     key = [*legend_ax.patches, *legend_ax.texts]
@@ -689,7 +651,6 @@ def _place_genomic(
 
 
 def _page(width: float, height: float, rect: tuple[float, float, float, float]) -> Any:
-    """A white page `width` by `height` inches at 300 dpi, constrained layout in `rect`."""
     import matplotlib.pyplot as plt
     from matplotlib.layout_engine import ConstrainedLayoutEngine
 
@@ -705,7 +666,6 @@ def _genomic_page(
     genomic: Call, profile: Call, width: float, scale: float, metric: bool = False
 ) -> Any:
     """The genomic figure, tracks and profile rows at `scale`; on `metric`, CNAs widened (T- #683)."""
-    # NB `port`'s plotters directly: `FIGURE_SWAPS` is restored after the run.
     from matplotlib.ticker import NullLocator
 
     from port.extensions.genomic_axis import (
@@ -730,11 +690,9 @@ def _genomic_page(
     rows: Any = figure.subfigures(2, 1, height_ratios=heights[::-1], hspace=0.02)
     middle, top = rows[0], rows[1]
 
-    # NB one axis for (a) and (b) (T- #683).
     df_cnv = genomic.kwargs["df_cnv"]
     genome = resolve(Ticks(), df_cnv, len(df_cnv))
 
-    # NB no Mb numbers, as on the truth page (PR- #715).
     if genome is not None:
         genome = GenomicAxis.of_table(
             df_cnv, altered_bins(df_cnv) if metric else None, labels=False
@@ -745,7 +703,6 @@ def _genomic_page(
         1,
         height_ratios=(key, scale * profile_rows),
     )
-    # NB rows in the fitted clones' index order, as (c)'s tracks are (PR- #715).
     frame = profile.args[0]
     ids = [c[len("clone") : -len(" A")] for c in frame.columns if c.endswith(" A")]
     plot_copy_number_profile(frame, ax=profile_ax, axis=genome, rows=clone_order(ids))
@@ -755,10 +712,8 @@ def _genomic_page(
 
     for text in profile_ax.get_yticklabels():
         text.set_rotation(0)
-    # NB `cnaster`'s legend sits at fixed page coordinates; redrawn into a managed axis.
     middle.axes[-1].remove()
     legend_ax.axis("off")
-    # NB contigs are named under the last track only (PR- #715).
     contigs = (
         [float(x) for x in profile_ax.get_xticks()],
         [t.get_text() for t in profile_ax.get_xticklabels()],
@@ -795,10 +750,7 @@ def _genomic_page(
 
 @contextlib.contextmanager
 def page_style() -> Iterator[None]:
-    """Matplotlib's defaults and the stated face for the block, whatever `cnaster` has set (#342).
-
-    Hold it around both the build and the write.
-    """
+    """Matplotlib's defaults and the stated face for the block, whatever `cnaster` set (#342); hold around build and write."""
     import matplotlib as mpl
 
     from port.extensions.figure_style import figure_rc
@@ -810,7 +762,6 @@ def page_style() -> Iterator[None]:
 
 
 def _styled(build: Any) -> Any:
-    """`build` under `page_style`."""
     import functools
 
     @functools.wraps(build)
@@ -830,12 +781,7 @@ def genomic_figure(
     metric: bool = False,
     labels: str = "integer",
 ) -> Any:
-    """(a) `copy_number_profile` over (b) `clones_genomic`, `width` by `height` inches; no caption.
-
-    `labels`: "integer" (merged clones, `integer_recorded`, #745) or
-    "continuous". On `metric`, altered bins drawn wider (T- #683). Tracks and
-    profile rows are scaled by secant until the page is `height` to 0.005 in.
-    """
+    """(a) profile over (b) tracks, `height` inches to 0.005 by secant; `labels` "integer" (#745) or "continuous", `metric` widens CNAs (T- #683)."""
     from port.extensions.figure_style import PAPER_WIDTH
 
     if recorded.genomic is None or recorded.profile is None:
@@ -873,11 +819,7 @@ def genomic_figure(
 def _place_spatial(
     figure: Any, slide_ax: Any, spatial_ax: Any, most: float | None = None
 ) -> float:
-    """(a) the slide, (b) the clones and (b)'s key, left to right, in square footprints (PR- #715).
-
-    Each side as large as fits across, at most `most` inches; letters over
-    each panel and the page cut to its text. Returns the side, in inches.
-    """
+    """(a) slide, (b) clones and key in square footprints of side at most `most` inches (PR- #715); returns the side."""
     renderer = figure.canvas.get_renderer()
     dpi = figure.dpi
     width, height = figure.get_size_inches()
@@ -886,7 +828,6 @@ def _place_spatial(
     figure.canvas.draw()
 
     def ticks(ax: Any) -> float:
-        """The tick labels' width, if shown, and the tick and its pad."""
         widths = [
             t.get_window_extent(renderer).width
             for t in ax.get_yticklabels()
@@ -898,8 +839,6 @@ def _place_spatial(
     left = NAME_INSET / 72.0 + ticks(slide_ax)
     right = width - gap
     clones_right = right - key.get_window_extent(renderer).width / dpi - 2 * gap
-    # NB square footprints with limits from the spots' left and bottom edges,
-    #    so both axes share one scale (PR- #715).
     side = (clones_right - left - SPATIAL_GAP - ticks(spatial_ax)) / 2
     side = side if most is None else min(side, most)
     wide = side
@@ -910,7 +849,6 @@ def _place_spatial(
         ax.set_ylim(y0, y0 + span)
         ax.set_aspect("equal", adjustable="box")
         _frame(ax, (x0, x1), (y0, y1))
-    # NB squares smaller than fit across leave the row centred on the page.
     left += (clones_right - left - SPATIAL_GAP - ticks(spatial_ax) - 2 * side) / 2
     bottom = height - side - 1.0
     place_in_inches(slide_ax, left, left + wide, bottom, side)
@@ -945,12 +883,7 @@ def _place_spatial(
 
 
 def integer_recorded(recorded: Recorded) -> Recorded:
-    """`recorded` with its clones the run's integer clones, numbered anew (#344, #518, #745).
-
-    Clones merged as `write_outputs` merges them are one, with summed counts
-    and the smallest id's profile and path; survivors are numbered 0, 1, ...
-    in index order. Idempotent.
-    """
+    """`recorded` with clones whose integer profiles agree at `merge_agreement` merged, renumbered in index order (#344, #518, #745)."""
     import pandas as pd
 
     from port.extensions.outputs import installed_keys, integer_clones, merge_agreement
@@ -960,6 +893,7 @@ def integer_recorded(recorded: Recorded) -> Recorded:
         msg = "integer clones need the run's copy_number_profile call"
         raise ValueError(msg)
 
+    # NB the run's agreement, as `/integer_clones` merges at it (T- #817)
     groups = integer_clones(recorded.profile.args[0], merge_agreement(installed_keys()))
     kept = clone_order(set(groups.values()))
     number = {old: str(kept.index(group)) for old, group in groups.items()}
@@ -999,7 +933,6 @@ def integer_recorded(recorded: Recorded) -> Recorded:
         fit = dict(kwargs["res_combine"])
         n_obs = int(np.asarray(recorded.genomic.args[1]).shape[0])
         fitted = [str(c) for c in np.sort(np.unique(fit["new_assignment"]))]
-        # NB either layout: a column per clone, or concatenated.
         pred = np.asarray(fit["pred_cnv"])
         index = [fitted.index(c) for c in kept]
         fit["pred_cnv"] = (
@@ -1029,8 +962,8 @@ def he_segmentation_figure(
     import pandas as pd
 
     from port.extensions.figure_style import fit_to_content
+    from port.extensions.spatial_page import format_panel, panel_row, spatial_key
     from port.patch.plotting.spatial import draw_clones_spatial, spot_colours
-    from port.qa.spatial_page import format_panel, panel_row, spatial_key
 
     coords = np.asarray(coords)
     classes = pd.Series([f"H&E {int(c)}" for c in he_labels])
@@ -1040,9 +973,9 @@ def he_segmentation_figure(
         class_ax, coords, classes, None, palette=HE_PALETTE, legend=False
     )
     _, names, colours = spot_colours(classes, palette=HE_PALETTE)
-    image, extent = slide_image(he_frame)
-    slide_ax.imshow(image, extent=extent, interpolation="none")
-    # NB the section (b) shows, so a boundary sits at the same place in both.
+    if he_frame is not None:
+        image, extent = slide_image(he_frame)
+        slide_ax.imshow(image, extent=extent, interpolation="none")
     limits = class_ax.get_xlim(), class_ax.get_ylim()
     format_panel(slide_ax, "H&E", *limits, fontsize=FONT_SIZE)
     format_panel(class_ax, "H&E class", *limits, fontsize=FONT_SIZE)
@@ -1082,7 +1015,6 @@ def _draw_spatial(
         assignment,
         recorded.spatial.kwargs.get("single_tumor_prop"),
     )
-    # NB the key is redrawn as a column beside the tiles.
     upstream_key = spatial_ax.get_legend()
     if upstream_key is not None:
         upstream_key.remove()
@@ -1092,16 +1024,17 @@ def _draw_spatial(
     names = [clone_symbol(cast_clone_label(f"clone {c.split()[-1]}")) for c in order]
     _clone_key(spatial_ax, names, [keyed[c] for c in order])
 
-    image, extent = slide_image(he_frame)
-    slide_ax.imshow(image, extent=extent, interpolation="none")
-    # NB the section (b) shows, so a boundary sits at the same place in both.
+    if he_frame is not None:
+        image, extent = slide_image(he_frame)
+        slide_ax.imshow(image, extent=extent, interpolation="none")
     slide_ax.set_xlim(spatial_ax.get_xlim())
     slide_ax.set_ylim(spatial_ax.get_ylim())
     slide_ax.set_aspect("equal")
 
     for ax in (slide_ax, spatial_ax):
         _extents(ax, np.asarray(coords))
-    # NB (b) shares (a)'s rows, so only (a) labels them.
+    if he_frame is None:
+        slide_ax.set_axis_off()
     spatial_ax.tick_params(axis="y", labelleft=False)
 
     return slide_ax, spatial_ax
@@ -1116,11 +1049,7 @@ def spatial_figure(
     *,
     he_labels: np.ndarray | None = None,
 ) -> Any:
-    """(a) the H&E slide and (b) `clones_spatial`, on a "third" page `width` across (T- #740); no caption.
-
-    `labels`: "integer" (#344) or "continuous". With `he_labels`, returns
-    `he_segmentation_figure` instead (T- #771).
-    """
+    """(a) the H&E slide and (b) `clones_spatial` on a "third" page (T- #740); with `he_labels`, `he_segmentation_figure` (T- #771)."""
     import matplotlib.pyplot as plt
 
     from port.extensions.figure_style import PAPER_WIDTH, page_size
@@ -1164,10 +1093,7 @@ def combined_figure(
     *,
     metric: bool = False,
 ) -> Any:
-    """The spatial figure, (a), over the genomic one, (b) and (c), on one page `height` tall (T- #733, PR- #715).
-
-    `labels` as `spatial_figure`; `metric` as `genomic_figure`.
-    """
+    """The spatial figure (a) over the genomic one (b, c), one page `height` tall (T- #733, PR- #715)."""
     import matplotlib.pyplot as plt
 
     spatial = spatial_figure(recorded, he_frame, width, labels)
@@ -1178,7 +1104,6 @@ def combined_figure(
     dpi = figure.dpi
     wide, tall = figure.get_size_inches()
 
-    # NB grow the genomic page at its head; axes keep their place from the foot.
     kept = [
         (ax, ax.get_window_extent(figure.canvas.get_renderer()).frozen())
         for ax in figure.get_axes()
@@ -1193,7 +1118,6 @@ def combined_figure(
         text.set_position((x, y * tall / (tall + above)))
         text.set_text(f"({letter})")
 
-    # NB redraw the maps above, where the spatial page put them, `tall` higher.
     slide_ax, spatial_ax = _draw_spatial(figure, recorded, he_frame, labels)
     for ax in (slide_ax, spatial_ax):
         set_font_size(ax, FONT_SIZE)
@@ -1201,7 +1125,6 @@ def combined_figure(
     source = spatial.canvas.get_renderer()
     old_axes = spatial.get_axes()[:2]
 
-    # NB one left edge for the page (#745).
     left = min(box.x0 for ax, box in kept if ax.axison) / dpi
     shift = left - old_axes[0].get_window_extent(source).x0 / dpi
 
@@ -1228,7 +1151,6 @@ def combined_figure(
         transform=spatial_ax.transAxes,
     )
 
-    # NB slide and clones are one panel, (a), lettered in (b)'s column (#745).
     column = letters[0][0].get_position()[0]
     for text in spatial.texts[:1]:
         _, y = text.get_position()
@@ -1252,10 +1174,7 @@ def plot_clones_genomic_he(
     width: float | None = None,
     height: float | None = None,
 ) -> Any:
-    """RDR and BAF along the genome, one pair of tracks per H&E class, spots pseudobulked per class (T- #771).
-
-    No fitted levels. `width` by `height` inches, a "full" page by default.
-    """
+    """RDR and BAF tracks per H&E class, spots pseudobulked per class, no fitted levels (T- #771)."""
     import matplotlib.pyplot as plt
 
     from port.extensions.figure_style import page_size
@@ -1302,7 +1221,6 @@ def plot_clones_genomic_he(
     set_font_size(figure, FONT_SIZE)
     lengths = np.asarray(arguments[0])
     starts = np.concatenate([[0], np.cumsum(lengths)[:-1]]).astype(float)
-    # NB `cnaster`'s names, hidden by `fit_track_furniture`.
     names = [
         t.get_text()
         for t in sorted(tracks[-1].texts, key=lambda t: float(t.get_position()[0]))
@@ -1312,3 +1230,51 @@ def plot_clones_genomic_he(
 
     set_font_size(figure, FONT_SIZE)
     return figure
+
+
+PAGES = ("genomic", "spatial", "combined")
+
+
+def run_slide(config: Path) -> Any:
+    """The slide `run_cnaster` read from `preprocessing.spaceranger_dir`; `None` without its hires image."""
+    import yaml
+
+    from port.patch.he import he_image
+
+    stated = (yaml.safe_load(Path(config).read_text()) or {}).get("preprocessing") or {}
+    directory = stated.get("spaceranger_dir")
+    if (
+        directory in (None, "None")
+        or not (Path(str(directory)) / "spatial" / "tissue_hires_image.png").is_file()
+    ):
+        return None
+    frame = he_image(str(directory), res="hires", pos=None)
+    return frame if {"red", "green", "blue"} <= set(frame.columns) else None
+
+
+def write_pages(
+    recorded: Recorded, plots: Path, he_frame: Any, *, png_copy: bool = False
+) -> list[Path]:
+    """`genomic.pdf`, `spatial.pdf` and `combined.pdf` into `plots`, drawn from `recorded` at 1:1 (#309)."""
+    from port.patch.utils import write_fig
+    from port.pipeline import FIGURE_DPI
+
+    if recorded.genomic is None or recorded.spatial is None or recorded.profile is None:
+        msg = f"the run made {recorded.calls}; the pages need its clones_genomic, clones_spatial and profile calls"
+        raise ValueError(msg)
+    write: dict[str, Any] = {
+        "bbox_inches": None,
+        "dpi": FIGURE_DPI,
+        "group_rasters": True,
+        "png_copy": png_copy,
+    }
+    drawn = {"genomic": lambda: genomic_figure(recorded), "spatial": lambda: spatial_figure(recorded, he_frame),
+             "combined": lambda: combined_figure(recorded, he_frame)}  # fmt: skip
+    written = []
+    # NB written as drawn: the run has set seaborn's theme, which a page written under it would follow
+    with page_style():
+        for name in PAGES:
+            target = plots / f"{name}.pdf"
+            write_fig(str(target), drawn[name](), **write)
+            written.append(target)
+    return written

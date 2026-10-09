@@ -8,6 +8,7 @@ Unshifted fits are returned untouched.
 
 from __future__ import annotations
 
+import inspect
 from typing import Any, Final
 
 import numpy as np
@@ -18,6 +19,7 @@ from port.patch._signature import as_upstream
 from port.patch.hmrf.reindex import reindex_clones as held_to_one_column
 
 __all__ = [
+    "SIGNATURE",
     "UPSTREAM",
     "ZERO_NORMAL_SHIFT",
     "clone_shifts",
@@ -28,6 +30,9 @@ __all__ = [
     "run_core_inference",
     "shift_for",
 ]
+
+SIGNATURE: Final = inspect.signature(UPSTREAM)
+"""cnaster's `run_core_inference` signature, held at import: a study rebinds `UPSTREAM` while it runs."""
 
 ZERO_NORMAL_SHIFT: Final = True
 """The normal clone's shift is set to zero; a constant (#617)."""

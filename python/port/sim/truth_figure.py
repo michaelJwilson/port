@@ -4,7 +4,7 @@ r"""What a realization planted, on one page at `combined.pdf`'s size and type.
 
 Top to bottom, at the paper's text width and its height less `CAPTION_ROOM`
 (T- #733, T- #740), at `FONT_SIZE` throughout, as
-`port.qa.combined_figure` sets an estimate:
+`port.extensions.combined_figure` sets an estimate:
 
 - **(a)** the clones' tree, each event at its time (`analysis.draw_tree`),
   above `analysis.MANY_EVENTS` events without them, its edges and whole
@@ -116,7 +116,7 @@ def truth_combined_figure(
     `TEXT_HEIGHT` less `CAPTION_ROOM` tall (T- #733); on `metric`, the planted CNAs drawn wider (T- #683).
 
     With `spatial`, (c) is each spot's true clone per slice in the spatial
-    pages' format (`analysis.draw_spatial`, `port.qa.spatial_page`)
+    pages' format (`analysis.draw_spatial`, `port.extensions.spatial_page`)
     in place of RDR and BAF per clone (T- #791); (b) carries the phase track
     under its rows, which names the contigs and carries the genome's marks
     (T- #794).
@@ -124,14 +124,7 @@ def truth_combined_figure(
     import matplotlib.pyplot as plt
     from matplotlib.ticker import NullLocator
 
-    from port.extensions.figure_style import PAPER_WIDTH, TRACK_FONT_SIZE
-    from port.extensions.genomic_axis import disclose, name_contigs
-    from port.patch.plot_copy_number_profile import (
-        plot_ascn_legend,
-        plot_copy_number_profile,
-    )
-    from port.patch.plot_genomic import plot_clones_genomic
-    from port.qa.combined_figure import (
+    from port.extensions.combined_figure import (
         FONT_SIZE,
         LABEL_GAP,
         LABEL_SIZE,
@@ -141,6 +134,13 @@ def truth_combined_figure(
         place_in_inches,
         set_font_size,
     )
+    from port.extensions.figure_style import PAPER_WIDTH, TRACK_FONT_SIZE
+    from port.extensions.genomic_axis import disclose, name_contigs
+    from port.patch.plot_copy_number_profile import (
+        plot_ascn_legend,
+        plot_copy_number_profile,
+    )
+    from port.patch.plot_genomic import plot_clones_genomic
     from port.sim.analysis import (
         binned_axis,
         binned_profile,
@@ -332,7 +332,7 @@ def _end_ticks(ax: Any) -> None:
 
 def _spatial_row(r: Realization, width: float) -> float:
     """Inches (c)'s row of slices takes across `width`, as `_spatial_panel` draws it."""
-    from port.qa.spatial_page import row_height
+    from port.extensions.spatial_page import row_height
     from port.sim.analysis import slice_frame
 
     frame = slice_frame(r)
@@ -344,7 +344,7 @@ def _spatial_panel(
 ) -> None:
     """(c) of the spatial variant: each slice's true clones in the spatial
     pages' format, keyed by the paper's names, the key under the first slice."""
-    from port.qa.spatial_page import panel_row, spatial_key
+    from port.extensions.spatial_page import panel_row, spatial_key
     from port.sim.analysis import clone_colour, draw_spatial, slice_frame
 
     frame = slice_frame(r)
@@ -377,7 +377,7 @@ def _stack_tracks(panel: Any, foot: float, tracks: list[list[Any]]) -> None:
     `plot_clones_genomic` spaces the tracks for its own page, which in a
     subfigure leaves white at the head and foot; the tracks take it.
     """
-    from port.qa.combined_figure import place_in_inches
+    from port.extensions.combined_figure import place_in_inches
 
     dpi = panel.get_figure(root=True).dpi
     box = panel.bbox
@@ -444,7 +444,7 @@ def _fit_tree(ax: Any) -> None:
 
 def symbol_of(label: str) -> str:
     """A profile row's `cnaster` numeral as the paper's $m$."""
-    from port.qa.combined_figure import clone_symbol
+    from port.extensions.combined_figure import clone_symbol
 
     return str(clone_symbol(label))
 
@@ -453,8 +453,8 @@ def simulated_tree_figure(r: Realization, width: float | None = None) -> Any:
     """The simulated clone tree, `width` wide, at any event count: `truth_combined_figure`'s panel (a) alone (T- #660, PR- #701)."""
     import matplotlib.pyplot as plt
 
+    from port.extensions.combined_figure import FONT_SIZE, page_style, place_in_inches
     from port.extensions.figure_style import PAPER_WIDTH
-    from port.qa.combined_figure import FONT_SIZE, page_style, place_in_inches
     from port.sim.analysis import draw_tree
 
     width = PAPER_WIDTH if width is None else width
@@ -475,7 +475,7 @@ def write_truth_combined(r: Realization, out: Path) -> Path:
     """`truth_combined_figure` to `out` as a PDF with no creation date, so it reproduces byte for byte."""
     import matplotlib.pyplot as plt
 
-    from port.qa.combined_figure import page_style
+    from port.extensions.combined_figure import page_style
 
     figure = truth_combined_figure(r)
     out.parent.mkdir(parents=True, exist_ok=True)

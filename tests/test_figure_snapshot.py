@@ -15,7 +15,7 @@ import matplotlib as mpl
 import matplotlib.image as mimage
 import numpy as np
 import pytest
-from port.qa.combined_figure import (
+from port.extensions.combined_figure import (
     combined_figure,
     genomic_figure,
     page_style,

@@ -269,28 +269,20 @@ follows the arm unless asked: on in a patched run, off with `--no-patch`.
 | `--png-copies` | off | a PNG without metadata beside each PDF, for figures compared across runs (#452) | two runs of the same code write the same bytes |
 | `--sample-layout`, `--genomic-colours` | unset | one panel per sample (#328); bins coloured per fitted state | |
 | `--warm-up` | off | compile every kernel before the clock starts (#211) | |
-| `--no-plots`, `--no-outputs`, `--time-stages`, `--audit-config`, `--list` | off | build figures and write none (#403); skip port's tables (#331); cost per swapped name; unused config (#324); the table | |
+| `--no-plots`, `--no-outputs`, `--time-stages`, `--audit-config`, `--list` | off | build figures and write none (#403); write no `cnamaste.h5`; cost per swapped name; unused config (#324); the table | |
 
-**A patched run also writes the seam between the fit and the integers**
-(#331): beside `cnaster`'s files, `port.extensions.outputs` writes
-`cnv_states.tsv` (each fitted state, the `(A, B)` each clone decodes it to,
-and its share of the clone's bins), `cnv_segments.tsv` (runs of equal
-`(A, B)`, with the mean `mu` over the run), `cnv_binlevel.tsv` (each
-bin's state `Z`, its rate `mu = exp(logmu[Z] - log_mu_shift_c)` with the
-clone's HMM shift, #613, and the posterior-mean `p`),
-`clone_labels_integer.tsv` (each spot's clone named by its integer copy
-profile: clones whose `(A, B)` agree at no less than
-`int_copy_num.merge_agreement` of bins, 0.99 unless stated, are one clone,
-#344, #518) and `manifest.json` (states, clones, likelihoods, the
-configuration's caps and the flags). Where that merge joins clones it also
-rewrites `clone_labels.tsv`: `clone_label` is the merged clone and
-`cnaster_clone_label` keeps `cnaster`'s, since the merge stands in for the
-Neyman-Pearson merge `--sal` no longer installs (#497). The per-spot
-tables -- `clone_labels.tsv`, `clone_labels_integer.tsv` and
-`baf_clone_labels.tsv` -- carry each spot's `sample_id` as the run assigned
-it, its enum decoded to the sample's name, rather than the barcode suffix, and
-`manifest.json` lists the sample names in code order (#418). Off with
-`--no-patch`, so the baseline arm writes what `cnaster` writes.
+**A patched run writes `cnamaste.h5` and `cnaster`'s files, nothing else**
+(T- #817): `<output_dir>/cnamaste.h5`, stage by stage, each quantity once
+(`docs/cnamaste-h5.md`), and `cnaster`'s files exactly as `cnaster` writes
+them -- `clone_labels.tsv` included, never rewritten. The integer clones
+(clones whose `(A, B)` agree at no less than `int_copy_num.merge_agreement`
+of bins, 0.99 unless stated, #344, #518) are `/integer_clones`; a bin's rate
+in its clone, `exp(log_mu[Z] - logmu_shift)` (#613), is `/rdrbaf`'s; each
+spot's sample by name is `/inputs`' (#418). `run_plots` draws the run's pages
+from the file. The audits read the file alone, and score integer clones by
+one rule at two thresholds: `clone_ari_int` at 1.0, `clone_ari_int_99` at
+0.99, the run's default merge. Off with `--no-patch`, so the baseline arm writes what
+`cnaster` writes.
 
 `port.pipeline.SWAPS` is the table -- one row per `cnaster` name `port`
 replaces, each naming the ticket that measured it -- and `patched()` is the

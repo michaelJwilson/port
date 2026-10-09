@@ -141,14 +141,14 @@ and the slide each slice's planted clones stain (`port.sim.he_slide`)."""
 
 def he_slices_figure(r: Any) -> Any:
     """Each slice's mocked H&E, stained by its spots' planted clones (`mock_he`),
-    in the spatial page's format and frame (`port.qa.spatial_page`,
+    in the spatial page's format and frame (`port.extensions.spatial_page`,
     `analysis.slice_frame`): one panel per slice, the region they share dashed
     (T- #791)."""
     from scipy.spatial import cKDTree
 
+    from port.extensions.combined_figure import page_style
     from port.extensions.figure_style import fit_to_content
-    from port.qa.combined_figure import page_style
-    from port.qa.spatial_page import panel_row
+    from port.extensions.spatial_page import panel_row
     from port.sim.analysis import frame_panels, slice_frame
     from port.sim.he_slide import mock_he
 
@@ -182,7 +182,7 @@ def multisample_pages(fixture: str, draw: Path | None, out: Path) -> list[Path]:
 
     import matplotlib.pyplot as plt
 
-    from port.qa.combined_figure import page_style
+    from port.extensions.combined_figure import page_style
     from port.sim import analysis
     from port.sim.truth_figure import truth_combined_figure
 
@@ -211,7 +211,7 @@ def truth_figures(path: Path, out: Path) -> list[Path]:
     """Figures 1-8 into `out`."""
     import matplotlib.pyplot as plt
 
-    from port.qa.combined_figure import page_style
+    from port.extensions.combined_figure import page_style
     from port.sim import analysis
     from port.sim.truth_figure import simulated_tree_figure, truth_combined_figure
 
@@ -274,14 +274,14 @@ def run_figures(sample: Any, root: Path, out: Path) -> Run:
     """Figures 9-13 into `out` from one run under `root`."""
     import matplotlib.pyplot as plt
 
-    from port.qa.audit import audit_sample
-    from port.qa.combined_figure import (
+    from port.extensions.combined_figure import (
         combined_figure,
         genomic_figure,
         page_style,
         recording,
         spatial_figure,
     )
+    from port.qa.audit import audit_sample
 
     with recording() as recorded, measured() as cost:
         recovery, output = audit_sample(sample, list(FLAGS), None, root / "run")
@@ -336,9 +336,9 @@ def compared(
     sample: Any, path: Path, output: Path, recovery: dict[str, Any]
 ) -> Compared:
     """`score`'s bins, rebuilt, and refused unless they give its `confusion` and `exact`."""
+    from port.extensions.combined_figure import clone_symbol
     from port.extensions.integer_copy import DEFAULT_MAX_TOTAL_COPY
     from port.qa.audit import read_run
-    from port.qa.combined_figure import clone_symbol
     from port.qa.scoring import copy_confusion
     from port.sim.analysis import display, read
 
@@ -659,8 +659,8 @@ def solver_figure(potts: dict[str, Any], copies: dict[str, Any] | None) -> Any:
     import matplotlib.pyplot as plt
     from matplotlib.text import Text
 
+    from port.extensions.combined_figure import FONT_SIZE
     from port.extensions.figure_style import PAPER_WIDTH
-    from port.qa.combined_figure import FONT_SIZE
     from port.studies import copy_state_plot, potts_plot
 
     width = PAPER_WIDTH
@@ -742,8 +742,9 @@ def solver_note(
         "",
         "Each sampler reads its settings file (`potts_sampler_settings.json`, `copy_sampler_settings.json`),",
         f"calibrated by `run_calibrate` on realizations 0-{int(potts.get('held_out', 0)) - 1}, held out from these",
-        "panels (T- #777). (a)'s annealed samplers, Wolff included, take the schedule `sal`'s `tune_schedule`",
-        "chose from its declared ramps, raced from common random numbers and ranked after ICM. (b)'s samplers",
+        "panels (T- #777). (a)'s annealed samplers, Wolff and Swendsen-Wang each with a Gibbs sweep per step,",
+        "take the schedule `sal`'s `tune_schedule` chose from its declared ramps, raced from common random",
+        "numbers and ranked after ICM and the label merge (T- #829). (b)'s samplers",
         "sample the run's own Baum-Welch objective, and their",
         "settings were ranked by the log-likelihood after it.",
         "",
@@ -751,7 +752,7 @@ def solver_note(
         "its problem (nats of the clone-assignment field). (b): the log-likelihood of the run's Baum-Welch at",
         "a start, less the best any run or the planted states reached. **Each key's two numbers** are the",
         "percent of spots (a) or rows (b) unlike the planted ones: before and after, where after is ICM",
-        "then the colour merge in (a), and Baum-Welch in (b).",
+        "then the label merge in (a), and Baum-Welch in (b).",
         "",
     ]
     return "\n".join(lines)
@@ -814,7 +815,7 @@ QUESTIONS: dict[str, tuple[str, str]] = {
     ),
     "combined.png": (
         "What did the run fit, genome and array on one page?",
-        "`port.qa.combined_figure.combined_figure`",
+        "`port.extensions.combined_figure.combined_figure`",
     ),
     "pop_combined.png": (
         "How many UMIs does a clone need, how long must a CNA be, at each stay probability 1 - t, "

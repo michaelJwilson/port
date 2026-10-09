@@ -329,7 +329,7 @@ def tapping(pipeline: Any, config_path: Path, flags: str) -> Iterator[None]:
     from cnaster.phasing import initial_phase_given_partition as phase_upstream
 
     from port.extensions import cnamaste
-    from port.patch.hmrf.core_inference import UPSTREAM
+    from port.patch.hmrf.core_inference import SIGNATURE
 
     names = ("read_tumor_prop", "construct_multislice_lattice_adjacency", "initial_phase_given_partition",
              "determine_normal_baseline", "run_core_inference", "merge_by_minspots", "reindex_clones")  # fmt: skip
@@ -374,10 +374,7 @@ def tapping(pipeline: Any, config_path: Path, flags: str) -> Iterator[None]:
     def core(*args: Any, **kwargs: Any) -> Any:
         _HELD.pop("field", None)
         result = held["run_core_inference"](*args, **kwargs)
-        _fit(
-            dict(inspect.signature(UPSTREAM).bind_partial(*args, **kwargs).arguments),
-            result,
-        )
+        _fit(dict(SIGNATURE.bind_partial(*args, **kwargs).arguments), result)
         return result
 
     def merge(*args: Any, **kwargs: Any) -> Any:

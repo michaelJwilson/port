@@ -18,8 +18,7 @@ import pandas as pd
 import pytest
 import scipy.sparse
 import yaml
-from port.qa.audit import audit_truth, planted_rows
-from port.qa.scoring import integer_clones
+from port.qa.audit import audit_truth, integer_labels, planted_rows
 from port.scripts.run_calicost import (
     PATHS,
     UnterminatedInitialization,
@@ -166,12 +165,12 @@ def test_a_merged_bin_maps_back_to_each_planted_bin_it_covers() -> None:
 
 @pytest.mark.analytic
 def test_clones_of_one_integer_profile_merge_to_the_smallest() -> None:
-    """Equal `(A, B)` at every bin is one clone; one differing B keeps two."""
+    """Equal `(A, B)` at every bin is one clone; one differing B keeps two: `integer_labels` at 1.0."""
 
     a = np.array([[1, 1, 1, 2], [1, 1, 1, 2], [2, 2, 2, 2]])
     b = np.array([[1, 1, 1, 1], [1, 0, 1, 1], [1, 1, 1, 1]])
 
-    np.testing.assert_array_equal(integer_clones(a, b), [0, 1, 0, 3])
+    np.testing.assert_array_equal(integer_labels(a, b), [0, 1, 0, 3])
 
 
 @pytest.mark.end2end

@@ -10,8 +10,8 @@ import matplotlib.pyplot as plt
 import pytest
 import seaborn as sns  # type: ignore[import-untyped]
 from port.extensions import figure_style
+from port.extensions.combined_figure import page_style
 from port.extensions.figure_style import DEFAULT, figure_font, page_size, stated
-from port.qa.combined_figure import page_style
 
 
 @pytest.mark.infra
