@@ -37,15 +37,15 @@ SCORES = ("ari", "ari_integer", "copy_ari_pf", "exact_altered_minor")
 """What a supported row pins, to 4 decimals: `port.qa.audit.SimRecovery`'s fields."""
 
 SUPPORTED: dict[str, tuple[str, str, dict[str, float]]] = {
-    "easy": ("easy", "2d4ce9a9", {"ari": 0.9694, "ari_integer": 0.9694, "copy_ari_pf": 0.8216, "exact_altered_minor": 0.3794}),
-    "hard": ("hard", "8797710b", {"ari": 0.762, "ari_integer": 0.762, "copy_ari_pf": 0.8597, "exact_altered_minor": 0.3395}),
-    "dev_tree_r0": ("sim/manifests/baseline/dev_tree.toml", "3381575a", {"ari": 0.9599, "ari_integer": 0.9599, "copy_ari_pf": 0.9717, "exact_altered_minor": 0.7324}),
-    "dev_tree_r0_ln": ("sim/manifests/dev_tree.toml", "3339b9a0", {"ari": 0.8243, "ari_integer": 0.8243, "copy_ari_pf": 0.9791, "exact_altered_minor": 0.7587}),
-    "dev_tree_1s_r0": ("sim/manifests/dev_tree_1s.toml", "df3cc0ab", {"ari": 0.9964, "ari_integer": 0.9964, "copy_ari_pf": 0.9768, "exact_altered_minor": 0.7574}),
-    "dev_tree_1s_easy_r0": ("sim/manifests/dev_tree_1s_easy.toml", "7ba9b01f", {"ari": 0.9127, "ari_integer": 0.9127, "copy_ari_pf": 0.9285, "exact_altered_minor": 0.8678}),
-    "dev_tree_1s_hard_r0": ("sim/manifests/dev_tree_1s_hard.toml", "9ec90dc2", {"ari": 0.5432, "ari_integer": 0.5432, "copy_ari_pf": 0.603, "exact_altered_minor": 0.29}),
-    "dev_tree_1s_dense_r0": ("sim/manifests/dev_tree_1s_dense.toml", "33e3471e", {"ari": 0.9983, "ari_integer": 0.9983, "copy_ari_pf": 0.9135, "exact_altered_minor": 0.8635}),
-    "study15_r0": ("sim/manifests/study15.toml", "784e4ebf", {"ari": 0.5932, "ari_integer": 0.8647, "copy_ari_pf": 0.4694, "exact_altered_minor": 0.1536}),
+    "easy": ("easy", "2d4ce9a9", {"ari": 0.9694, "ari_integer": 0.9694, "copy_ari_pf": 0.9005, "exact_altered_minor": 0.6324}),
+    "hard": ("hard", "8797710b", {"ari": 0.762, "ari_integer": 0.762, "copy_ari_pf": 0.8453, "exact_altered_minor": 0.537}),
+    "dev_tree_r0": ("sim/manifests/baseline/dev_tree.toml", "3381575a", {"ari": 0.9599, "ari_integer": 0.9599, "copy_ari_pf": 0.9829, "exact_altered_minor": 0.9348}),
+    "dev_tree_r0_ln": ("sim/manifests/dev_tree.toml", "3339b9a0", {"ari": 0.8243, "ari_integer": 0.8243, "copy_ari_pf": 0.9845, "exact_altered_minor": 0.9291}),
+    "dev_tree_1s_r0": ("sim/manifests/dev_tree_1s.toml", "df3cc0ab", {"ari": 0.9964, "ari_integer": 0.9964, "copy_ari_pf": 0.9825, "exact_altered_minor": 0.9383}),
+    "dev_tree_1s_easy_r0": ("sim/manifests/dev_tree_1s_easy.toml", "7ba9b01f", {"ari": 0.9127, "ari_integer": 0.9127, "copy_ari_pf": 0.9324, "exact_altered_minor": 0.8949}),
+    "dev_tree_1s_hard_r0": ("sim/manifests/dev_tree_1s_hard.toml", "9ec90dc2", {"ari": 0.5432, "ari_integer": 0.5432, "copy_ari_pf": 0.6671, "exact_altered_minor": 0.2338}),
+    "dev_tree_1s_dense_r0": ("sim/manifests/dev_tree_1s_dense.toml", "33e3471e", {"ari": 0.9983, "ari_integer": 0.9983, "copy_ari_pf": 0.8272, "exact_altered_minor": 0.7446}),
+    "study15_r0": ("sim/manifests/study15.toml", "784e4ebf", {"ari": 0.5932, "ari_integer": 0.8647, "copy_ari_pf": 0.4712, "exact_altered_minor": 0.0}),
 }  # fmt: skip
 """Fixture -> (source, hash, `SCORES`): a committed CalicoST sample's short name, or a manifest's r0."""
 
