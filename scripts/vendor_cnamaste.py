@@ -38,6 +38,7 @@ DEPARTED: dict[str, str] = {
     "recomb.py": "D4: the genetic map in integer contig order, not string order",
     "io.py": "D4: the gene filter logs genes, not path characters; samples deduplicated",
     "he.py": "D4, #311: H&E labels 1..num_labels, the brightest pixel included",
+    "utils.py": "PR1, T- #692: write_fig releases each Text's cached renderer",
 }
 """Copied file -> the T- #836 PR that edits it. Only grows."""
 
