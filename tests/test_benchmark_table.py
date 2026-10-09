@@ -84,6 +84,22 @@ def test_calicosts_committed_outputs_score_as_532(tmp_path: Path) -> None:
     assert {k: row[k] for k in CALICOST} == CALICOST
 
 
+CNASTER = {"ari": 0.9599, "ari_integer": 0.9599, "state_ari": 0.0871, "copy_ari_pf": 0.9717,
+           "exact_altered_minor": 0.7324, "wall": 749.1, "cores": 4}  # fmt: skip
+"""`cnaster` 4adad4d's archive (`tests/data/benchmarks/dev_tree_r0_cnaster/`, T- #833) as its run scored itself."""
+
+
+@pytest.mark.snapshot
+@pytest.mark.release
+def test_cnasters_committed_outputs_score_as_its_run(tmp_path: Path) -> None:
+    """cnaster's archive scored against a fresh draw of `3381575a`: the run's own `SIM` row, to 4 decimals."""
+    from port.studies.benchmark_table import cnaster_row, drawn
+
+    row = cnaster_row(drawn(tmp_path))
+    assert {k: row[k] for k in CNASTER} == CNASTER
+    assert row["commit"].startswith("4adad4d")
+
+
 @pytest.mark.snapshot
 def test_the_supported_table_is_the_ledgers_last_sweep() -> None:
     """`--supported` renders the latest benchmark sweep from the ledger: a row per run, its fixture and hash named."""

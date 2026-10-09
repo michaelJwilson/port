@@ -40,6 +40,9 @@ LEDGER_DIR = ROOT / "docs" / "metrics"
 LEDGER = LEDGER_DIR / "ledger.tsv"
 RUNS = LEDGER_DIR / "runs.tsv"
 DEFINITIONS = LEDGER_DIR / "definitions.tsv"
+CNASTER_DIR = LEDGER_DIR / "cnaster"
+"""`cnaster`'s own ledger (T- #833): `ledger.tsv` and `runs.tsv` as above, under `definitions.tsv` above; `runs`,
+`ledger` and `write` take it as their `directory`."""
 
 LEDGER_COLUMNS = ("run_id", "fixture", "fixture_hash", "metric", "definition", "value")
 RUN_COLUMNS = ("run_id", "timestamp", "commit", "arm", "test", "note", "benchmark")
@@ -135,12 +138,14 @@ def append_tsv(
         out.writelines(lines)
 
 
-def runs() -> list[dict[str, str]]:
-    return read_tsv(RUNS, RUN_COLUMNS)
+def runs(directory: Path = LEDGER_DIR) -> list[dict[str, str]]:
+    """`directory`'s `runs.tsv`: port's, or `CNASTER_DIR`'s."""
+    return read_tsv(directory / RUNS.name, RUN_COLUMNS)
 
 
-def ledger() -> list[dict[str, str]]:
-    return read_tsv(LEDGER, LEDGER_COLUMNS)
+def ledger(directory: Path = LEDGER_DIR) -> list[dict[str, str]]:
+    """`directory`'s `ledger.tsv`: port's, or `CNASTER_DIR`'s."""
+    return read_tsv(directory / LEDGER.name, LEDGER_COLUMNS)
 
 
 def definitions() -> list[dict[str, str]]:
@@ -283,10 +288,11 @@ def write(
     dirty: bool,
     test: str = TEST,
     benchmark: bool = False,
+    directory: Path = LEDGER_DIR,
 ) -> str:
     """Append a run to `runs` and `ledger`, after `check_identity`; returns
-    the run's id."""
-    recorded = ledger()
+    the run's id. `directory` is the ledger's: port's, or `CNASTER_DIR`."""
+    recorded = ledger(directory)
     check_identity(fixture, recovery["fixture_hash"], recorded)
     run, lines = entries(
         recovery,
@@ -295,13 +301,13 @@ def write(
         note=note,
         commit=provenance.head() + ("+" if dirty else ""),
         timestamp=datetime.datetime.now(datetime.UTC).strftime(TIMESTAMP),
-        taken={r["run_id"] for r in runs()},
+        taken={r["run_id"] for r in runs(directory)},
         current=latest(),
         test=test,
         benchmark=benchmark,
     )
-    append_tsv(RUNS, RUN_COLUMNS, [run])
-    append_tsv(LEDGER, LEDGER_COLUMNS, lines)
+    append_tsv(directory / RUNS.name, RUN_COLUMNS, [run])
+    append_tsv(directory / LEDGER.name, LEDGER_COLUMNS, lines)
     print("\t".join(run[c] for c in RUN_COLUMNS))
     for line in lines:
         print("\t".join(line[c] for c in LEDGER_COLUMNS))

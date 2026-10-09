@@ -377,3 +377,15 @@ def test_a_run_of_unchanged_merges_keeps_its_first_and_last_tick(
     assert text == SKIP
     assert 0 < x < 1
     assert rotation == 0
+
+
+@pytest.mark.infra
+def test_the_cnaster_ledger_is_its_own_in_the_same_format() -> None:
+    """`docs/metrics/cnaster/` (T- #833): its lines name its runs and a shared definition, its runs are the arm's, and no run is port's."""
+    runs = metrics.runs(metrics.CNASTER_DIR)
+    lines = metrics.ledger(metrics.CNASTER_DIR)
+    current = metrics.latest()
+    assert {line["run_id"] for line in lines} <= {r["run_id"] for r in runs}
+    assert all(current[line["metric"]] == line["definition"] for line in lines)
+    assert all(r["arm"].startswith("-- --no-patch") for r in runs)
+    assert not {r["run_id"] for r in runs} & {r["run_id"] for r in metrics.runs()}

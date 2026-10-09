@@ -3349,3 +3349,5 @@ b816552-dev_tree_1s_easy_r0-1508	dev_tree_1s_easy_r0	7ba9b01f	peak_gb	1	3.42
 4c05c5f-dev_tree_r0-1859	dev_tree_r0	3381575a	exact_neutral	1	0.9995
 4c05c5f-dev_tree_r0-1859	dev_tree_r0	3381575a	wall_s	1	168.8
 4c05c5f-dev_tree_r0-1859	dev_tree_r0	3381575a	peak_gb	1	6.15
+abcdef0-dev-0108	dev	07b82e92	clone_ari	1	0.9877
+abcdef0-dev-0108	dev	07b82e92	wall_s	1	12.3
