@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from port.sandbox.admixture.variants import annealed, fit_mixture
 
-from tests.test_clone_mixture import ALPHA, MU, TAU, P, _planted, _sticky
+from tests.sandbox.test_clone_mixture import ALPHA, MU, TAU, P, _planted, _sticky
 
 
 @pytest.mark.analytic

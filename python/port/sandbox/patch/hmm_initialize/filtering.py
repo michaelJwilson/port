@@ -36,7 +36,7 @@ and steps 2, 3 and 11 disappear rather than being reimplemented.
 ## Bitwise
 
 `design_matrix` composes the two into the array `cnaster` feeds
-`GaussianMixture`. `tests/test_hmm_init_filter.py` captures that array from a
+`GaussianMixture`. `tests/sandbox/test_hmm_init_filter.py` captures that array from a
 real `gmm_init` call and asserts this reproduces it **bitwise**, which is what
 makes the separation a refactor rather than a rewrite.
 """

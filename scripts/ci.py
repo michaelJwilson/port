@@ -5,10 +5,10 @@ first failure stops the run with that step's exit code.
 
 | flag | runs | budget, 4 cores |
 | --- | --- | --- |
-| `--gate` (default) | ruff, mypy, every test in no tier or `critical` | 60 s |
+| `--gate` (default) | ruff, mypy, every test in no tier or `critical`, `sandbox` excluded | 60 s |
 | `--badges` | the judged and drop-in coverage guards, `check_badges` | pre-merge |
 | `--full` | the gate, the badges, then `merge` tests neither guard ran | pre-merge |
-| `--release` | `release`, `oracle` and `deprecate` | release |
+| `--release` | `release`, `oracle`, `deprecate` and `sandbox` | release |
 | `--figures` | the dev instance's figures, into `.cache/plots` | on a figure change |
 
 The tiers partition the suite -- `critical`, none, `merge`, `release`,
@@ -42,8 +42,8 @@ from pathlib import Path
 WORKERS = 4
 """xdist workers: the host's cores, and 15 GB holds four gate workers."""
 
-GATE = "not release and not oracle and not merge and not benchmark and not deprecate"
-"""Every test in no tier or `critical`. Benchmarks measure, so they run
+GATE = "not release and not oracle and not merge and not benchmark and not deprecate and not sandbox"
+"""Every test in no tier or `critical`, outside `tests/sandbox/`. Benchmarks measure, so they run
 serially under `--full`, where pytest-benchmark is not disabled by xdist."""
 
 JUDGED = "not release and end2end"
@@ -55,7 +55,9 @@ uncompared (#403: the drop-in figure fell 90.57 -> 89.53 without this)."""
 MERGE_REST = "merge and not end2end and not patch and not cnaster"
 """The `merge` tests neither coverage guard runs, so `--full` runs each once."""
 
-RELEASE = "release or oracle or deprecate"
+RELEASE = "release or oracle or deprecate or (sandbox and not merge and not benchmark)"
+"""`sandbox` is set-aside code no run reaches (#851): the tests the gate would run
+run here, and its `merge` and benchmark tests where those run."""
 
 DEPRECATE = "deprecate"
 """Run only in the test modules a change touches (`_changed_modules`)."""

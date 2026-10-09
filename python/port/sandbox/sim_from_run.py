@@ -4,7 +4,7 @@ Ticket: #460 -- a version-3 manifest from a finished run, a tool kept here
   at request: nothing reads its output, and its offsets are commented.
 Measurement: none recorded on a run; on a draw's truth written as a run's
   outputs it recovers `dev_shared_unique`'s 3 clones, 1 shared and 2 unique
-  events (`tests/test_sandbox_sim_from_run.py`).
+  events (`tests/sandbox/test_sandbox_sim_from_run.py`).
 Exit: graduate to `port.sim` once its unmeasured sections (slice offsets,
   the tree, normal fractions) can be filled from a run.
 

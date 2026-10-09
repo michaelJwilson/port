@@ -9,7 +9,6 @@ import pandas as pd
 from cnaster.hmm_nophasing import hmm_nophasing
 from cnaster.hmm_phased import hmm_phased
 from port.patch import lattice
-from port.sandbox.patch.emission import emission_into
 from scipy.sparse import csr_matrix
 
 
@@ -179,25 +178,6 @@ def cnaster_emission_pair(
         )
     )
     return scored
-
-
-def buffered_emission(
-    inputs: EmissionInputs, buffers: tuple[np.ndarray, np.ndarray], phased: bool
-) -> None:
-    """`port`'s buffered emission on `inputs`, written into `buffers`."""
-
-    emission_into(
-        inputs.single_X[:, 0, :],
-        inputs.base_nb_mean,
-        inputs.single_X[:, 1, :],
-        inputs.total_bb_RD,
-        inputs.log_mu,
-        inputs.alphas,
-        inputs.p_binom,
-        inputs.taus,
-        *buffers,
-        phased,
-    )
 
 
 def random_graph(

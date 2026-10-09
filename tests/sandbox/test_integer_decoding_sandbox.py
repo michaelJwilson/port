@@ -1,6 +1,6 @@
 """The schemes `port.sandbox.integer_decoding.schemes` keeps, as pinned when moved (#362).
 
-Fixtures: `tests.test_copy_likelihood`'s and `tests.test_integer_em`'s.
+Fixtures: `tests.sandbox.test_copy_likelihood`'s and `tests.test_integer_em`'s.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from port.sandbox.integer_decoding.schemes import (
     fit_copies,
 )
 
-from tests.test_copy_likelihood import PLANTED, _draw, _offset
+from tests.sandbox.test_copy_likelihood import PLANTED, _draw, _offset
 from tests.test_integer_em import (
     ALPHA,
     LOG_TRANSMAT,

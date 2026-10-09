@@ -10,11 +10,11 @@ from pytest_benchmark.fixture import BenchmarkFixture
 
 from tests.builders import (
     EmissionInputs,
-    buffered_emission,
     cnaster_emission_pair,
     emission_inputs,
 )
 from tests.fixtures import tiers
+from tests.sandbox.test_buffered_emission import buffered_emission
 
 GATE = {"n_states": 5, "n_obs": 400, "n_spots": 300}
 """Gate size; decides no ratio."""

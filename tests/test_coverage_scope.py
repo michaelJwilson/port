@@ -72,7 +72,8 @@ def test_no_test_referees_against_an_undeclared_upstream_module() -> None:
     declared = _declared_oracle_modules()
     offenders: dict[str, set[str]] = {}
 
-    for path in sorted((ROOT / "tests").glob("*.py")):
+    # NB `tests/sandbox/` included: a set-aside test referees against `sal` too (#851)
+    for path in sorted((ROOT / "tests").rglob("*.py")):
         tree = ast.parse(path.read_text())
         used: set[str] = set()
 
@@ -93,7 +94,7 @@ def test_no_test_referees_against_an_undeclared_upstream_module() -> None:
             and not any(name == d or name.startswith(d + ".") for d in declared)
         }
         if undeclared:
-            offenders[path.name] = undeclared
+            offenders[str(path.relative_to(ROOT / "tests"))] = undeclared
 
     assert not offenders, (
         f"upstream modules imported by tests but absent from "

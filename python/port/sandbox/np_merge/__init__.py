@@ -39,7 +39,7 @@ unphased one, with the log-space negative binomial (#560), where a state is its 
 indices never occur), and each clone's read-depth rates carry its own
 `new_log_mu_shift` (#435), which CalicoST's `tumor_prop is None` path does not
 have. With every shift zero the groups and statistics are CalicoST's, which
-`tests/test_np_merge.py` pins against CalicoST's function on the same inputs.
+`tests/sandbox/test_np_merge.py` pins against CalicoST's function on the same inputs.
 Maximal cliques are enumerated here (Bron-Kerbosch) rather than by `networkx`,
 which port does not depend on; at ten clones the enumeration is immediate.
 """

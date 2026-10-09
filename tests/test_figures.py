@@ -1,6 +1,6 @@
 """Two `cnaster` plotting entry points the pipeline never calls, against written-out referees.
 
-`plot_loh_density`'s figure is compared in `tests/test_plot_loh_density.py` (#355, #103).
+`plot_loh_density`'s figure is compared in `tests/sandbox/test_plot_loh_density.py` (#355, #103).
 """
 
 from pathlib import Path

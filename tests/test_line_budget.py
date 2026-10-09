@@ -20,10 +20,18 @@ TREES = {
     "qa": ("qa", "studies", "sim"),
     "sandbox": ("sandbox",),
     "tests": (),
+    "tests_sandbox": (),
 }
-"""Each budgeted tree's paths under `python/port`; `tests` is the repository's `tests/`."""
+"""Each budgeted tree's paths under `python/port`; `tests` is the repository's `tests/`
+outside `tests/sandbox/`, and `tests_sandbox` is `tests/sandbox/` (#851)."""
 
-BUDGET = {"run": 14842, "qa": 17339, "sandbox": 7843, "tests": 29344}
+BUDGET = {
+    "run": 14842,
+    "qa": 17339,
+    "sandbox": 7843,
+    "tests": 26978,
+    "tests_sandbox": 2486,
+}
 """Non-blank lines per tree (T- #831), lowered as packages land; a move between trees transfers its lines."""
 
 SLACK = 0.02
@@ -33,17 +41,20 @@ TARGET = 1.0
 """The run path's ceiling as a multiple of cnaster's non-blank lines; the aim is 0.5."""
 
 
-def lines(paths: list[Path]) -> int:
-    """Non-blank lines in every `.py` file under `paths`."""
+def lines(paths: list[Path], excluded: Path | None = None) -> int:
+    """Non-blank lines in every `.py` file under `paths`, none under `excluded`."""
     files = [f for p in paths for f in ([p] if p.is_file() else p.rglob("*.py"))]
-    return sum(1 for f in files for line in f.read_text().splitlines() if line.strip())
+    kept = [f for f in files if excluded is None or not f.is_relative_to(excluded)]
+    return sum(1 for f in kept for line in f.read_text().splitlines() if line.strip())
 
 
 def counted(tree: str) -> int:
     """`tree`'s non-blank lines."""
-    return lines(
-        [ROOT / "tests"] if tree == "tests" else [PORT / p for p in TREES[tree]]
-    )
+    if tree == "tests":
+        return lines([ROOT / "tests"], excluded=ROOT / "tests" / "sandbox")
+    if tree == "tests_sandbox":
+        return lines([ROOT / "tests" / "sandbox"])
+    return lines([PORT / p for p in TREES[tree]])
 
 
 @pytest.mark.infra
@@ -62,7 +73,7 @@ def test_each_tree_is_within_its_budget_and_the_budget_is_current(tree: str) -> 
 
 @pytest.mark.infra
 def test_the_tests_are_within_twice_port() -> None:
-    """Tests at most 2x port's own lines, the sandbox excluded."""
+    """Tests at most 2x port's own lines, `tests/sandbox/` and `python/port/sandbox/` excluded."""
     assert counted("tests") <= 2 * (counted("run") + counted("qa"))
 
 
