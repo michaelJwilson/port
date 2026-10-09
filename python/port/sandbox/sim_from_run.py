@@ -65,12 +65,12 @@ class Run:
 
 
 def read_run(path: Path) -> Run:
-    """The run whose `cnamaste.h5` is `path`: `/inputs`' spots, `/clone_assignment`'s clones, `/integer_copy`'s runs."""
+    """The run whose `cnamaste.h5` is `path`: `/inputs`' spots, `/clone_assignment`'s clones, `/copy_int`'s runs."""
     from port.extensions import cnamaste
 
     spots, _ = cnamaste.read(path, "inputs")
     final, _ = cnamaste.read(path, "clone_assignment")
-    copies, _ = cnamaste.read(path, "integer_copy")
+    copies, _ = cnamaste.read(path, "copy_int")
     labels = pd.DataFrame({"barcode": spots["barcodes"], "sample_id": spots["sample_ids"],
                            "x": spots["coords"][:, 0], "y": spots["coords"][:, 1],
                            "clone_label": final["assignment"]})  # fmt: skip

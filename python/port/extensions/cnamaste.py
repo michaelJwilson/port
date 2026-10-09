@@ -305,7 +305,7 @@ GROUPS: tuple[Group, ...] = (
         "the run's final clones (`reindex_clones`); `stage` names the group whose `field` they were solved on",
     ),  # fmt: skip
     Group(
-        "integer_copy",
+        "copy_int",
         (
             _d(
                 "clones",
@@ -344,7 +344,7 @@ GROUPS: tuple[Group, ...] = (
                 "map",
                 ("n_clones",),
                 "int64",
-                "integer clone of each `/integer_copy` column",
+                "integer clone of each `/copy_int` column",
             ),
             _d(
                 "assignment", ("n_spots",), "int64", "integer clone per spot, `-1` none"
@@ -419,7 +419,7 @@ TRUTH_GROUPS: tuple[Group, ...] = (
         meaning="the planted clone per spot; `clones` names them",
     ),
     _only(
-        _group("integer_copy"),
+        _group("copy_int"),
         "clones",
         "A",
         "B",
@@ -466,7 +466,7 @@ TRUTH_GROUPS: tuple[Group, ...] = (
         "the planted tree",
     ),  # fmt: skip
 )
-"""`truth.h5`: the planted values under `cnamaste.h5`'s names. `integer_copy` is at the genes (`level = "genes"`)."""
+"""`truth.h5`: the planted values under `cnamaste.h5`'s names. `copy_int` is at the genes (`level = "genes"`)."""
 
 
 def _spec(path: str, schema: str) -> Group:

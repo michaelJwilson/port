@@ -114,21 +114,21 @@ def _samples(path: Path) -> tuple[list[str], np.ndarray]:
 
 
 def _table(path: Path, df_cnv: pd.DataFrame, level: str) -> None:
-    """`/integer_copy` is `df_cnv`: written from it if absent, else checked equal."""
-    from port.extensions.run_record import integer_copy
+    """`/copy_int` is `df_cnv`: written from it if absent, else checked equal."""
+    from port.extensions.run_record import copy_int
 
-    integer_copy(path, df_cnv, level)
+    copy_int(path, df_cnv, level)
     _require(
         _equal(_frame(path), df_cnv[_frame(path).columns]),
-        "the integer table is not /integer_copy",
+        "the integer table is not /copy_int",
     )
 
 
 def _frame(path: Path) -> pd.DataFrame:
-    """`/integer_copy` as the run's integer table: `CHR`, `START`, `END`, then each clone's `A` and `B`."""
+    """`/copy_int` as the run's integer table: `CHR`, `START`, `END`, then each clone's `A` and `B`."""
     from port.extensions import cnamaste
 
-    copies, attrs = cnamaste.read(path, "integer_copy")
+    copies, attrs = cnamaste.read(path, "copy_int")
     contig = (
         copies["contig"].astype(np.int64)
         if attrs["contig_numeric"]

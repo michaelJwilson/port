@@ -17,10 +17,10 @@ import numpy as np
 
 __all__ = [
     "FITS",
+    "copy_int",
     "counts",
     "fit_arrays",
     "initial",
-    "integer_copy",
     "integer_groups",
     "lengths_of",
     "level_of",
@@ -410,18 +410,18 @@ def tapping(pipeline: Any, config_path: Path, flags: str) -> Iterator[None]:
         hmrf.pipeline_clone_assignment = assign
 
 
-def integer_copy(path: Path, df_cnv: Any, level: str) -> None:
-    """`/integer_copy` from the run's integer table (`df_seglevel_cnv`, `cnv_seglevel.tsv`), once."""
+def copy_int(path: Path, df_cnv: Any, level: str) -> None:
+    """`/copy_int` from the run's integer table (`df_seglevel_cnv`, `cnv_seglevel.tsv`), once."""
     from port.extensions import cnamaste
     from port.extensions.outputs import installed_keys
 
-    if "integer_copy" in cnamaste.stages(path):
+    if "copy_int" in cnamaste.stages(path):
         return
     ids = [c.split()[0][len("clone") :] for c in df_cnv.columns if c.endswith(" A")]
     contig = df_cnv["CHR"].to_numpy()
     keys = installed_keys()
     cnamaste.write(
-        path, "integer_copy",
+        path, "copy_int",
         {"clones": np.array([int(c) for c in ids], dtype=np.int64), "contig": contig.astype(str),
          "start": df_cnv["START"].to_numpy(dtype=np.int64), "end": df_cnv["END"].to_numpy(dtype=np.int64),
          "A": df_cnv[[f"clone{c} A" for c in ids]].to_numpy(dtype=np.int16),
@@ -432,19 +432,19 @@ def integer_copy(path: Path, df_cnv: Any, level: str) -> None:
 
 
 def integer_groups(path: Path, run: Path, config: Path) -> None:
-    """`/integer_copy` if absent, and `/clone_assignment_int`, from the run directory `run` and its spots."""
+    """`/copy_int` if absent, and `/clone_assignment_int`, from the run directory `run` and its spots."""
     import pandas as pd
 
     from port.extensions import cnamaste
     from port.extensions.outputs import config_keys, integer_clones, merge_agreement
 
     stage_counts, level = _HELD["rdrbaf"]
-    if "integer_copy" not in cnamaste.stages(path):
+    if "copy_int" not in cnamaste.stages(path):
         # NB no page wrote it (`--no-figure-swaps`): the table the run wrote
-        integer_copy(
+        copy_int(
             path, pd.read_csv(run / "cnv_seglevel.tsv", sep="\t", comment="#"), level
         )
-    copies, _ = cnamaste.read(path, "integer_copy")
+    copies, _ = cnamaste.read(path, "copy_int")
     ids = [str(c) for c in copies["clones"]]
     seglevel = pd.DataFrame(
         {

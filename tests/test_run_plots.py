@@ -81,7 +81,7 @@ def test_run_plots_draws_every_page_the_run_wrote_byte_for_byte(
 def test_the_stages_are_what_the_run_wrote(output: Path) -> None:
     """Each stage group against the file the run wrote for it, exactly, and every group in run order.
 
-    `/clone_assignment` is `cnaster`'s `clone_labels.tsv`, `/integer_copy`
+    `/clone_assignment` is `cnaster`'s `clone_labels.tsv`, `/copy_int`
     `cnv_seglevel.tsv`'s `A`, `B`, `/rdrbaf` the final fit's npz up to
     `reindex_clones`' permutation, and `/clone_assignment_int` the run's rule,
     `outputs.integer_clones`, on `cnv_seglevel.tsv` at its `merge_agreement`.
@@ -92,7 +92,7 @@ def test_the_stages_are_what_the_run_wrote(output: Path) -> None:
     run = next(output.glob("clone*"))
     found = c.stages(h5)
     assert found[0] == "inputs"
-    order = [found.index(g) for g in ("inputs", "adjacency", "baf", "rdrbaf", "clone_assignment", "integer_copy", "clone_assignment_int")]  # fmt: skip
+    order = [found.index(g) for g in ("inputs", "adjacency", "baf", "rdrbaf", "clone_assignment", "copy_int", "clone_assignment_int")]  # fmt: skip
     assert order == sorted(order)
     assert list(c.levels(h5)) == [
         "phasing_min_snp_umis",
@@ -126,7 +126,7 @@ def test_the_stages_are_what_the_run_wrote(output: Path) -> None:
         assert name not in written, f"port wrote {name}"
 
     seglevel = pd.read_csv(run / "cnv_seglevel.tsv", sep="\t", comment="#")
-    copies, _ = c.read(h5, "integer_copy")
+    copies, _ = c.read(h5, "copy_int")
     for allele in ("A", "B"):
         expected = seglevel[[f"clone{k} {allele}" for k in copies["clones"]]].to_numpy()
         np.testing.assert_array_equal(copies[allele], expected)
