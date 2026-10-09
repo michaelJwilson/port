@@ -24,6 +24,9 @@ logger = get_logger(__name__, start_time=start_time)
 @njit
 def logsumexp(x):
     x_max = np.max(x)
+    # NB all `-inf` is `-inf`, where `x - x_max` would be NaN (T- #836 D2, #411).
+    if x_max == -np.inf:
+        return -np.inf
     return x_max + np.log(np.sum(np.exp(x - x_max)))
 
 

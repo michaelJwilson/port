@@ -440,7 +440,11 @@ class hmm_nophasing:
         # NB log_gamma (n_states * n_observations), potentially concatenated by clone.
         log_gamma = log_alpha + log_beta
 
-        if np.any(np.sum(log_gamma, axis=0) == 0):
+        # NB a sum of logs is 0 when the probabilities' product is 1, not when their sum is 0: an
+
+        #    all `-inf` column passed and normalized to NaN (T- #836 D2, #413).
+
+        if np.any(np.isneginf(scipy.special.logsumexp(log_gamma, axis=0))):
             logger.error("Sum of posterior probability is zero for some observations!")
             raise RuntimeError()
 

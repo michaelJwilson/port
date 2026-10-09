@@ -35,6 +35,10 @@ ENTRY = "cnaster.scripts.run_cnaster"
 DEPARTED: dict[str, str] = {
     "normal_spot.py": "PR1, #105: a removed bin's genes leave the gene-level output",
     "spatial.py": "PR1, #692: rectangular clones that admit no assignment are banded",
+    "hmm.py": "D2, #413: an all -inf posterior column is the named error",
+    "hmm_nophasing.py": "D2, #413: an all -inf posterior column is the named error",
+    "hmrf.py": "D2, #411: logsumexp of all -inf is -inf",
+    "icm.py": "D2, #411: logsumexp of all -inf is -inf",
 }
 """Copied file -> the T- #836 PR that edits it. Only grows."""
 
@@ -143,7 +147,7 @@ def main(argv: list[str] | None = None) -> int:
         problems = check(tree)
         print(
             "\n".join(problems)
-            or f"python/cnamaste is cnaster {pinned()[0][:7]}, renamed"
+            or f"cnamaste/python/cnamaste is cnaster {pinned()[0][:7]}, renamed"
         )
         return 1 if problems else 0
     for path, text in tree.items():

@@ -120,6 +120,9 @@ def calc_cluster_assignment_cost(
 @njit
 def logsumexp(x):
     x_max = np.max(x)
+    # NB all `-inf` is `-inf`, where `x - x_max` would be NaN (T- #836 D2, #411).
+    if x_max == -np.inf:
+        return -np.inf
     s = 0.0
     for i in range(x.shape[0]):
         s += np.exp(x[i] - x_max)
