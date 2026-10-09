@@ -173,6 +173,10 @@ module-name = "port.oxiport"
 
 [tool.ruff]
 target-version = "py312"
+# NB `cnamaste/` is its own project (T- #836): `cnaster`'s code at the pin,
+#    renamed, which `scripts.vendor_cnamaste --check` pins; formatting it here
+#    would break that.
+extend-exclude = ["cnamaste"]
 
 [tool.ruff.lint]
 ignore = [

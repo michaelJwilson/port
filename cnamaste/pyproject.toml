@@ -1,0 +1,54 @@
+# `cnamaste`, its own project (T- #836 PR1): its own build, lock and
+# environment, sharing nothing with `port`'s. From this directory:
+#
+#   uv sync --locked && uv run run_cnamaste CONFIG
+#   uv build --wheel
+#
+# `python/cnamaste/` is the package, laid out as `port`'s is so that
+# `oxicnamaste` (K0) binds beside it.
+#
+# The dependencies are `cnaster`'s at its locked pin `4adad4d`, so the copy
+# runs wherever `cnaster` does.
+[build-system]
+requires = ["setuptools>=77"]  # NB 77: an SPDX `license` string (PEP 639)
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cnamaste"
+version = "0.1.0"
+description = "cnaster's run path at its pin, renamed, fixed and patched (T- #836)"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "M. J. Wilson" }]
+requires-python = ">=3.12.2"
+dependencies = [
+    "anndata>=0.8.0",
+    "hmmlearn",
+    "matplotlib",
+    "numba>=0.61.0",
+    "numpy>=1.26.0",
+    "pandas>=2.0.0,<3",
+    "polars>=1.30.0",
+    "pybedtools",
+    "pyranges",
+    "pysam",
+    "pyyaml>=6.0",
+    "rich==14.0.0",
+    "scanpy>=1.9.0",
+    "scikit-learn",
+    "scipy",
+]
+
+[project.scripts]
+# `cnaster`'s `run_cnaster = "cnaster.scripts.run_cnaster:main"`, renamed.
+run_cnamaste = "cnamaste.scripts.run_cnamaste:main"
+
+[tool.setuptools]
+package-dir = { "" = "python" }
+packages = ["cnamaste", "cnamaste.scripts"]
+
+[tool.uv]
+# NB the versions `port`'s uv.lock (a7ff616) runs `cnaster` 4adad4d under, where
+#    an unpinned resolve moves them, so PR1's rows compare like with like
+#    (T- #836): unconstrained, polars resolves 2.0.0.
+constraint-dependencies = ["anndata==0.13.3.post0", "numba==0.67.0", "polars==1.44.2"]

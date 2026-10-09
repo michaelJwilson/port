@@ -44,3 +44,4 @@ sim/generated/
 #    figures every generator writes by default (`tests/plots_dir.py`): local,
 #    rebuilt.
 .cache/
+cnamaste/.venv/
