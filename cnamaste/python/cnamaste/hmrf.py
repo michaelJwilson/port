@@ -11,6 +11,7 @@ from cnamaste.hmm import pipeline_baum_welch
 
 # from cnamaste.wolff import wolff_sweep
 from cnamaste.hmm_initialize import cna_mixture_init, gmm_init
+from cnamaste.copy_decode import neutral_state
 from cnamaste.hmm_phased import hmm_phased
 from cnamaste.hmrf_utils import cast_csr, clone_stack_obs
 from cnamaste.icm import icm_sweep_deque, merge_assignment, unpack_adjacency
@@ -795,6 +796,15 @@ def run_core_inference(
         )
 
         res["pred_cnv"] = np.argmax(res["log_gamma"], axis=0)
+
+    # NB the shifted model is flat along `mu -> c mu`: the normal clone's neutral state is pinned to
+    #    `mu = 1`, and each clone's shift moves with it (T- #836 K3, port #293, #299).
+    if res["new_log_mu_shift"] is not None:
+        rates = res["new_log_mu"][:, 0]
+        paths = np.asarray(res["pred_cnv"]).reshape(-1, n_obs).T if np.ndim(res["pred_cnv"]) == 1 else res["pred_cnv"]
+        neutral = rates[neutral_state(rates, res["new_p_binom"], paths)]
+        res.params.new_log_mu = res["new_log_mu"] - neutral
+        res.params.new_log_mu_shift = res["new_log_mu_shift"] - neutral
 
     return res
 

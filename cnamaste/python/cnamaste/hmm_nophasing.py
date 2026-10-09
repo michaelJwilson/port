@@ -130,6 +130,34 @@ def get_log_transmat(n_states, t):
 
 
 @njit(nogil=True, cache=True, parallel=False, error_model="numpy")
+def segment_shifts(log_mu, copy_states, normal_log_lambda, clone_lengths):
+    """`compute_logmu_shifts` over the clone-stacked segments `copy_states` decodes, and the clone
+    lengths used (T- #836 K3).
+
+    `normal_log_lambda` per genome bin is tiled to every clone; `clone_lengths`, stale once
+    clones merge (`hmrf.py:564`), are re-tiled where equal. Copied in intent from port c17cd26
+    `shifted_emission.current_clone_lengths` and `stacked_log_lambda`.
+    """
+    states = np.asarray(copy_states, dtype=np.int64).reshape(-1)
+    lengths = np.asarray(clone_lengths, dtype=np.int64).reshape(-1)
+    if lengths.sum() != states.size:
+        lengths = np.full(states.size // lengths[0], lengths[0], dtype=np.int64)
+    lam = np.asarray(normal_log_lambda, dtype=np.float64).reshape(-1)
+    lam = lam if lam.size == states.size else np.tile(lam, states.size // lam.size)
+    shifts = compute_logmu_shifts(np.asarray(log_mu, dtype=np.float64).reshape(-1), states, lam, lengths)
+    return shifts, lengths
+
+
+def logmu_shift(model, log_mu, normal_log_lambda, clone_lengths, n_spots):
+    """Per-segment `log Z_c` for `model`'s coded emission, or `None` where it has no decode yet,
+    no exposure or no clone lengths (T- #836 K3)."""
+    posteriors = getattr(model, "state_posteriors", None)
+    if normal_log_lambda is None or clone_lengths is None or posteriors is None or n_spots != 1:
+        return None
+    return segment_shifts(log_mu[:, 0], model.get_copy_states(np.asarray(posteriors)), normal_log_lambda,
+                          clone_lengths)[0]  # fmt: skip
+
+
 def compute_logmu_shifts(log_mus, copy_states, normal_log_lambda, clone_lengths):
     # NB per-clone shift in log_mu due to (clone) library normalization, used to
     #    debias inferred mus; assumes clones concatenate along the genomic axis.
@@ -253,6 +281,11 @@ class hmm_nophasing:
 
         assert bbEncoder.n_spots == n_spots
 
+        # NB each clone's library normalizer `log Z_c`, from the last E-step's decode, divides the
+        #    read-depth mean: `exp(log_mu - log Z_c)` (T- #836 K3, port #276). cnaster computed it
+        #    and discarded it. Scored per segment, as the shift varies by clone.
+        shift = logmu_shift(self, log_mu, normal_log_lambda, clone_lengths, n_spots)
+
         log_emit_rdr_list, log_emit_baf_list = [], []
 
         # NB typically, n_spot is unity as clones are concatenataed along the genomic axis.
@@ -270,24 +303,22 @@ class hmm_nophasing:
                 scratch_baf[s] if scratch_baf else np.zeros((n_states, len(bb_endog)))
             )
 
+            if shift is not None:
+                dense_rdr = np.empty((n_states, nbEncoder.n_obs))
+                exposure = nbEncoder.total_count[:, s] * np.exp(-shift)
+
             for i in range(n_states):
-                if normal_log_lambda is not None:
-                    # log_gamma = self.get_state_posteriors()
-                    # copy_states = self.get_copy_states(log_gamma, includes_phased=False)
-
-                    # NB clone concatenated
-                    # logmu_shifts = compute_logmu_shifts(log_mu, copy_states, normal_log_lambda, clone_lengths)
-                    logger.warning("logmu_shifts are not currently supported.")
-                    
-
-                # TODO fold in logmu_shifts; assumed concatenated (repeated) along the genomic axis.
-                _nb_logpmf_1d(
-                    nb_endog,
-                    nb_exposure,
-                    exp(log_mu[i, s]),
-                    alphas[i, s],
-                    log_emit_rdr_uniq[i, :],
-                )
+                if shift is not None:
+                    _nb_logpmf_1d(nbEncoder.obs_count[:, s], exposure, exp(log_mu[i, s]), alphas[i, s],
+                                  dense_rdr[i])  # fmt: skip
+                else:
+                    _nb_logpmf_1d(
+                        nb_endog,
+                        nb_exposure,
+                        exp(log_mu[i, s]),
+                        alphas[i, s],
+                        log_emit_rdr_uniq[i, :],
+                    )
                 _bb_logpmf_1d(
                     bb_endog,
                     bb_exposure,
@@ -296,7 +327,9 @@ class hmm_nophasing:
                     log_emit_baf_uniq[i, :],
                 )
 
-            log_emit_rdr_list.append(nbEncoder.decode_array(log_emit_rdr_uniq, s))
+            log_emit_rdr_list.append(
+                dense_rdr if shift is not None else nbEncoder.decode_array(log_emit_rdr_uniq, s)
+            )
             log_emit_baf_list.append(bbEncoder.decode_array(log_emit_baf_uniq, s))
 
         if clone_stack:

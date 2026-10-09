@@ -11,7 +11,7 @@ from cnamaste.cna_hmrf_result import (
 from cnamaste.config import start_time
 from cnamaste.hmm_initialize import gmm_init
 from cnamaste.hmm_phased import hmm_phased
-from cnamaste.hmm_nophasing import compute_logmu_shifts
+from cnamaste.hmm_nophasing import compute_logmu_shifts, segment_shifts
 from cnamaste.logger import get_logger
 
 logger = get_logger(__name__, start_time=start_time)
@@ -149,6 +149,15 @@ def pipeline_baum_welch(
     logger.info("\n".join(to_log))
     logger.info("Computing emission prob. given best-fit parameters.")
 
+    # NB the final rescore with the fit's library normalizers (T- #836 K3, port #276): each clone's
+    #    `log Z_c` from the fit's decode divides its exposure, as the M-step's emission did.
+    logmu_shift = None
+    if "m" in params and normal_lambda is not None and clone_lengths is not None and X.shape[2] == 1:
+        segment, stacked = segment_shifts(new_log_mu[:, 0], np.argmax(log_gamma, axis=0) % n_states,
+                                          np.log(normal_lambda), clone_lengths)  # fmt: skip
+        base_nb_mean = base_nb_mean * np.exp(-segment)[:, None]
+        logmu_shift = segment[np.cumsum(np.r_[0, stacked])[:-1]]
+
     (
         log_emission_rdr,
         log_emission_baf,
@@ -210,7 +219,7 @@ def pipeline_baum_welch(
     return CnaHMRFResult(
         params=HMMParams(
             new_log_mu=new_log_mu,
-            # new_log_mu_shift=logmu_shift,
+            new_log_mu_shift=logmu_shift,
             new_alphas=new_alphas,
             new_p_binom=new_p_binom,
             new_taus=new_taus,

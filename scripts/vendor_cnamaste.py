@@ -35,6 +35,9 @@ ENTRY = "cnaster.scripts.run_cnaster"
 DEPARTED: dict[str, str] = {
     "normal_spot.py": "PR1, #105: a removed bin's genes leave the gene-level output",
     "spatial.py": "PR1, #692: rectangular clones that admit no assignment are banded",
+    "hmm_nophasing.py": "K3, #276: the read-depth mean divided by each clone's log Z_c",
+    "hmm.py": "K3, #276: the final rescore with the fit's log Z_c",
+    "hmrf.py": "K3, #293 #299: the shifted fit's neutral state pinned to mu = 1",
     "scripts/run_cnamaste.py": "K1, #313 #362: integer copies by copy_decode.lattice_decode",
 }
 """Copied file -> the T- #836 PR that edits it. Only grows."""

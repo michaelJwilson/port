@@ -19,6 +19,7 @@ from cnamaste.copy_decode import (
     MAX_COPY,
     MERGE_AGREEMENT,
     Pseudobulk,
+    clone_shifts,
     integer_clones,
     lattice_decode,
     modal_pairs,
@@ -1369,8 +1370,11 @@ def run_cnamaste(config_path, over_rides=None):
                            float(res_combine["new_alphas"].flat[0]), float(res_combine["new_taus"].flat[0]))
                 for c in range(len(final_clone_ids))
             ]  # fmt: skip
+            # NB each tumour clone's shift starts at its `log Z_c` over the pinned rates (T- #836 K3).
+            normal = normal_clone(res_combine["new_p_binom"], paths)
+            shifts = clone_shifts(res_combine["new_log_mu"], paths, single_base_nb_mean, normal)
             decoded = lattice_decode(
-                bulks, np.zeros(len(bulks)), normal=normal_clone(res_combine["new_p_binom"], paths),
+                bulks, shifts, normal=normal,
                 lengths=lengths, stay=stay, max_total_copy=max_copy, max_allele_copy=max_copy,
             )  # fmt: skip
 

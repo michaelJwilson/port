@@ -267,3 +267,34 @@ def integer_clones(seglevel, agreement=MERGE_AGREEMENT):
             match = clone
         names[clone] = match
     return names
+
+
+def neutral_state(log_mu, p_binom, paths):
+    """The state pinned to `mu = 1`: the normal clone's most occupied balanced state; without one,
+    the balanced state of lowest rate, else the state closest to 0.5 (T- #836 K3). Copied from port
+    c17cd26 (PR- #832) `python/port/patch/hmm_nophasing/shifted_emission.py:137`."""
+    rates = np.asarray(log_mu, dtype=np.float64).reshape(-1)
+    distance = np.abs(np.asarray(p_binom, dtype=np.float64).reshape(-1) - 0.5)
+    balanced = distance <= NEUTRAL_BAF_TOLERANCE
+    if not balanced.any():
+        return int(np.argmin(distance))
+    normal = normal_clone(p_binom, paths)
+    if balanced[paths[:, normal]].any():
+        counts = np.where(balanced, np.bincount(paths[:, normal], minlength=rates.size), -1)
+        return int(np.argmax(counts))
+    candidates = np.flatnonzero(balanced)
+    return int(candidates[np.argmin(rates[candidates])])
+
+
+def clone_shifts(log_mu, paths, single_base_nb_mean, normal):
+    """Each clone's `log Z_c = log sum_g lambda_g mu_{s_c(g)}`, `lambda` the normalized spot-summed
+    baseline, the normal clone's 0 (T- #836 K3). Copied from port c17cd26
+    `python/port/patch/hmm_nophasing/logmu_shift.py:83` and `hmrf/core_inference.py:84`."""
+    from scipy.special import logsumexp
+
+    profile = np.asarray(single_base_nb_mean, dtype=np.float64).sum(axis=1)
+    with np.errstate(divide="ignore"):
+        log_lambda = np.log(profile / profile.sum())
+    shifts = logsumexp(np.asarray(log_mu, dtype=np.float64).reshape(-1)[paths] + log_lambda[:, None], axis=0)
+    shifts[normal] = 0.0
+    return shifts
