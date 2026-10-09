@@ -75,11 +75,6 @@ def assign_centiMorgans(chr_pos_vector, ref_positions_cM):
     ref_pos = np.array(ref_positions_cM.pos)
     ref_cm = np.array(ref_positions_cM.pos_cm)
 
-    # NB `get_reference_recomb_rates` sorts `chrom` as strings (1, 10, ..., 19, 2, 20, ...), and the
-    #    cursor below assumes integer order: chr2-9 read chr1's last centimorgan (T- #836 D4).
-    order = np.lexsort((ref_pos, ref_chrom))
-    ref_chrom, ref_pos, ref_cm = ref_chrom[order], ref_pos[order], ref_cm[order]
-
     # TODO
     chr_pos_vector.sort()
 
