@@ -1,14 +1,13 @@
-"""The blocked pseudobulk merge against `cnaster`'s (#488).
-
-Bitwise equal (`tests/test_pseudobulk_patch.py`), so the rows are a ratio and
-nothing else. The stress size is #487's 60 x 50 `dev_tree` sample: 6,000
-spots, four clones.
-"""
+"""Blocked pseudobulk merge against `cnaster`'s, at #487's 6,000-spot sample (#488)."""
 
 from collections.abc import Callable
 from typing import Any
 
 import pytest
+from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
+from port.patch.pseudobulk import (
+    merge_pseudobulk_by_index_mix as port_merge_pseudobulk_by_index_mix,
+)
 from pytest_benchmark.fixture import BenchmarkFixture
 
 from tests.fixtures import pseudobulk_inputs, tiers
@@ -18,15 +17,11 @@ STRESS = {"n_obs": 4000, "n_spots": 6000, "n_clones": 4}
 
 
 def _upstream() -> Callable[..., Any]:
-    from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
-
     return merge_pseudobulk_by_index_mix  # type: ignore[no-any-return]
 
 
 def _blocked() -> Callable[..., Any]:
-    from port.patch.pseudobulk import merge_pseudobulk_by_index_mix
-
-    return merge_pseudobulk_by_index_mix
+    return port_merge_pseudobulk_by_index_mix
 
 
 @pytest.mark.benchmark

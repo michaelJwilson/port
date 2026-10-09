@@ -34,7 +34,7 @@ different answer.
 *The errors come from the Hessian, not from `hess_inv`.* The sandbox returns
 `scipy.optimize`'s `hess_inv` -- the low-rank inverse-Hessian approximation
 L-BFGS-B accumulated on its way to the optimum, as good as its last few steps
-happened to make it. `port.extensions.parameter_errors` differentiates this
+happened to make it. `port.qa.parameter_errors` differentiates this
 objective twice instead.
 
 *One column.* The sandbox carries the spot axis the fit cannot fill; these
@@ -43,7 +43,7 @@ take `(n_states,)` or `(n_states, 1)` and nothing else (#278).
 ## `float64`
 
 `jax` defaults to `float32`, which would make every comparison below a
-tolerance of about `1e-7`. `port.extensions.jax_setup` is where the flag is
+tolerance of about `1e-7`. `port.qa.jax_setup` is where the flag is
 set and why it cannot be set anywhere later.
 """
 
@@ -56,9 +56,9 @@ import jax.numpy as jnp
 import jax.scipy.special as jsp
 import numpy as np
 
-from port.extensions import jax_setup  # noqa: F401  (float64, before any array)
 from port.patch._clone_paths import state_vector
 from port.patch.emission import DISPERSION_FLOOR
+from port.qa import jax_setup  # noqa: F401  (float64, before any array)
 
 __all__ = [
     "emission",
@@ -210,7 +210,7 @@ def shifted_rates(
     debiased vector per clone, because the shift differs between them.
 
     **The shift depends on `log_mu`**, so differentiating through it is not
-    the same as subtracting a constant. `port.extensions.parameter_errors`
+    the same as subtracting a constant. `port.qa.parameter_errors`
     carries the consequence: the debiased rates are invariant under a
     constant added to every `log_mu`, so their covariance is singular in that
     direction and reporting the raw variance there would put back the scale

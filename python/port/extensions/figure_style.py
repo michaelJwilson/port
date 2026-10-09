@@ -1,21 +1,9 @@
-"""One figure font, palette and page width, the font stated in `pyproject.toml` (`[tool.port.figures]`).
+"""One figure font, palette and page geometry for every figure.
 
-`cnaster.plotting` sets `font.family` to DejaVu Serif when it is imported and
-its plots set seaborn's theme when they run, and `port`'s combined figure
-resets to matplotlib's defaults (`page_style`, #342), so a run's figures
-carried two faces. :func:`figure_rc` is the one set of `rcParams` every
-figure takes: the face, its family and the matching math fonts.
-
-The values are read from `pyproject.toml` where the package runs from a
-checkout, and are :data:`DEFAULT` otherwise, which a test holds equal to the
-file. A face matplotlib cannot find is refused by name rather than left to
-fall back silently to another.
-
-The palette (`INK`, `MUTED`, `GRID`, `axes_style`) and the page geometry
-(`PAPER_WIDTH`, `TEXT_HEIGHT`, `CAPTION_ROOM`, `page_size`) are style with no
-`cnaster` counterpart; `port.sim.analysis`, `port.patch.plot_genomic` and the
-paper figures each held a copy of the palette until T- #673 G7, and
-`combined_figure` the text height until T- #733.
+The font is read from `pyproject.toml`'s `[tool.port.figures]` (else
+:data:`DEFAULT`) and replaces `cnaster.plotting`'s DejaVu Serif and seaborn's
+theme (#342); a face matplotlib cannot find is refused. The palette and page
+geometry have no `cnaster` counterpart (T- #673 G7, T- #733).
 """
 
 from __future__ import annotations
@@ -59,50 +47,28 @@ DEFAULT: dict[str, str] = {"family": "serif", "font": "STIXGeneral", "mathtext":
 """`[tool.port.figures]` as shipped; used where no `pyproject.toml` is found."""
 
 INK, MUTED, GRID = "#0b0b0b", "#52514e", "#e4e2dc"
-"""Text and marks, axes and ticks, grid lines: the truth page's and the paper figures' one palette (T- #673 G7)."""
+"""Text and marks, axes and ticks, grid lines (T- #673 G7)."""
 
 PAGE_MARGIN = 1.01
-"""Inches of margin on every side of the paper's US-letter page, the running
-head and folio inside it (`geometry`'s `includeheadfoot`): the submission's
-1 in minimum with 0.01 in to spare (T- #740)."""
+"""Inches of margin on every side of the US-letter page, head and folio inside it (T- #740)."""
 
 HEAD_AND_FOOT = 58.0 / 72.27
-"""Inches of the page `includeheadfoot` gives the running head and folio:
-`llncs`'s `\\headheight` 12 pt, `\\headsep` 16 pt and `\\footskip` 30 pt."""
+"""Inches `includeheadfoot` gives the running head and folio (`llncs`: 12 + 16 + 30 pt)."""
 
 PAPER_WIDTH = 8.5 - 2 * PAGE_MARGIN
-"""A text column, 6.48 in (468.31 pt, `pdflatex`): the width every paper
-figure draws at (#280, #339, T- #740).
-
-Measured from the genomic figures `docs/plots/` then tracked: 20.03 in
-wide, so `\\includegraphics[width=\\linewidth]` scales them by **0.240** and
-a 10 pt tick label lands at **2.4 pt** on the page. At a text column the
-figure is included at 1:1, so a declared size is the size on the page and
-nothing has to be undone at the point of inclusion.
-"""
+"""A text column, 6.48 in: the width every paper figure draws at, included at 1:1 (#280, #339, T- #740)."""
 
 TEXT_HEIGHT = 11.0 - 2 * PAGE_MARGIN - HEAD_AND_FOOT
 """The text block's height, 8.18 in (590.99 pt, `pdflatex`) (T- #740)."""
 
 MIN_FONT_SIZE = 8.0
-"""Points: every paper figure's text size at 1:1 but its genomic tracks'.
-T- #740's 10 pt left 5 clones' profile labels overlapping on a page;
-relaxed to 8 pt for the paper's figures and the population study's (#743)."""
+"""Points: every paper figure's text size at 1:1 except genomic tracks' (#743)."""
 
 TRACK_FONT_SIZE = 6.0
-"""Points: the RDR and BAF tracks' labels, ticks, clone names and state
-keys, in `truth_combined` and `combined` alike: a track is a third of an
-inch tall at 5 clones, and 8 pt crowds it (#743)."""
+"""Points: the RDR and BAF tracks' labels, ticks, clone names and state keys (#743)."""
 
 CAPTION_ROOM = 1.0
-"""Inches of the text block a figure leaves for its caption (T- #733).
-
-A page drawn `PAPER_WIDTH` by `TEXT_HEIGHT` and included at
-`width=\\linewidth` under a one-line `\\caption` is too large for the page,
-by 23.0 pt on `llncs`'s 122 by 193 mm block (`pdflatex`); 1.0 in (72.27 pt)
-leaves 49.3 pt past that for the caption's further lines and
-`\\textfloatsep`, 1.5 in until T- #791.
-"""
+"""Inches of the text block a figure leaves for its caption (T- #733, T- #791)."""
 
 Page = Literal["third", "half", "three_quarters", "full"]
 """The heights a paper figure is drawn at, as a share of the text block."""
@@ -120,16 +86,14 @@ FIT_MARGIN = 0.03
 """Inches of white `fit_to_content` leaves at a page's head and sides."""
 
 STAMP_ROOM = 0.17
-"""Inches `fit_to_content` leaves at a page's foot: a `MIN_FONT_SIZE` stamp's
-row, 12 pt (T- #740)."""
+"""Inches `fit_to_content` leaves at a page's foot for a `MIN_FONT_SIZE` stamp (T- #740)."""
 
 
 SERIES = (
     "#2a78d6", "#eb6834", "#1baf7a", "#eda100",
     "#e87ba4", "#008300", "#4a3aa7", "#e34948",
 )  # fmt: skip
-"""The categorical order, validated: adjacent CVD dE >= 9.1, normal >= 19.6.
-Moved from `port.sim.analysis` (#749 WP9)."""
+"""The categorical order, validated: adjacent CVD dE >= 9.1, normal >= 19.6 (#749 WP9)."""
 
 NEUTRAL_COLOUR = "#b5b3ad"
 """`normal`, and the `(1, 1)` state."""
@@ -138,12 +102,8 @@ NEUTRAL_COLOUR = "#b5b3ad"
 def page_size(page: Page = "full", columns: int = 1) -> tuple[float, float]:
     """Inches, width by height, of one of `columns` figures on a row `page` tall.
 
-    The row is `PAGE_FRACTIONS[page]` of `TEXT_HEIGHT - CAPTION_ROOM`, so
-    "full" is the whole text block less its caption and every share leaves
-    its caption that room in proportion; each figure is `PAPER_WIDTH /
-    columns` wide, included at `width=\\linewidth` in a minipage of
-    `1/columns` of the line at 1:1, e.g. the two spatial maps on a "third"
-    row, and a 2x2 grid at "half" or "three_quarters" (T- #733).
+    Height is `PAGE_FRACTIONS[page]` of `TEXT_HEIGHT - CAPTION_ROOM`; width
+    `PAPER_WIDTH / columns` (T- #733). Raises `ValueError` on a bad `page` or `columns`.
     """
     if page not in PAGE_FRACTIONS:
         message = f"page {page!r} is not one of {sorted(PAGE_FRACTIONS)}"
@@ -156,14 +116,10 @@ def page_size(page: Page = "full", columns: int = 1) -> tuple[float, float]:
 
 
 def fit_to_content(figure: Any) -> None:
-    """The page cut to what its axes draw, `FIT_MARGIN` at the head and
-    sides and `STAMP_ROOM` at the foot; each axis keeps its size in inches.
+    """Cut the page to what its axes draw, `FIT_MARGIN` at head and sides, `STAMP_ROOM` at foot.
 
-    For a page whose axes hold their aspect (a spatial map, `set_aspect`
-    "equal"), which otherwise leaves the white its aspect does not fill as
-    bands round the axes. What an axis anchors -- its legend, title and
-    texts -- moves with it; a figure-level text or legend does not, so a
-    caller anchors its key to an axis (PR- #715).
+    Each axis keeps its size in inches and moves with what it anchors;
+    figure-level texts and legends do not move (PR- #715).
     """
     figure.canvas.draw()
     renderer = figure.canvas.get_renderer()

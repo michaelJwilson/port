@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import cnaster.utils
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import pytest
+from cnaster.utils import write_fig as cnaster_write_fig
+from port.patch.utils import discard_fig, write_fig
+from port.pipeline import FIGURE_SWAPS, PLOT_OFF_SWAPS, patched
 
 
 @pytest.mark.smoke
@@ -12,19 +18,11 @@ import pytest
 def test_the_figure_is_closed_as_cnasters_closes_it_and_no_file_is_written(
     tmp_path: Path, given: bool
 ) -> None:
-    """Both close the figure they were handed; `discard_fig` writes no file.
-
-    With no figure given, `cnaster` builds and writes an empty one; there is
-    nothing of the run's to close, and `discard_fig` touches no figure at all.
-    """
-    import matplotlib as mpl
+    """Both close the figure handed them; `discard_fig` writes no file."""
 
     mpl.use("Agg")
-    import matplotlib.pyplot as plt
-    from cnaster.utils import write_fig
-    from port.patch.utils import discard_fig
 
-    for writer, name in ((write_fig, "theirs.pdf"), (discard_fig, "ours.pdf")):
+    for writer, name in ((cnaster_write_fig, "theirs.pdf"), (discard_fig, "ours.pdf")):
         figure = plt.figure()
         writer(str(tmp_path / name), figure if given else None)
         if given:
@@ -39,15 +37,11 @@ def test_the_figure_is_closed_as_cnasters_closes_it_and_no_file_is_written(
 
 @pytest.mark.infra
 def test_no_plots_rebinds_whichever_write_fig_is_in_place() -> None:
-    """Installed after the figure swaps, it replaces port's `write_fig` and
-    puts it back on the way out."""
-    import cnaster.utils
-    from port.patch.utils import discard_fig, write_fig
-    from port.pipeline import FIGURE_SWAPS, PLOT_OFF_SWAPS, patched
+    """After the figure swaps, `--no-plots` replaces port's `write_fig` and restores it."""
 
     with patched(FIGURE_SWAPS + PLOT_OFF_SWAPS):
         assert cnaster.utils.write_fig is discard_fig
     with patched(FIGURE_SWAPS):
-        # NB the row binds its options into port's function (#517).
+        # NB the row binds its options into port's function (#517)
         assert getattr(cnaster.utils.write_fig, "func", None) is write_fig
     assert cnaster.utils.write_fig.__module__ == "cnaster.utils"

@@ -26,7 +26,7 @@ import sys
 import tempfile
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import pandas as pd
 import yaml
@@ -36,9 +36,6 @@ from port.qa import provenance
 from port.qa.statistics import measured, median_wall, peak_gb
 from port.sim.files import located
 from port.sim.truth import COPY_LATTICE, dev_instance
-
-if TYPE_CHECKING:
-    pass
 
 TIMEOUT = 1800
 """CalicoST's budget per case, in seconds (#494)."""
@@ -84,7 +81,7 @@ def port(name: str, repeats: int) -> dict[str, Any]:
             [
                 sys.executable,
                 "-m",
-                "port.scripts.run_audit",
+                "port.qa.scripts.run_audit",
                 "--sim",
                 "--sample",
                 name,

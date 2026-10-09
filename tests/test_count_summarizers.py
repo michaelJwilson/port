@@ -1,19 +1,7 @@
-"""`port.patch.omics.blocks`'s two count summarizers against `cnaster`'s (#198).
+"""`port.patch.omics.blocks`'s count summarizers against `cnaster`'s, bitwise (#198).
 
-**2.02x and 1.51x, bitwise.** Both build the same thing the same way wrong:
-a grouped column sum done one group at a time, each pass slicing every spot's
-column out of a full matrix. A grouped column sum is a product with a 0/1
-indicator, and three products replace the first loop, two the second.
-
-What the referee has to hold, beyond the numbers agreeing:
-
-*   **the grouping is by set**, so a gene named twice in one block counts its
-    UMIs once — a product with a plain incidence matrix would count it twice;
-*   **a column in no group contributes nowhere**, which an indicator built
-    from the wrong side would silently place in group zero;
-*   **the phasing in the bin summary is per block, not per bin**, so lifting
-    it out of the loop has to give the same answer for every phase vector --
-    not just the all-true one a fixture happens to produce.
+Also against an explicit loop on a matrix built to trip a grouped sum, and the
+planted per-gene counts summed per block.
 """
 
 from typing import Any
@@ -21,19 +9,22 @@ from typing import Any
 import numpy as np
 import pytest
 import scipy.sparse as sp
+from cnaster.omics import create_bin_ranges
+from cnaster.omics import summarize_counts_for_bins as cnaster_summarize_counts_for_bins
+from cnaster.omics import summarize_counts_for_blocks as upstream
+from port.patch.omics import summarize_counts_for_blocks
+from port.patch.omics.blocks import _group_indicator, _grouped_column_sums
+from port.patch.omics.blocks import (
+    summarize_counts_for_bins as port_summarize_counts_for_bins,
+)
+from port.patch.omics.blocks import summarize_counts_for_blocks as patched
 from port.sim.inputs import read_to_bins
 from port.sim.run_config import PlantedInstance
 
 pytestmark = pytest.mark.preprocessing
 
 PHASES = ["all-true", "alternating", "all-false"]
-"""Phase vectors the bin summary is compared under.
-
-`initial_phase_given_partition` produces one of these in principle and the
-dev fixture produces the first in practice, so the other two are supplied
-directly: the `where` that chooses between a block's B count and its
-complement is the one place lifting the loop could invert a haplotype.
-"""
+"""Phase vectors for the bin summary; the fixture yields only the first."""
 
 
 @pytest.fixture(scope="module")
@@ -41,19 +32,14 @@ def blocked(
     planted_instance: PlantedInstance,
     gate_config: Any,
 ) -> tuple[Any, Any, Any]:
-    """The instance, its gene-SNP table with blocks, and the block counts."""
+    """Return the loaded instance, its gene-SNP table with blocks, and the block counts."""
     chain = read_to_bins(planted_instance[2], through="blocks")
 
     return chain.loaded, chain.table, chain.blocks
 
 
 def _fields_equal(realized: Any, reference: Any) -> None:
-    """Every field of a `SpatioGenomicCounts`, bitwise.
-
-    `.keys()` and not iteration: `SpatioGenomicCounts` mimics a dictionary for
-    item access but defines `__iter__` to yield its **values**, so `for key in
-    counts` would hand back arrays. #196 owns that inconsistency.
-    """
+    """Assert every field of a `SpatioGenomicCounts` equal, bitwise (`__iter__` yields values, #196)."""
     for key in reference.keys():  # noqa: SIM118 -- not a dict; see above
         np.testing.assert_array_equal(
             np.asarray(realized[key]), np.asarray(reference[key]), err_msg=key
@@ -62,15 +48,7 @@ def _fields_equal(realized: Any, reference: Any) -> None:
 
 @pytest.mark.patch
 def test_the_block_counts_are_cnasters(blocked: tuple[Any, Any, Any]) -> None:
-    """**Every field of the block summary, bitwise.**
-
-    Including `single_X[:, 1, :]` and `single_total_bb_RD`, which upstream
-    builds from the same A-allele sum computed twice. Taking it once is the
-    only arithmetic this patch removes rather than reorders, so the two rows
-    agreeing is what says it was the same sum.
-    """
-    from cnaster.omics import summarize_counts_for_blocks as upstream
-    from port.patch.omics.blocks import summarize_counts_for_blocks as patched
+    """Every field of the block summary equals `cnaster`'s, bitwise."""
 
     loaded, table, _ = blocked
     alleles = (loaded.cell_snp_Aallele, loaded.cell_snp_Ballele)
@@ -82,10 +60,7 @@ def test_the_block_counts_are_cnasters(blocked: tuple[Any, Any, Any]) -> None:
 @pytest.mark.patch
 @pytest.mark.parametrize("phase", PHASES)
 def test_the_bin_counts_are_cnasters(blocked: tuple[Any, Any, Any], phase: str) -> None:
-    """**Every field of the bin summary, bitwise, under three phase vectors.**"""
-    from cnaster.omics import create_bin_ranges
-    from cnaster.omics import summarize_counts_for_bins as upstream
-    from port.patch.omics.blocks import summarize_counts_for_bins as patched
+    """Every field of the bin summary equals `cnaster`'s, bitwise, under three phases."""
 
     loaded, table, counts = blocked
     alleles = (loaded.cell_snp_Aallele, loaded.cell_snp_Ballele)
@@ -122,20 +97,14 @@ def test_the_bin_counts_are_cnasters(blocked: tuple[Any, Any, Any], phase: str) 
             geneticmap_file=None,
         )
 
-    _fields_equal(call(patched), call(upstream))
+    _fields_equal(
+        call(port_summarize_counts_for_bins), call(cnaster_summarize_counts_for_bins)
+    )
 
 
 @pytest.mark.analytic
 def test_the_indicator_sums_each_group_and_nothing_else() -> None:
-    """**The grouped sum against an explicit loop, on a matrix built to trip it.**
-
-    Column 3 belongs to no group, column 0 is named twice in group 0, and
-    group 2 is empty. A product with a plain incidence matrix double-counts
-    the second; an indicator built from the wrong side places the first in
-    group zero; an implementation that skipped empty groups would shorten the
-    answer.
-    """
-    from port.patch.omics.blocks import _group_indicator, _grouped_column_sums
+    """The grouped sum equals an explicit loop with a duplicate, an orphan and an empty group."""
 
     matrix = np.arange(12, dtype=np.int64).reshape(3, 4)
     rows = np.array([0, 0, 1, 2])
@@ -158,13 +127,7 @@ def test_the_indicator_sums_each_group_and_nothing_else() -> None:
 
 @pytest.mark.analytic
 def test_the_grouped_sum_agrees_sparse_and_dense() -> None:
-    """The same answer whether the counts are a matrix or an array.
-
-    The loader returns dense today and sparse under `sparse_counts` (#186),
-    and the product is `O(nnz)` on the second -- 19.7x at a slide's density.
-    Which container it gets must not change the number.
-    """
-    from port.patch.omics.blocks import _group_indicator, _grouped_column_sums
+    """The grouped sum is the same on sparse and dense counts (#186)."""
 
     dense = np.arange(40, dtype=np.int64).reshape(5, 8)
     dense[dense % 3 == 0] = 0
@@ -184,14 +147,7 @@ def test_the_block_counts_are_the_planted_counts(
     blocked: tuple[Any, Any, Any],
     implementation: str,
 ) -> None:
-    """**What the blocks carry is what the fixture planted, summed per block.**
-
-    Two implementations agreeing says nothing about whether either is right,
-    so the transcript row is taken back to the planted per-gene counts and
-    re-summed over each block's genes from the table itself. Both `cnaster`'s
-    summary and the swap row's are held to it.
-    """
-    from port.patch.omics import summarize_counts_for_blocks
+    """Both implementations' block counts equal the planted counts summed per block."""
 
     _, pre_image, written, _ = planted_instance
     loaded, table, counts = blocked

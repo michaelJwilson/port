@@ -1,91 +1,51 @@
-"""Shared fixtures.
+"""Shared fixtures, including `cnaster`'s module-level global config, set and restored."""
 
-`cnaster` reads configuration from a module-level global rather than from
-its arguments, so a test touching a path that consults it has to set one.
-The fixture below does that and restores what was there, because a global
-left behind is a test that passes alone and fails in a suite.
-"""
-
+import os
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
+from cnaster.io import load_input_data
+from cnaster.omics import form_gene_snp_table
+from cnaster.scripts.run_cnaster import set_numba_seed
+from port.sim.inputs import written_config
+from port.sim.run_config import planted_and_written
 
 from tests import TESTS
+from tests.fixtures import potts_labels
 
 COMPRESSION_DECIMALS = 6
-"""Places `CountEncoder` rounds to before deduplicating.
-
-The only key the paths under test read. Six is `cnaster`'s own default and
-is far enough below float64's precision that the rounding is not what any
-comparison here measures.
-"""
+"""Places `CountEncoder` rounds to before deduplicating; `cnaster`'s default."""
 
 
 MIN_PHASE_SWITCH_PROB = 1e-10
-"""Floor `compute_numbat_phase_switch_prob` clamps to when none is passed.
-
-Far below any distance the fixtures use, so the clamp is observable as a
-floor rather than mistaken for a computed value.
-"""
+"""Floor `compute_numbat_phase_switch_prob` clamps to when none is passed."""
 
 
 BETABINOM_START_PARAMS = "0.1,0.3,0.5,0.7,0.9"
-"""Starting `p` per state, read by `get_betabinom_start_params`.
-
-`cnaster` reads a fixed list from configuration and
-`Weighted_BetaBinom_mix.get_default_params` slices `[:num_states]` from it,
-so the list has to be at least as long as the widest state space any test
-fits. Five is that today.
-
-The values are spread across `(0, 1)` and deliberately do **not** sit at the
-planted ones: a start at the answer is a test of the objective's value, not
-of the solve that is supposed to find it.
-"""
+"""Starting `p` per state; at least as many as any fitted state space, away from truth."""
 
 BETABINOM_START_DISPERSION = 10.0
-"""Starting `tau`, read by `get_betabinom_start_params`.
-
-Away from the fixtures' planted concentration for the same reason.
-"""
+"""Starting `tau`, away from the planted concentration."""
 
 
 SHIPPED_EM_FTOL = 1e-6
-"""`cnaster`'s own `em_ftol`, and what `cnaster_config` installs.
-
-Read by `get_em_solver_params` and passed to `L-BFGS-B`, whose `ftol` is
-**relative to the objective's magnitude**. The objective is a sum over
-observations, so this criterion tightens with nothing and loosens with the
-data: `tests/test_m_step.py` measures the fit stopping 27 nats short of its
-own maximum at 9,600 observations, and reporting that it converged.
-
-Installed as the default anyway, because a test that silently configures a
-better solver than the one `cnaster` ships is testing a program nobody runs.
-Where a test needs the maximum rather than where `cnaster` stops, it takes
-`cnaster_converged_config` and says so.
-"""
+"""`cnaster`'s shipped `em_ftol`, relative to the objective; the default installed."""
 
 CONVERGED_EM_FTOL = 1e-9
-"""An `em_ftol` at which the solve reaches its maximum.
-
-Not a recommendation for `cnaster` -- a relative criterion is the wrong
-shape whatever its value, and three decades is only what these fixtures
-need. It is the setting under which "do the two implementations find the
-same point" is a question about the implementations rather than about where
-one of them gave up.
-"""
+"""An `em_ftol` at which the solve reaches its maximum, for implementation comparisons."""
 
 
 def cnaster_test_config(
     tmp_path: Path, em_ftol: float, em_maxiter: int
 ) -> dict[str, Any]:
-    """The global config `cnaster` reads instead of taking arguments."""
+    """Return the global config `cnaster` reads instead of taking arguments."""
     return {
         "phasing": {"min_prob": MIN_PHASE_SWITCH_PROB},
-        # NB `hmm_utils` reads the solver name and then the
-        #    `em_`-prefixed option for each keyword that solver takes.
+        # NB `hmm_utils` reads the solver name, then `em_`-prefixed options for it
         "hmm": {
             "compression_decimals": COMPRESSION_DECIMALS,
             "solver": "L-BFGS-B",
@@ -94,20 +54,13 @@ def cnaster_test_config(
             "em_disp": 0,
             "em_xrtol": 1e-5,
             "em_xtol": 1e-5,
-            # NB `gmm_init` clips the observed allele share before
-            #    fitting, and reads the bounds from here rather than
-            #    taking them as arguments (`hmm_initialize.py:362`).
-            #    Wide enough to clip nothing a fixture plants, so the
-            #    initializer's start is the data's and not the clip's.
+            # NB `gmm_init` clips the allele share to these (`hmm_initialize.py:362`);
+            #    wide enough to clip nothing planted
             "gmm_min_binom_prob": 0.01,
             "gmm_max_binom_prob": 0.99,
             "gmm_maxiter": 100,
         },
-        # NB `run_core_inference` reads the outer loop's own settings
-        #    from here: `inertia` decides whether a uniform prior over
-        #    clones is added to the field, `fixed_assignment` whether
-        #    the label solve runs at all, and `ari_tolerance` when the
-        #    loop stops. All three are the shipped defaults.
+        # NB `run_core_inference`'s outer-loop settings, at the shipped defaults
         "hmrf": {
             "inertia": False,
             "fixed_assignment": False,
@@ -117,21 +70,14 @@ def cnaster_test_config(
             "start_params": BETABINOM_START_PARAMS,
             "start_disp": BETABINOM_START_DISPERSION,
         },
-        # NB `hmm_emission.flush_perf` reads this to count the rows
-        #    already written. It does not write here; see
-        #    `cnaster_perf_sink`.
+        # NB `flush_perf` reads this only to count rows; see `cnaster_perf_sink`
         "paths": {"perf_path": str(tmp_path / "cnaster.perf")},
     }
 
 
 @pytest.fixture
 def cnaster_config(tmp_path: Path) -> Iterator[None]:
-    """Install a minimal `cnaster` global config, and put back what was there.
-
-    At `cnaster`'s own solver settings. A global left behind is a test that
-    passes alone and fails in a suite, so what was there is restored.
-    """
-    from port.sim.inputs import written_config
+    """Install a minimal `cnaster` global config at shipped solver settings, then restore."""
 
     with written_config(cnaster_test_config(tmp_path, SHIPPED_EM_FTOL, 100)):
         yield
@@ -139,13 +85,7 @@ def cnaster_config(tmp_path: Path) -> Iterator[None]:
 
 @pytest.fixture
 def cnaster_converged_config(tmp_path: Path) -> Iterator[None]:
-    """As `cnaster_config`, but at a criterion the solve actually reaches.
-
-    For a comparison of two implementations. Where `cnaster` stops under its
-    shipped criterion is a separate question, and the tests that ask it take
-    `cnaster_config` instead.
-    """
-    from port.sim.inputs import written_config
+    """As `cnaster_config`, at `CONVERGED_EM_FTOL`, for comparing two implementations."""
 
     with written_config(cnaster_test_config(tmp_path, CONVERGED_EM_FTOL, 5_000)):
         yield
@@ -153,39 +93,14 @@ def cnaster_converged_config(tmp_path: Path) -> Iterator[None]:
 
 @pytest.fixture
 def cnaster_perf_sink(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Run in a scratch directory, because `fit` writes a file into the one it is in.
-
-    `Weighted_BetaBinom_mix.fit` calls `hmm_emission.flush_perf`
-    unconditionally, and `flush_perf` opens the **literal relative path**
-    `"cnaster.perf"` -- it reads `config.paths.perf_path` only to count the
-    existing rows and to decide whether to write a header. So the configured
-    path and the written path are two different files, and a fit performed
-    from a checkout drops a timing log into it.
-
-    Confirmed by observation, not by reading alone: an early run of this
-    work left `cnaster.perf` in the repository root.
-
-    Two consequences for a test, and this fixture handles both. The estimator
-    has a side effect, so it cannot be called from wherever pytest happens to
-    start; and the header is written when the *configured* file is absent
-    while the appended-to file may already exist, so a header can land in the
-    middle. Returns the scratch directory, so a test may assert on what was
-    written.
-    """
+    """Run in a scratch directory: `flush_perf` writes the literal relative `cnaster.perf`."""
     monkeypatch.chdir(tmp_path)
     return tmp_path
 
 
 @pytest.fixture
 def cnaster_config_switch(tmp_path: Path) -> Iterator[Callable[[float, int], None]]:
-    """Reinstall the config mid-test, for a comparison *between* criteria.
-
-    The two fixtures above each pin one solver setting, which is what a test
-    of `cnaster` at that setting wants. A test asking how far the shipped
-    criterion falls short of the maximum needs both within one body, because
-    the shortfall is a difference and neither run alone is the answer.
-    """
-    from port.sim.inputs import written_config
+    """Yield a setter that reinstalls the config mid-test, to compare criteria."""
 
     with ExitStack() as stack:
         yield lambda em_ftol, em_maxiter: stack.enter_context(
@@ -195,54 +110,62 @@ def cnaster_config_switch(tmp_path: Path) -> Iterator[Callable[[float, int], Non
 
 @pytest.fixture(scope="session")
 def planted_instance(tmp_path_factory: pytest.TempPathFactory) -> Any:
-    """The gate instance, planted and written once for the session.
-
-    `port.sim.run_config.planted_and_written` at its defaults. Tests add files
-    beside it under names of their own and never rewrite what it wrote.
-    """
-    from port.sim.run_config import planted_and_written
+    """Plant and write the gate instance once per session; tests never rewrite it."""
 
     return planted_and_written(tmp_path_factory.mktemp("gate"))
+
+
+@pytest.fixture
+def lattice() -> Any:
+    """The default Potts draw: a 6x6 open lattice, three clones, 60 edges."""
+
+    return potts_labels()
+
+
+@pytest.fixture
+def enumerable() -> Any:
+    """A 10-site, three-clone Potts lattice with weak signal: 59,049 labellings."""
+
+    return potts_labels(shape=(5, 2), n_clones=3, signal=0.6, noise=1.0)
+
+
+@pytest.fixture(scope="session")
+def planted(planted_instance: Any) -> Any:
+    """The gate instance's truth; a module planting its own overrides it."""
+    return planted_instance[0]
 
 
 @pytest.fixture(scope="module")
 def gate_config(planted_instance: Any) -> Iterator[Any]:
     """The gate instance's run configuration, installed for the module."""
-    from port.sim.inputs import written_config
 
     with written_config(planted_instance[3]) as config:
         yield config
 
 
-_COLLECTED: list[pytest.Item] = []
-"""Every test collected this session, before any `-m` deselected one.
+@pytest.fixture(scope="module")
+def gate_table(planted_instance: Any, gate_config: Any) -> tuple[Any, Any]:
+    """The gate instance as `load_input_data` returns it, and `cnaster`'s gene-SNP table."""
 
-`session.items` is the *selected* slice, so a guard reading it under
-`-m critical` would see only the tier it is supposed to be auditing and pass
-for that reason.
-"""
+    loaded = load_input_data(gate_config)
+    hgtable = str(planted_instance[2].hgtable)
+    return loaded, form_gene_snp_table(loaded.unique_snp_ids, hgtable, loaded.adata)
+
+
+_COLLECTED: list[pytest.Item] = []
+"""Every test collected, before `-m` deselection narrows `session.items`."""
 
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    """Record the collection before pytest's own mark deselection runs.
-
-    `critical` tests go first (#403), so the gate fails on them before it
-    spends its minute on the rest; the sort is stable, so nothing else moves.
-    """
+    """Record the collection before mark deselection; `critical` tests first (#403)."""
     items.sort(key=lambda item: item.get_closest_marker("critical") is None)
     _COLLECTED[:] = items
 
 
 @pytest.fixture
 def collected_items() -> list[pytest.Item]:
-    """The whole suite's items, or a skip when the run is a narrowed one.
-
-    Selecting a file or a `-k` expression collects less than the tree, and a
-    guard over that subset would say something weaker than it claims while
-    reporting green. The claim is about the suite, so it is made only when
-    the suite is what was collected.
-    """
+    """Return the whole suite's items, or skip when the collection is narrowed."""
     items = list(_COLLECTED)
     collected_modules = {item.nodeid.split("::")[0] for item in items}
     on_disk = {f"tests/{path.name}" for path in TESTS.glob("test_*.py")}
@@ -258,23 +181,7 @@ def collected_items() -> list[pytest.Item]:
 def _keep_the_perf_log_out_of_the_checkout(
     tmp_path_factory: pytest.TempPathFactory,
 ) -> Iterator[None]:
-    """Run the whole suite from a scratch directory.
-
-    `hmm_emission.flush_perf` opens the **literal relative path**
-    `"cnaster.perf"`, reading `config.paths.perf_path` only to count rows and
-    decide on a header, so every fit drops a timing log into whatever
-    directory pytest was started from. `cnaster_perf_sink` has handled that
-    for the tests that ask for it since the M-step work; the pipeline tests do
-    not ask, because they reach `fit` several stages down and have no reason
-    to know.
-
-    The result was a tracked `cnaster.perf` modified by every run. Making the
-    protection automatic is the fix: nothing in this suite resolves a path
-    relative to the working directory -- `tmp_path` is absolute and
-    `tests/test_coverage_scope.py` anchors on `__file__` -- so the directory
-    is free to move.
-    """
-    import os
+    """Run the suite from a scratch directory, so `cnaster.perf` stays out of the checkout."""
 
     previous = Path.cwd()
     os.chdir(tmp_path_factory.mktemp("cwd"))
@@ -290,16 +197,7 @@ TEST_SEED = 0
 
 @pytest.fixture(autouse=True)
 def _seeded() -> None:
-    """NumPy's global generator and numba's, seeded before every test (#264).
-
-    `cnaster`'s clone-assignment sweep draws its visiting order and its
-    `epsilon` moves from `np.random` (`icm.py:833, 888`), and its compiled
-    kernels from numba's per-thread generator. `run_cnaster` seeds both once
-    at start (`run_cnaster.py:90-92`); a test that calls a sweep directly
-    seeded neither, so its labels depended on what earlier tests had drawn.
-    """
-    import numpy as np
-    from cnaster.scripts.run_cnaster import set_numba_seed
+    """Seed NumPy's and numba's global generators before every test (#264)."""
 
     # NB the legacy global generator is the one `cnaster` draws from.
     np.random.seed(TEST_SEED)  # noqa: NPY002

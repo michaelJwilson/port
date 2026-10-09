@@ -1,28 +1,10 @@
 """What a `run_cnaster` configuration states against what `cnaster` does with it (#324).
 
-`cnaster`'s YAML carries no schema and no check, so a key can be read by
-nothing, or govern something other than its name says, and the run proceeds
-the same either way. `audit` reports those, per key, against the installed
-`cnaster`:
-
-- **port**: no live `cnaster` module reads it, but a `port` patch does, in
-  :data:`PORT_READS`; `run_cnaster` ignores it and `run_cnaster_port`
-  applies it;
-- **unread**: no live module reads it. Reads are found by walking the AST of
-  every installed module outside `deprecated/` and `sandbox/`, so a read in a
-  comment or inside a string literal does not count, plus the indirect reads
-  in :data:`INDIRECT`;
-- **solver**: an `em_*` tolerance the configured solver does not take, asked of
-  `cnaster.hmm_utils.get_em_solver_params` itself rather than restated here;
-- **string**: a number YAML 1.1 loads as a string (`1e-4` is one);
-- **length**: `betabinom.start_params` against `hmm.n_states`;
-- **floor**: `hmrf.min_spots_per_clone` below the ICM's own hard-coded floor,
-  which merges first (#81);
-- **disabled**: `int_copy_num` thresholds no fitted state can cross;
-- **path**: a file the configuration names that does not exist.
-
-The audit reads; it changes nothing. `run_cnaster_port --audit-config` prints
-it, and every run prints its count.
+`audit` reports, per key, against the installed `cnaster`: **port** (read only
+by a `port` patch), **unread**, **solver** (an `em_*` the solver ignores),
+**string** (a number YAML loads as a string), **length**, **floor** (below the
+ICM's hard-coded floor, #81), **disabled** (an uncrossable `int_copy_num`
+threshold), **path** (missing file). Read only.
 """
 
 from __future__ import annotations
@@ -43,8 +25,7 @@ INDIRECT: frozenset[tuple[str, str]] = frozenset(
         # `hmm_initialize` is handed `config.hmm` and reads it one level down.
         ("hmm", "gmm_min_binom_prob"),
         ("hmm", "gmm_max_binom_prob"),
-        # `get_em_solver_params` reads `em_*` by `getattr`; which ones depends
-        # on the solver, and `audit` asks it rather than listing them here.
+        # `em_*` are read by `getattr`; `audit` asks the solver which.
     }
 )
 """Reads the AST walk cannot see, because the section is bound to a name first."""
@@ -204,8 +185,7 @@ def audit(document: dict[str, Any], *, check_paths: bool = True) -> list[Finding
 
     copies = document.get("int_copy_num") or {}
 
-    # NB parsed as `--copy-cap` parses it: `"none"` states no cap, and `0`
-    #    is refused rather than read as the default (#466).
+    # NB parsed as `--copy-cap`: `"none"` is no cap, `0` is refused (#466).
     try:
         total = stated_total(copies.get("max_total_copy")) or DEFAULT_TOTAL_COPY
     except ValueError as error:

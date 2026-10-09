@@ -2,16 +2,10 @@
 
     run_audit --sim [--sample easy|hard|<name>] [--set K=V] [--oracle-start] [-- flags]
     run_audit --recovery [--instance dev] [--lattice] [--set K=V] [-- flags]
-    run_audit --copy [--realizations 8] [--output PATH]
     run_audit --errors [--realizations 8] [--output PATH]
 
-`--sim` prints one `SIM` line of JSON and the copy confusion on stderr;
-`--recovery` one `RECOVERY` line, with the fixture's `fixture_hash`; `--copy`
-one `COPY_AUDIT` line and a figure; `--errors` the realizations figure. A
-`<name>` is under `sim/`, so a sample `port.sim.draw` wrote is
-`generated/<name>/r<k>`, run on its own `config.yaml`. What each mode scores
-is `port.qa.audit`'s; `run_ledger --record` runs `--recovery` or `--sim` and
-appends the line it prints.
+`--sim` prints a `SIM` JSON line (copy confusion on stderr), `--recovery` a
+`RECOVERY` line, `--errors` the realizations figure; scoring is `port.qa.audit`'s.
 """
 
 from __future__ import annotations
@@ -19,13 +13,11 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import tempfile
-import warnings
 from collections.abc import Sequence
 from dataclasses import asdict
 from pathlib import Path
 
-MODES = ("sim", "recovery", "copy", "errors")
+MODES = ("sim", "recovery", "errors")
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -79,13 +71,13 @@ def _parser() -> argparse.ArgumentParser:
                         help="--recovery: run run_calicost on the same inputs; flags go to it (#347)")  # fmt: skip
     parser.add_argument("--diffexp", nargs=2, type=float, metavar=("FOLD", "N_GENES"),
                         help="--recovery: plant N_GENES highest-UMI genes FOLD times up in tumour spots (#440)")  # fmt: skip
-    # --copy, --errors
+    # --errors
     parser.add_argument("--realizations", type=int, default=8)
     parser.add_argument("--jobs", type=int, default=1)
     parser.add_argument("--seed", type=int, default=None,
                         help="--errors: draws which realization carries the error bars")  # fmt: skip
     parser.add_argument(
-        "--output", type=Path, default=None, help="--copy, --errors: the figure"
+        "--output", type=Path, default=None, help="--errors: the figure"
     )
     parser.add_argument("flags", nargs=argparse.REMAINDER)
     return parser
@@ -195,23 +187,6 @@ def _recovery(arguments: argparse.Namespace) -> None:
     )
 
 
-def _copy(arguments: argparse.Namespace) -> None:
-    from port.qa.audit import audit_copies, copy_summary, plot_copies
-    from port.qa.provenance import PLOTS
-
-    output = arguments.output or PLOTS / "realizations_copies.png"
-    with warnings.catch_warnings(), tempfile.TemporaryDirectory() as scratch:
-        warnings.simplefilter("ignore")
-        scores = audit_copies(arguments.realizations, Path(scratch), arguments.jobs)
-
-    plot_copies(scores, output)
-    output.with_suffix(".json").write_text(
-        json.dumps({"summary": copy_summary(scores), "realizations": scores}, indent=1)
-        + "\n"
-    )
-    print("COPY_AUDIT " + json.dumps(copy_summary(scores)))
-
-
 def _errors(arguments: argparse.Namespace) -> None:
     from port.qa.audit import audit_errors
     from port.qa.provenance import PLOTS
@@ -232,9 +207,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     mpl.use("Agg")
     arguments = _parser().parse_args(argv)
     mode = next(name for name in MODES if getattr(arguments, name))
-    {"sim": _sim, "recovery": _recovery, "copy": _copy, "errors": _errors}[mode](
-        arguments
-    )
+    {"sim": _sim, "recovery": _recovery, "errors": _errors}[mode](arguments)
     return 0
 
 

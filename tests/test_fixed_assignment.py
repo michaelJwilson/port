@@ -1,30 +1,26 @@
-"""`hmrf.fixed_assignment` holds the clones where they started (#362).
-
-`cnaster` reads the flag in its label solve (`hmrf.py:287`) and `port`'s
-`pipeline_clone_assignment` in its own (`clone_assignment.py:424`): set, no
-ICM move, floor merge, pairwise merge or clone loss runs. The oracle arm of
-`tests.sim_audit` rests on it, so it is pinned here on a start that is
-deliberately not the planted labelling -- a solve that ran would move it.
-"""
+"""`hmrf.fixed_assignment` returns the starting clones, in `cnaster` and port (#362)."""
 
 from __future__ import annotations
 
 import warnings
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from typing import Any
 
+import cnaster.hmrf
 import numpy as np
 import pytest
-from port.sim.truth import core_inference_truth
+from cnaster.config import get_global_config
+from cnaster.hmm_nophasing import hmm_nophasing
+from port.pipeline import SWAPS, patched
 
 from tests.adapters import from_core_inference_truth
+from tests.fixtures import end_to_end_truth
 
 
 @contextmanager
 def _fixed() -> Iterator[None]:
-    """`hmrf.fixed_assignment` set on the installed configuration, restored after."""
-    from cnaster.config import get_global_config
+    """Set `hmrf.fixed_assignment` on the installed configuration, restored after."""
 
     hmrf = get_global_config().hmrf
     previous = hmrf.fixed_assignment
@@ -37,27 +33,15 @@ def _fixed() -> Iterator[None]:
 
 
 def _run(start: list[np.ndarray], port: bool) -> Any:
-    from cnaster.hmm_nophasing import hmm_nophasing
-    from port.pipeline import SWAPS, patched
-
-    truth = core_inference_truth(
-        n_clones=3, n_states=4, lattice=(25, 40), n_obs=40, n_segments=3, seed=11
-    )
+    truth = end_to_end_truth(n_clones=3, n_states=4)
     kwargs = from_core_inference_truth(truth).as_kwargs()
     kwargs["initial_clone_index"] = start
 
     with warnings.catch_warnings(), _fixed():
         warnings.simplefilter("ignore")
 
-        if port:
-            with patched(SWAPS):
-                from cnaster import hmrf
-
-                return hmrf.run_core_inference(**kwargs, hmmclass=hmm_nophasing)
-
-        from cnaster.hmrf import run_core_inference
-
-        return run_core_inference(**kwargs, hmmclass=hmm_nophasing)
+        with patched(SWAPS) if port else nullcontext():
+            return cnaster.hmrf.run_core_inference(**kwargs, hmmclass=hmm_nophasing)
 
 
 @pytest.mark.patch

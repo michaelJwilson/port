@@ -1,85 +1,9 @@
-"""`cnaster.hmrf.pipeline_clone_assignment`, without the array or the round trip.
+"""Replaces `cnaster.hmrf.pipeline_clone_assignment` with a leaner seam (#206).
 
-**The seam, rebound one level up (#206).** `port` has carried measured
-patches for #59's five items since [#125](https://github.com/michaelJwilson/port/pull/125)
-and could install none of them: each needs a call-site edit inside
-`cnaster.hmrf`, which `CLAUDE.md` makes read only. They install here,
-because `pipeline_clone_assignment` is itself a module-level name and
-rebinding *it* rebinds its call sites with it.
-
-**All five of #59's items are installed here**, and none of them moves a
-number. #206's "done when" list, in its order:
-
-*   **The field is written into a buffer rather than returned and reduced.**
-    `cnaster` materializes `(n_states, n_obs, n_spots)` per channel and then
-    reduces it to `(n_spots, n_clones)` by reading one decoded state per
-    `(bin, clone)`. `port.patch.hmrf.fused_field` does both in one pass,
-    materializes nothing, and writes into a caller's array -- upstream's
-    `external_field(..., field)` shape. 8 GB at the declared scale, twice
-    per outer iteration (#90), for an array whose only consumer is the
-    reduction. Pinned **bitwise** in `tests/test_hmrf_fused_field.py`.
-    Its `lgamma` are read from tables by count
-    (`port.patch.hmrf.tabulated_field`, #433), bitwise again.
-*   **The graph crosses the seam once, in the representation the solver
-    reads.** `CsrGraph` carries the three arrays that are meaningless apart.
-    The COO triple `merge_assignment` wants is built only where it is
-    consumed, and by `port.patch.hmrf.adjacency.adjacency_coo` -- three array
-    expressions against `cast_csr` plus `unpack_adjacency`, which walk every
-    non-zero in pure Python. On a run with `merge=False` `cnaster` computes
-    that round trip and discards it (#59 item 3).
-*   **The invariants are computed where they are constant.** The two
-    valid-segment counts and the channel weight derived from them are properties
-    of the input data, which the outer loop never fits, and `cnaster`
-    recomputes all three per iteration (#59 item 4). :func:`boundary` holds
-    them.
-*   **The solver takes the problem.** `fold_unary` folds the per-sample
-    weights and the allowed-clone mask into the field, and `icm_sweep` takes
-    a field, a graph, a labelling and a coupling -- against fifteen
-    parameters of which seven are not information the solver reads (#59 item
-    5).
-
-**#45, #58 and #81 are pinned first**, which is the rest of #206's list:
-`tests/test_external_field.py` for #58, `tests/test_seam_defects.py` for the
-other two. A seam rewritten without pinning them carries them into the
-rewrite, and then nothing can tell a defect that was always there from one
-the rewrite introduced.
-
-**Who would maintain each step**, which `CLAUDE.md` says decides whether an
-optimization is upstream's, could be upstream's, or is `port`'s:
-
-| step | class | why |
-| --- | --- | --- |
-| the fused field, written into a buffer | **could be upstream** | `sal.oxisal.external_field(totals, successes, ..., field)` is this function, in Rust, writing in place. Since sal #1064 it also takes the per-observation `exposure` and `trials` (#32's covariate gap, closed upstream); adoption is not yet ticketed (T- #707) |
-| one graph across the seam | **exists upstream** | `single_site_sweeps(state, field, offsets, neighbours, couplings, ...)` takes the CSR directly |
-| the hoisted invariants | **`port`** | they are invariants of `cnaster`'s own loop, and upstream has no loop to hoist them out of |
-| the COO triple, built where it is consumed | **`port`** | upstream has no COO form to build; this is `cnaster`'s own round trip removed |
-| the reduced solver interface | **exists upstream** | upstream's solver already takes the problem rather than its call site, and `#141` refereed `cnaster`'s ICM against two of them |
-
-So three of the five are things this repository should be asking `cnaster`
-to take from upstream rather than from `port`, and the other two are reports
-about `cnaster`'s own loop and its own round trip. None of them lands here:
-`CLAUDE.md` makes both dependencies read only, and what `port` controls is
-the pin and the measurement.
-
-**What it does not do is reimplement the pipeline.** Everything else is
-`cnaster`'s: the pooling, the solver call, the merge loop, the likelihood
-and the log lines. Where an argument takes this function down a branch the
-fused field does not cover, it **delegates to `cnaster`'s own** rather than
-guessing -- a fallback says which regimes are measured and which are not,
-where a silent approximation would not.
-
-The uncovered branches, and why:
-
-*   `single_tumor_prop is not None` -- the tumour-mixed field is a different
-    quantity, and #135 says the E step accepts the proportion and never
-    reads it, so what it should be is open.
-*   more than one sample -- `log_persample_weights` and `sample_ids` are
-    passed through to the solver unchanged, but the inertia they encode is
-    what #28 deprecates and no fixture here carries two samples.
-
-There is no third branch for a parameter with a clone axis. The fused kernel
-reads `(n_states,)` and `state_vector` normalizes at the edge, so a shape the
-fit cannot produce raises there rather than being delegated (#278).
+Installs #59's items: a fused field written into a buffer, the graph passed
+once as CSR, invariants hoisted per dataset, the COO triple built only for
+merging, and a reduced solver interface. Delegates to `cnaster` for a
+tumour-mixed field (#135). Clone-size floor departs from `cnaster` (#468).
 """
 
 from __future__ import annotations
@@ -105,33 +29,11 @@ __all__ = [
 ]
 
 logger = get_logger(__name__, start_time=start_time)
-"""`cnaster`'s own function, captured at import.
-
-**Not looked up through `cnaster.hmrf` when it is needed**, because by then
-the name is this one: `port.pipeline.patched()` imports this module to
-resolve the replacement and *then* rebinds the module attribute, so a
-delegation that resolved late would call itself. It did, once, and the
-symptom was a `RecursionError` two minutes into a whole run.
-"""
+"""`cnaster`'s function (`UPSTREAM`) is captured at import, before `patched()` rebinds it."""
 
 
 class _Boundary(NamedTuple):
-    """What the seam recomputes per outer iteration and need not (#59 item 4).
-
-    `num_valid_nb_spotwise`, `num_valid_bb_spotwise` and the relative channel
-    weight derived from them are properties of the **input data**.
-    `single_base_nb_mean` and `single_total_bb_RD` are read by
-    `load_input_data` and conditioned on throughout -- `cnaster` never fits
-    them -- so none of the three can change while the outer loop runs, and
-    `cnaster` recomputes all three on every iteration anyway.
-
-    `held` is the point of the dataclass rather than an afterthought. The
-    cache is keyed on `id()`, and an `id()` is only unique while its object
-    is alive, so the entry keeps a reference to every array it was keyed on.
-    Those arrays are the pipeline's own inputs and outlive the loop regardless,
-    so this costs nothing and closes the one way an identity cache goes
-    wrong.
-    """
+    """Per-dataset loop invariants (#59 item 4); `held` pins the `id()`-keyed arrays alive."""
 
     counts: BoundaryInvariants
     weight: np.ndarray
@@ -143,11 +45,7 @@ _BOUNDARY: dict[tuple[int, ...], _Boundary] = {}
 
 
 def release() -> None:
-    """Drop the run's boundary; `port.pipeline.patched` calls this on exit (#517).
-
-    Keyed by `id()`, so a slot left behind could be read by a later run whose
-    arrays were allocated at the same addresses.
-    """
+    """Drop the run's `id()`-keyed boundary; `port.pipeline.patched` calls this on exit (#517)."""
     _BOUNDARY.clear()
 
 
@@ -170,13 +68,7 @@ class PooledSmoothing(ValueError):
 
 
 def require_unpooled(smooth_mat: Any) -> None:
-    """Refuse a `smooth_mat` other than `None` or the identity (#513).
-
-    `port` reads the counts unpooled. `cnaster` only ever builds the
-    identity, so any other matrix is an input this seam does not implement,
-    and it says so rather than scoring spots unpooled while the caller
-    believes they were pooled.
-    """
+    """Refuse a `smooth_mat` other than `None` or the identity (#513): counts are read unpooled."""
     if smooth_mat is None or _self_only(smooth_mat):
         return
 
@@ -192,13 +84,7 @@ def boundary(
     single_total_bb_RD: np.ndarray,
     smooth_mat: Any,
 ) -> _Boundary:
-    """The seam's loop invariants, computed once per dataset.
-
-    Measured as a **simplification** rather than a speedup: the two count
-    passes are 25.2 ms at 3,000 x 5,000 and under two tenths of a per cent of
-    the boundary (#59 item 4). What it buys is that a quantity which cannot
-    change stops being recomputed, `max_iter_outer` times.
-    """
+    """The seam's loop invariants, computed once per dataset."""
     key = (
         id(single_base_nb_mean),
         id(single_total_bb_RD),
@@ -233,14 +119,7 @@ def boundary(
 
 
 def _decoded(pred: np.ndarray, n_obs: int) -> np.ndarray:
-    """`pred` as `(n_obs, n_clones)`, whichever form the caller passed.
-
-    `cnaster` accepts both and reads `pred[c * n_obs + o]` from the flat one,
-    so the clone-major reshape is the transpose of `(n_clones, n_obs)`. **The
-    flat form is what the live pipeline passes** -- found by delegating on it
-    and reading the log, not by reading the call sites -- so supporting it is
-    the difference between a patch that runs and one that does not.
-    """
+    """`pred` as `(n_obs, n_clones)`, from that or its flat clone-major form."""
     if pred.ndim == 2:
         return pred
 
@@ -258,14 +137,9 @@ def _delegates(single_tumor_prop: Any) -> str | None:
 def _clone_shifts(
     hmmclass: Any, res: Any, decoded: np.ndarray, single_base_nb_mean: np.ndarray
 ) -> np.ndarray | None:
-    """`log sum_g lambda_g mu_{s_c(g)}` per clone, or `None` when unshifted.
+    """`log sum_g lambda_g mu_{s_c(g)}` per clone, or `None` when unshifted (#276, #293).
 
-    Only when the fit was shifted (#276, #293): scoring spots with the shift
-    off against rates fitted with it on is the inconsistency this repairs.
-    `lambda` is built as `hmrf.py:476` builds `normal_lambda` -- the baseline
-    summed over spots, normalized -- because that is what the fit's shift
-    was taken against, and `decoded` is the `(n_obs, n_clones)` path the
-    field reads.
+    `lambda` is the normalized spot-summed baseline, as `hmrf.py:476` builds it.
     """
     from port.patch._clone_paths import state_vector
     from port.patch.hmm_nophasing.logmu_shift import clone_log_normalizers
@@ -299,20 +173,13 @@ def pipeline_clone_assignment(
     floor_merge: bool = False,
     log_space: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, float]:
-    """What `cnaster.hmrf.pipeline_clone_assignment` returns, computed leaner.
+    """`cnaster.hmrf.pipeline_clone_assignment`'s return, computed leaner.
 
-    `label_solver` names the solver (`port.extensions.label_solver.SOLVERS`;
-    `"icm"` is `cnaster`'s) and `floor_merge` replaces the ICM's floor with
-    :func:`port.patch.icm.floor.floor_clones`. `run_cnaster_port` binds
-    both at install, `--sal` and `--floor-merge` (#517), and `log_space`
-    with `port.pipeline.LOG_SPACE_SWAPS`: the field's kernels are then that
-    table's (#560, #561).
-
-    **A stated departure from `cnaster`** (#468, T- #617): the clone-size
-    floor is `hmrf.min_spots_per_clone` where the configuration states it
-    (`port.patch.icm.floor.configured_floor`; 100 in `tests/data`'s
-    configuration), and `cnaster`'s 200 only where it does not. `cnaster`
-    reads no key.
+    `label_solver` names a `port.extensions.label_solver.SOLVERS` entry
+    (`"icm"` is `cnaster`'s); `floor_merge` uses `port.patch.icm.floor`;
+    `log_space` selects the log-space field kernels (#560, #561).
+    Departure (#468, #617): the clone floor is `hmrf.min_spots_per_clone`
+    where configured, else `cnaster`'s 200.
     """
     import cnaster.hmrf as upstream
 
@@ -330,10 +197,8 @@ def pipeline_clone_assignment(
     if reason is not None:
         logger.info_once(f"Delegating clone assignment to cnaster: {reason}.")
 
-        # NB `cnaster`'s function reads none of these, so a run that asked
-        #    for them is told they do not reach this call (#466). Its scores
-        #    go through the shifted class, which applies the fit's shift only
-        #    where it has one row per bin: with two or more clones, never.
+        # NB `cnaster`'s function reads none of these, so a run that asked is
+        #    warned (#466).
         from port.patch.hmrf.refinement import kept
 
         dropped = [
@@ -383,24 +248,16 @@ def pipeline_clone_assignment(
         f"is_tumor_mixed=False and merge={merge}."
     )
 
-    # NB no pooling (#513): `cnaster` builds `smooth_mat` as the identity
-    #    (`spatial.py:310`, `maxspots_pooling` fixed at 1), so each spot pools
-    #    itself alone and upstream's loop is `0 + x`. The counts are read as
-    #    they are, uncopied; a matrix that pools more than a spot with itself
-    #    is refused rather than silently applied or ignored.
+    # NB no pooling (#513): `cnaster` only builds the identity `smooth_mat`.
     require_unpooled(smooth_mat)
     pooled_X = single_X
     pooled_base_nb_mean = single_base_nb_mean
     pooled_total_bb_RD = single_total_bb_RD
 
-    # NB hoisted: all three are functions of the input data, which the outer
-    #    loop never fits, and `cnaster` recomputes them per iteration (#59
-    #    item 4).
+    # NB hoisted invariants of the input data (#59 item 4).
     invariants = boundary(single_base_nb_mean, single_total_bb_RD, smooth_mat)
 
-    # NB the two steps `cnaster` runs here -- build (n_states, n_obs, n_spots)
-    #    per channel, then read one decoded state per (bin, clone) out of it --
-    #    in one pass that materializes neither.
+    # NB build and reduce the field in one pass.
     shifts = _clone_shifts(hmmclass, res, decoded, single_base_nb_mean)
 
     if shifts is None:
@@ -409,41 +266,24 @@ def pipeline_clone_assignment(
             pooled_base_nb_mean,
             pooled_X[:, 1, :],
             pooled_total_bb_RD,
-            # NB `(n_states,)`, normalized at the edge. The kernel indexes by
-            #    state alone, because a state parameter has no second axis to
-            #    index (#278).
+            # NB `(n_states,)`, normalized at the edge (#278).
             state_vector(res["new_log_mu"]),
             state_vector(res["new_alphas"]),
             state_vector(res["new_p_binom"]),
             state_vector(res["new_taus"]),
             decoded,
             invariants.weight,
-            # NB the buffer is the caller's, which is upstream's shape --
-            #    `external_field(..., field)` writes in place. It is allocated
-            #    per call rather than reused, and that is deliberate: this
-            #    function *returns* the field, so a reused buffer would
-            #    rewrite an array its caller still holds, which is the defect
-            #    `tests/test_seam_defects.py` pins on the solver. At 400 KB at
-            #    the declared scale there is nothing to win by taking that
-            #    risk.
+            # NB a fresh buffer per call, since the field is returned.
             np.empty((n_spots, n_clones)),
             log_space=log_space,
         )
     else:
-        # NB the shift is the **candidate** clone's, not the spot's current
-        #    one: a spot scored against clone `c` is scored under `c`'s
-        #    normalizer. It enters the mean as `base * exp(-shift_c)`, so each
-        #    clone's column is the same kernel over a rescaled exposure --
-        #    the same work as the one call, split by clone.
-        #    Both factors are taken relative to the shifts' mean: the rates
-        #    have no scale under the shift and drift along it (to near -7,024
-        #    on #292's realization 3), so `exp(-shift)` and `exp(log_mu)` are
-        #    each out of range while their product is not.
+        # NB each column uses the candidate clone's shift, as
+        #    `base * exp(-shift_c)`; shifts and `log_mu` are centred on the
+        #    shifts' mean to stay in floating-point range.
         field = np.empty((n_spots, n_clones))
         centre = float(np.mean(shifts))
-        # NB the counts are the same for every clone, so the kernel is chosen
-        #    once rather than per column, and the rescaled exposure written
-        #    into one buffer (#488).
+        # NB one kernel and one exposure buffer for every clone (#488).
         kernel = field_kernel(
             pooled_X[:, 0, :],
             pooled_X[:, 1, :],
@@ -478,18 +318,11 @@ def pipeline_clone_assignment(
 
         logger.info(f"Solving for updated clone assignment with {solver}.")
 
-        # NB the solver takes the problem -- a unary field, one graph, one
-        #    coupling -- rather than its call site (#59 item 5). The
-        #    per-sample weights fold into the field, which is where they were
-        #    added anyway, once per visit instead of once per sweep; the
-        #    three adjacency arrays travel as the one graph they are.
+        # NB the solver takes the problem, not its call site (#59 item 5).
         sweep = icm_sweep if solver == "icm" else sweep_for(solver)
 
-        # NB the read-depth refinement's allowed-clone mask, which `cnaster`
-        #    computes and drops (#348): into the field, less `MASK_PENALTY`
-        #    (#467), so a move or merge crosses a BAF clone only on a larger
-        #    read-depth gain; and to the solver and floor as the knob. Absent,
-        #    the call is as before.
+        # NB the refinement's allowed-clone mask, which `cnaster` drops
+        #    (#348): penalized in the field by `MASK_PENALTY` (#467).
         mask = mask_for(new_assignment, n_clones)
         knobs: dict[str, Any] = {} if mask is None else {"onehot_allowed_clones": mask}
 
@@ -497,19 +330,12 @@ def pipeline_clone_assignment(
             unmasked = field
             field = np.where(mask, field, field - MASK_PENALTY)
 
-        # NB the floor merged smallest first, into each spot's best clone,
-        #    in place of the sweep's all-at-once random reassignment (#348):
-        #    the sweep runs floorless, the floor is met after it, and a
-        #    second sweep settles what the merge moved.
+        # NB with `floor_merge`, sweep floorless, merge smallest first, then
+        #    sweep again (#348).
         folded = fold_unary(field, log_persample_weights, sample_ids)
         graph = CsrGraph.from_matrix(adjacency_mat)
 
-        # NB the floor is `hmrf.min_spots_per_clone` where the configuration
-        #    sets it (#468): `cnaster` reads no key and every ICM variant
-        #    merges under its own default of 200, so a configured 50 merged
-        #    `dev_tree` r0's planted 49- and 158-spot clones away. With the
-        #    floor merge installed the sweep runs floorless and the same
-        #    value is met after it.
+        # NB the floor is `hmrf.min_spots_per_clone` where configured (#468).
         knobs["min_clone_spots"] = 0 if floor_merge else configured_floor()
 
         result = sweep(folded, graph, new_assignment, spatial_weight, **knobs)
@@ -529,11 +355,7 @@ def pipeline_clone_assignment(
 
         logger.info(f"Ready for potential merging of clones?  {merge}.")
 
-        # NB the COO triple is built here rather than above, and by three
-        #    array expressions rather than two pure-Python passes over every
-        #    non-zero (#59 item 3). `merge_assignment` is its only consumer,
-        #    so on a run with `merge=False` `cnaster` computes the round trip
-        #    and discards it.
+        # NB the COO triple only where `merge_assignment` consumes it (#59 item 3).
         if merge:
             adj_spots, adj_neighbors, adj_weights = adjacency_coo(adjacency_mat)
 
@@ -577,9 +399,7 @@ def pipeline_clone_assignment(
             f"{[f'{share:.3f}' for share in counts / counts.sum()]})."
         )
 
-        # NB `cnaster` compacts the surviving clones in ascending order
-        #    (`hmrf.py:648`); the mask follows, so it still describes the
-        #    next iteration's problem.
+        # NB `cnaster` compacts surviving clones (`hmrf.py:648`).
         if mask is not None:
             compact(new_assignment)
             field = unmasked

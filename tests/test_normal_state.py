@@ -1,23 +1,16 @@
-"""The planted normal state, against the definition `cnaster` applies.
+"""The planted normal state against `cnaster`'s `find_diploid_balanced_state` definition
+(#106).
 
-#106. The fixture plants state zero at `mu = 1`, `p = 0.5`, and two stages
-require such a state to exist: `find_diploid_balanced_state` raises without
-one, and the normal-spot path tests every bin against a beta-binomial with
-`p` forced to 0.5.
-
-**The definition is `cnaster`'s, read off the code rather than chosen.**
-`integer_copy.py:63` takes the states whose BAF is within `EPS_BAF = 0.05` of
-balance and which occupy at least `min_prop_threshold = 0.1` of the bins, and
-among those picks `argmin |1 - exp(log_mu)|` -- closest to one. It then warns
-if the winner's `exp(log_mu)` leaves `[0.9, 1.1]`. So normal is `mu = 1` and
-`p = 0.5`, with a stated tolerance on each.
-
-The paper defines the same quantity and normalizes it differently, which is a
-stated difference and is recorded in the last test here.
+Balanced within `EPS_BAF`, occupying `min_prop_threshold`, `mu` closest to 1; the
+paper's
+normalization differs and is stated in the last test.
 """
+
+from typing import Any
 
 import numpy as np
 import pytest
+from cnaster.integer_copy import find_diploid_balanced_state
 from port.sim.truth import CoreInferenceTruth, dev_instance
 
 NORMAL_STATE = 0
@@ -48,11 +41,21 @@ def test_the_planted_normal_state_is_normal_by_cnasters_definition(
     assert planted.p_binom[NORMAL_STATE] == pytest.approx(0.5, abs=EPS_BAF)
     assert np.exp(planted.log_mu[NORMAL_STATE]) == pytest.approx(1.0, abs=RDR_TOLERANCE)
 
-    # And it is the *closest* to one, which is what the selection turns on:
-    # a second state nearer to unity would be chosen instead.
+    # Closest to one, since a state nearer unity would be chosen instead.
     distances = np.abs(1.0 - np.exp(planted.log_mu))
     assert int(np.argmin(distances)) == NORMAL_STATE
     assert distances[NORMAL_STATE] == 0.0
+
+
+def _chosen(planted: CoreInferenceTruth, path: np.ndarray) -> Any:
+    """`find_diploid_balanced_state` on `path` at the planted parameters."""
+    return find_diploid_balanced_state(
+        planted.log_mu,
+        planted.p_binom,
+        path,
+        min_prop_threshold=MIN_PROPORTION,
+        EPS_BAF=EPS_BAF,
+    )
 
 
 @pytest.mark.end2end
@@ -60,21 +63,7 @@ def test_the_planted_normal_state_is_normal_by_cnasters_definition(
 def test_the_planted_normal_state_is_the_candidate_it_selects(
     planted: CoreInferenceTruth,
 ) -> None:
-    """The occupancy clause, which planting the state alone did not satisfy.
-
-    A candidate must occupy at least `min_prop_threshold = 0.1` of the genome.
-    Under the chain this fixture used to draw -- ten states visited uniformly
-    -- the normal state occupied **0.0858** and the selection raised, and the
-    round trip only reached the end because it fitted five states rather than
-    ten. #120 replaced that with a neutral genome carrying events, where the
-    normal state occupied **0.892**; #298's normal clone, 30 per cent of the
-    spots, takes it to **0.944**.
-
-    Both numbers are asserted: the one that matters and the margin over the
-    threshold, so a later change to the event rate that quietly ate the
-    backbone fails here rather than in the integer-copy solver.
-    """
-    from cnaster.integer_copy import find_diploid_balanced_state
+    """The planted normal state occupies 0.944 of bins, above `min_prop_threshold` (#120, #298)."""
 
     path = planted.states.reshape(-1)
     occupancy = np.bincount(path, minlength=planted.n_states) / path.size
@@ -82,13 +71,7 @@ def test_the_planted_normal_state_is_the_candidate_it_selects(
     assert occupancy[NORMAL_STATE] == pytest.approx(0.944, abs=5e-3)
     assert occupancy[NORMAL_STATE] > MIN_PROPORTION
 
-    chosen = find_diploid_balanced_state(
-        planted.log_mu,
-        planted.p_binom,
-        path,
-        min_prop_threshold=MIN_PROPORTION,
-        EPS_BAF=EPS_BAF,
-    )
+    chosen = _chosen(planted, path)
 
     assert chosen == NORMAL_STATE
 
@@ -97,13 +80,7 @@ def test_the_planted_normal_state_is_the_candidate_it_selects(
 def test_a_mostly_diploid_genome_is_the_candidate_it_wants(
     planted: CoreInferenceTruth,
 ) -> None:
-    """The same selection, on a path where the normal state is common.
-
-    What the fixture would have to plant. Half the genome copy neutral is
-    conservative for a tumour sample and clears the threshold by a factor of
-    five, and then the selection picks the planted state rather than raising.
-    """
-    from cnaster.integer_copy import find_diploid_balanced_state
+    """A half-diploid path clears the threshold and selects the planted state."""
 
     rng = np.random.default_rng(101)
     path = np.where(
@@ -112,43 +89,14 @@ def test_a_mostly_diploid_genome_is_the_candidate_it_wants(
         rng.integers(1, planted.n_states, planted.n_obs),
     )
 
-    chosen = find_diploid_balanced_state(
-        planted.log_mu,
-        planted.p_binom,
-        path,
-        min_prop_threshold=MIN_PROPORTION,
-        EPS_BAF=EPS_BAF,
-    )
+    chosen = _chosen(planted, path)
 
     assert chosen == NORMAL_STATE
 
 
 @pytest.mark.warning
 def test_the_planted_scale_is_cnasters_and_not_the_papers() -> None:
-    """A stated difference: `mu = 1` means two things, and only one is tested.
-
-    The paper defines de-biased rates `mu_bar_k` under the constraint
-    `sum_g lambda_g mu_bar_k = 1` (`emission.tex:16`), so a state at one is
-    one *on the exposure-weighted scale*, and the normalization is what makes
-    the number meaningful.
-
-    `cnaster` computes that normalization -- `compute_logmu_shifts` -- and
-    never applies it (#5); the emission logs `logmu_shifts are not currently
-    supported` on every call. Then `find_diploid_balanced_state` tests
-    `|1 - exp(log_mu)|` against one anyway, which is the paper's criterion on
-    an unnormalized quantity.
-
-    So the fixture plants `mu = 1` on `cnaster`'s scale, because `cnaster` is
-    the subject. Under the paper's constraint the same state would sit at a
-    different value unless the exposure happened to be normalized, and this
-    asserts that it does not: the planted exposure's weighted sum is not one,
-    so the two scales are genuinely different here rather than coincidentally
-    equal.
-
-    Clone 1, not clone 0: clone 0 is the normal clone (#298), every bin at
-    `mu = 1`, so its weighted rate is 1 by construction. Clone 1 carries
-    events and reads **1.202**.
-    """
+    """`mu = 1` is on `cnaster`'s scale, not the paper's: clone 1's exposure-weighted rate is 1.202 (#5, #298)."""
     truth = dev_instance()
 
     weights = truth.base_nb_mean.sum(axis=1)

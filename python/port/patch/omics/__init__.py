@@ -1,12 +1,4 @@
-"""`cnaster.omics`' block construction and its summaries (#250).
-
-`blocks` carries the four entry points `SWAPS` installs; `summaries` carries
-`summarize_blocks`, which was a separate module for no reason a reader of
-`cnaster/omics.py` could have guessed.
-
-The submodules keep the split; this re-exports them so a swap row can name
-`port.patch.omics.blocks` and a reader can open `cnaster.omics` and find it.
-"""
+"""Replaces `cnaster.omics`' block construction and summaries (#250); re-exports `blocks` and `summaries`."""
 
 from __future__ import annotations
 

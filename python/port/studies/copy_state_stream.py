@@ -11,9 +11,9 @@ is within `TOLERANCE` of the best setting's. The held-out realizations are
 never evaluated: the stream starts after them.
 
 Each realization is drawn to disk as the run reads a sample
-(`port.studies.stage.members`), and one pool job per realization runs
+(`port.qa.stage.members`), and one pool job per realization runs
 `run_cnaster_port --sal` on it at its planted clones up to the RDR + BAF
-stage's Baum-Welch (`port.studies.stage.at_oracle_clones`, #730). There the
+stage's Baum-Welch (`port.qa.stage.at_oracle_clones`, #730). There the
 run's own call, with every argument as the run built it, scores every start:
 
 - **Problem.** The run's: its segments, phasing, pseudobulk and exposure at
@@ -28,14 +28,14 @@ run's own call, with every argument as the run built it, scores every start:
   `init_log_mu` and `init_p_binom`.
 - **Scored.** The same call with `max_iter = 0`, at the start's states, and
   after Baum-Welch; the rows whose state is not the planted `(A, B)` under the
-  best 1-1 matching of states (`port.studies.stage.missed`), before and after.
+  best 1-1 matching of states (`port.qa.stage.missed`), before and after.
 - **References.** Per realization, the planted states (`oracle_states`: each
   planted class's pooled depth ratio and B share) and the run's own
   initializer, each scored and fitted by the same call.
 
 There is no bound: the gap is to the best log-likelihood any run reached on
 that realization. When a realization's runs are all in, it writes
-`OUT_DIR/<stem>.record` (`port.studies.records`) and redraws `OUT_DIR/<stem>.png`
+`OUT_DIR/<stem>.record` (`port.qa.records`) and redraws `OUT_DIR/<stem>.png`
 (`port.studies.copy_state_plot`). Seconds are per job with `--workers`
 realizations sharing the host.
 """
@@ -52,9 +52,9 @@ from typing import Any
 
 import numpy as np
 
+from port.qa import records
+from port.qa import stream as harness
 from port.qa.provenance import CONFIGS
-from port.studies import records
-from port.studies import stream as harness
 
 STARTS = (
     "calicost-gmm", "lattice", "prior", "kmeans++", "emission++", "hmc-hmm",
@@ -168,7 +168,7 @@ def scored(
 
 
 def stage_module() -> Any:
-    from port.studies import stage
+    from port.qa import stage
 
     return stage
 
@@ -258,7 +258,7 @@ def member(
     path: str, realization: int, jobs: list[tuple[str, int, dict[str, float] | None]], polish: bool, root: str,
     field: str | None = None,
 ) -> dict[str, Any]:  # fmt: skip
-    """`jobs` on one realization, each against the run's Baum-Welch at its planted clones (`port.studies.stage`).
+    """`jobs` on one realization, each against the run's Baum-Welch at its planted clones (`port.qa.stage`).
 
     With `field`, the run goes on to its clone-assignment `Field`, kept at
     that path for `potts_stream` to read rather than rerun (T- #814).
@@ -266,8 +266,8 @@ def member(
     import logging
     import shutil
 
+    from port.qa import stage as at
     from port.sim.fixtures import load_simulated
-    from port.studies import stage as at
 
     logging.disable(logging.INFO)
     sample = load_simulated(Path(path).name, Path(path).parent)
@@ -373,8 +373,8 @@ def run(
     import json
     import logging
 
+    from port.qa import stage as at
     from port.sandbox.extensions.copy_starts import starts
-    from port.studies import stage as at
 
     logging.disable(logging.INFO)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -468,7 +468,7 @@ def retune(
     import logging
     import tempfile
 
-    from port.studies import stage as at
+    from port.qa import stage as at
 
     logging.disable(logging.INFO)
     root = Path(tempfile.mkdtemp()) if root is None else root

@@ -14,23 +14,9 @@ def he_image(
 ) -> pd.DataFrame:
     """`cnaster.he.get_he_image`, with every label in `1..num_labels` (#311).
 
-    `cnaster` bins the gray level with `np.digitize` against its 0th to
-    100th percentiles (`cnaster/he.py:107-112`); `digitize` puts a value
-    equal to the last edge past it, so the brightest pixel is labelled
-    `num_labels + 1`, and `run_cnaster` factorizes that label into an
-    initial clone of its own. The labels here are the upstream fix this
-    module proposes, binning against the inner edges alone,
-
-        labels = np.digitize(cropped_gray, bins=bins[1:-1]) + 1
-
-    which is `cnaster`'s label wherever that is in `1..num_labels`, value
-    for value, and `num_labels` for the brightest; a slide without an
-    image is returned as `cnaster` returns it. Once `cnaster` carries the
-    fix, this row and module are removed.
-
-    A `SWAPS` row installs it over every caller of `cnaster.he.get_he_image`,
-    `run_cnaster`'s figure frame among them (T- #771); `cnaster`'s is reached
-    through a private name the rebinding does not follow.
+    `cnaster` digitizes against all percentile edges, so the brightest pixel
+    gets `num_labels + 1`; binning on the inner edges alone fixes that and is
+    otherwise identical. A slide without an image is returned unchanged.
     """
     frame = _UPSTREAM_HE_IMAGE(spaceranger_dir, res=res, pos=pos, num_labels=num_labels)
 

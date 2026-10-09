@@ -1,22 +1,12 @@
-"""The phased lattice, refereed against `snakes_and_ladders`.
+"""The phased lattice, refereed against `snakes_and_ladders` at a constant phase kernel.
 
-`cnaster` factors a state into a copy state and a phase and assembles its
-transfer matrix per position from a `K x K` base and a two-element kernel.
-Upstream's recursion takes a single transition, so the correspondence holds
-**only where the kernel is constant along the chain** — then one matrix
-stands for the whole of it. A kernel that varies by position has no upstream
-form until the structured transfer matrix lands, and every measurement here
-is taken in the constant regime, which `CLAUDE.md` requires each to state.
-
-What this rung does not cover: `cnaster`'s phased *emission*, which raises
-before it returns. The lattice takes its scores as an array, so supplying
-them directly is what separates the transfer matrix from the defect below
-it, and the defect is pinned by its own test rather than worked around
-silently.
+A position-varying kernel has no upstream form here. `cnaster`'s phased emission raises,
+so scores are supplied as arrays and the defect is pinned separately.
 """
 
 import numpy as np
 import pytest
+from cnaster.hmm_phased import hmm_phased, update_combined_transmat
 
 from tests.adapters import (
     cnaster_phased_total_log_likelihood,
@@ -39,12 +29,7 @@ ASSEMBLIES = [
 def test_combined_transition_matches_cnaster_construction(
     penalize: bool, n_copy_states: int
 ) -> None:
-    """The fixture assembles the matrix `update_combined_transmat` assembles.
-
-    Two constructions of one object, pinned so a later change to either is a
-    failing test rather than a silent divergence in what is compared.
-    """
-    from cnaster.hmm_phased import update_combined_transmat
+    """The fixture's transfer matrix equals `update_combined_transmat`'s."""
 
     fixture = phased_chains(
         n_copy_states=n_copy_states, penalize_phase_only_on_same_cnv=penalize
@@ -72,11 +57,7 @@ def test_combined_transition_matches_cnaster_construction(
 def test_combined_transition_is_row_stochastic(
     penalize: bool, switch: float, n_copy_states: int
 ) -> None:
-    """Both assemblies conserve mass, at every kernel and every size.
-
-    The second is not obviously stochastic — it overwrites four entries of
-    an already-normalized matrix — so it is asserted rather than assumed.
-    """
+    """Both assemblies are row-stochastic at every kernel and size."""
     fixture = phased_chains(
         n_copy_states=n_copy_states, penalize_phase_only_on_same_cnv=penalize
     )
@@ -97,11 +78,7 @@ def test_combined_transition_is_row_stochastic(
 def test_total_log_likelihood_matches_upstream(
     penalize: bool, drift: float, n_sequences: int, sequence_length: int
 ) -> None:
-    """The phased recursion agrees with upstream at a constant kernel.
-
-    Length one exercises the paired start alone, with no transfer applied;
-    a single sequence removes the concatenation `lengths` restarts.
-    """
+    """The phased total log-likelihood agrees with upstream at a constant kernel."""
     fixture = phased_chains(
         n_sequences=n_sequences,
         sequence_length=sequence_length,
@@ -117,12 +94,7 @@ def test_total_log_likelihood_matches_upstream(
 
 @pytest.mark.smoke
 def test_sitewise_kernel_changes_the_score() -> None:
-    """The lattice reads the kernel it is handed.
-
-    Without this the agreement above would hold just as well against a
-    lattice that ignored the sitewise argument entirely, since the fixture
-    and the reference would then differ by nothing observable.
-    """
+    """The lattice reads the sitewise kernel: changing it changes the score."""
     fixture = phased_chains()
     scored = cnaster_phased_total_log_likelihood(from_phased_chains(fixture))
     perturbed = cnaster_phased_total_log_likelihood(
@@ -134,12 +106,7 @@ def test_sitewise_kernel_changes_the_score() -> None:
 
 @pytest.mark.analytic
 def test_zero_phase_switching_decouples_the_phases() -> None:
-    """At a vanishing kernel the two phases stop exchanging mass.
-
-    An analytic property of the assembly rather than a comparison: the
-    off-diagonal blocks carry the switch, so as it goes to zero they do too
-    and the matrix becomes block diagonal.
-    """
+    """At a vanishing kernel the off-diagonal phase blocks vanish."""
     fixture = phased_chains(n_copy_states=3)
     combined = phased_combined_transition(
         fixture.base_transition, 1e-12, penalize_phase_only_on_same_cnv=False
@@ -173,10 +140,7 @@ def test_switch_outside_the_unit_interval_is_refused() -> None:
     ),
 )
 def test_phased_emission_is_reachable() -> None:
-    """Written as the test that should pass, marked strict so it fails loudly
-    the day `cnaster` fixes the defect rather than sitting green and unread.
-    """
-    from cnaster.hmm_phased import hmm_phased
+    """`cnaster`'s phased emission returns; strict xfail until `cnaster` fixes it."""
 
     fixture = phased_chains(n_copy_states=2)
     n_paired = fixture.n_paired_states

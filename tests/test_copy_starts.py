@@ -1,10 +1,7 @@
-"""#540, #547: the lattice start, and the study's interface to every other start, on calls drawn here with known states.
+"""The lattice start and the study's interface to every other copy start (#540, #547).
 
-The study's own numbers are in `docs/nb/copy_state_starts.ipynb`; these pin
-what the interface must do for those numbers to mean anything: a start
-recovers states that generated its call, the BAF-only stage's constant
-channel carries no information, and the arms change what a start reads
-without changing what it is scored on.
+Referee: calls drawn here from known states. Study results:
+`docs/nb/copy_state_starts.ipynb`.
 """
 
 from __future__ import annotations
@@ -13,8 +10,10 @@ from typing import Any
 
 import numpy as np
 import pytest
+import torch
 from port.extensions import copy_starts as cs
 from port.sandbox.extensions import copy_starts as study
+from sal.emissions import CountPairEmission
 
 STATES_RDRBAF = ((0.0, 0.5), (-0.69, 0.02), (0.41, 0.33))
 """`(log mu, p)` per planted state: neutral, a one-copy loss, a gain."""
@@ -23,7 +22,7 @@ STATES_RDRBAF = ((0.0, 0.5), (-0.69, 0.02), (0.41, 0.33))
 def _call(
     stage: str, n_bins: int = 400, n_clones: int = 2, seed: int = 0
 ) -> cs.CopyCall:
-    """A clone-stacked call drawn from `STATES_RDRBAF`: Poisson totals at exposure times `mu`, binomial B counts."""
+    """A clone-stacked call from `STATES_RDRBAF`: Poisson totals at exposure times `mu`, binomial B counts."""
     rng = np.random.default_rng(seed)
     n = n_bins * n_clones
     state = rng.integers(0, len(STATES_RDRBAF), size=n)
@@ -80,7 +79,7 @@ def test_the_planted_states_are_the_pooled_rates_that_drew_them() -> None:
 @pytest.mark.analytic
 @pytest.mark.merge
 def test_the_baf_only_stage_reads_no_read_depth() -> None:
-    """On the BAF-only stage, the polished fit and its likelihood do not depend on the `log mu` handed in, nor on the call's totals."""
+    """On the BAF-only stage the polished fit and likelihood do not depend on `log mu` or the totals."""
     call = _call("baf")
     p = np.array([0.5, 0.05, 0.3])
     one = cs.polish_states("a", call, np.zeros(3), p, seconds=10.0)
@@ -96,7 +95,7 @@ def test_the_baf_only_stage_reads_no_read_depth() -> None:
 
 @pytest.mark.analytic
 def test_a_window_of_one_segment_is_the_call_and_a_genome_wide_one_is_its_sum() -> None:
-    """`smoothed` sums within clone and contig: one segment changes nothing; a window wider than a contig gives every row its contig's totals."""
+    """`smoothed`: a one-segment window is the call; a window wider than a contig gives each row its contig's totals."""
     call = _call("rdrbaf", n_bins=40)
     same = study.smoothed(call, segments=1)
     wide = study.smoothed(call, bp=1e12)
@@ -137,7 +136,7 @@ def test_an_outlier_arm_changes_the_rows_it_names_and_no_others() -> None:
 
 @pytest.mark.infra
 def test_every_start_names_its_stages_and_the_registry_is_one_list() -> None:
-    """Each start takes one or both stages; `sal`'s single, best-of-five and polished starts sit beside `cnaster`'s and port's."""
+    """Each start takes one or both stages; `sal`'s starts sit beside `cnaster`'s and port's in one registry."""
     names = set(study.starts())
 
     assert {"kmeans++", "kmeans++x5", "kmeans++x5+em", "emission++", "prior"} <= names
@@ -149,12 +148,7 @@ def test_every_start_names_its_stages_and_the_registry_is_one_list() -> None:
 
 @pytest.mark.analytic
 def test_a_state_placed_on_the_instance_reads_back_as_itself() -> None:
-    """`(log mu, p)` through the instance's seeding and back is the identity, a loss below neutral included.
-
-    `sal`'s seeding floors a mean at 1 and reads its B column as successes
-    over a common trial count; on the instance `sal_mixture.instance_of`
-    builds alone, a loss seeded at neutral and every p at about 0.01 (#540).
-    """
+    """`(log mu, p)` through the instance's seeding and back is the identity, a loss included (#540)."""
     for stage in cs.STAGES:
         call = _call(stage)
         held = cs.instance(call)
@@ -176,7 +170,7 @@ def test_a_state_placed_on_the_instance_reads_back_as_itself() -> None:
 def test_the_lattice_start_places_the_states_that_drew_the_call_before_any_polish() -> (
     None
 ):
-    """`lattice_start` alone, unpolished, holds each planted `(mu, p)` to 0.1 in log mu and 0.05 in p."""
+    """`lattice_start` alone holds each planted `(mu, p)` to 0.1 in log mu and 0.05 in p."""
     call = _call("rdrbaf")
     log_mu, p = cs.lattice_start(call)
     start = cs.CopyStart("lattice", "rdrbaf", log_mu, p, 0.0, 0.0, 0.0)
@@ -186,9 +180,7 @@ def test_the_lattice_start_places_the_states_that_drew_the_call_before_any_polis
 
 @pytest.mark.oracle
 def test_the_lattice_channels_are_sals_count_pair_density() -> None:
-    """`channel_log_densities`, at every state and at each row's own, is `sal`'s independent-form `CountPairEmission` on the instance, to 1e-10 relative."""
-    import torch
-    from sal.emissions import CountPairEmission
+    """`channel_log_densities` against `sal`'s independent-form `CountPairEmission`, to 1e-10 relative."""
 
     for stage in cs.STAGES:
         call = _call(stage)
@@ -225,13 +217,7 @@ def test_the_lattice_channels_are_sals_count_pair_density() -> None:
 @pytest.mark.bug
 @pytest.mark.parametrize("covariate", [True, False])
 def test_every_seeding_row_is_a_rate_the_seam_can_place(covariate: bool) -> None:
-    """B within the common trial count on both instances: a raw B count read over it seeded a rate above 1.
-
-    On dev_tree_1s_hard's first realization (`d2938975`) the uncovaried instance carried
-    raw B counts to 2,443 against 111 common trials, and `anneal`,
-    `tempering`, `quantile` and `gaussian-em` raised "every beta must be
-    positive". The totals are the observed ones on the uncovaried instance.
-    """
+    """Every seeding B count lies within the common trial count, on both instances (`d2938975`)."""
     call = _call("rdrbaf")
     call.trials[:10] = 5 * call.trials.max()
     call.b[:10] = call.trials[:10] * 0.9

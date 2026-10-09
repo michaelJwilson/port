@@ -731,7 +731,7 @@ def solver_note(
         "# solver_combined.png",
         "",
         f"Drawn at code `{commit}` from two records on `{potts['manifest']}`, each problem built by",
-        "`run_cnaster_port --sal` at the planted clones (`port.studies.stage`, #730, #742):",
+        "`run_cnaster_port --sal` at the planted clones (`port.qa.stage`, #730, #742):",
         "",
         "| Panel | Record | Data hash | Problems | Starts | Samplers |",
         "| --- | --- | --- | --- | --- | --- |",
@@ -763,7 +763,7 @@ def solver_figures(potts: Path, copies: Path | None, out: Path, commit: str) -> 
     import matplotlib.pyplot as plt
 
     from port.extensions.figure_style import figure_font
-    from port.studies import records as stored
+    from port.qa import records as stored
 
     out.mkdir(parents=True, exist_ok=True)
     records = [stored.read(potts), None if copies is None else stored.read(copies)]

@@ -1,15 +1,7 @@
-"""The negative-binomial and beta-binomial log pmfs by brute force, at 50 digits (#560, #561).
+"""Negative-binomial and beta-binomial log pmfs by rising-factorial sums at 50 digits
+(#560, #561).
 
-The referee for kernels whose defect is float64 arithmetic: each density is
-written from its definition as finite sums of logarithms of rising
-factorials, `Gamma(x + m) / Gamma(x) = prod_{j < m} (x + j)`, evaluated in
-`decimal` at 50 significant digits. No `lgamma`, no `p = 1 / (1 + a)` and no
-cancellation between large terms, so it shares no step with the kernels it
-judges. Integer counts only, which is what both laws are scored at.
-
-The inputs are taken as the float64 values the kernels receive
-(`Decimal(float)` is exact), so a difference is the kernel's arithmetic and
-not a rounding of its arguments.
+Shares no step with the float64 kernels it judges; integer counts only.
 """
 
 from __future__ import annotations
@@ -44,11 +36,7 @@ def nb_logpmf(k: int, mean: float, alpha: float) -> float:
 
 
 def nb_partials(k: int, mean: float, alpha: float) -> tuple[float, float]:
-    """`d log NB / d log mean` and `d / d log alpha`, by central differences at 50 digits.
-
-    A step of 1e-20 in each log: the truncation is of order 1e-40 and the
-    rounding 1e-30 of the value, both far below a float64's last place.
-    """
+    """`d log NB / d log mean` and `d / d log alpha`, by central differences (step 1e-20) at 50 digits."""
     with localcontext() as context:
         context.prec = DIGITS
         step = Decimal("1e-20")
@@ -85,11 +73,7 @@ def digamma_rise(x: float, m: int) -> float:
 
 
 def nb_divergence(y: float, mean: float, size: float) -> float:
-    """The negative binomial's Bregman divergence at fixed size `r` (`sal`'s formula).
-
-    `r log((r + mu) / (r + y)) + y log(y (r + mu) / (mu (r + y)))`, zero at
-    `mu = y` and non-negative everywhere.
-    """
+    """The negative binomial's Bregman divergence at fixed size `r`, as `sal` writes it."""
     with localcontext() as context:
         context.prec = DIGITS
         count, mu, r = Decimal(y), Decimal(mean), Decimal(size)

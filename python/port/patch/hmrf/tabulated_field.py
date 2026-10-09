@@ -1,44 +1,10 @@
 """The spot/clone field with its `lgamma` tabulated by count, bitwise (#433).
 
-`fused_spot_clone_field` scores every `(bin, spot, clone)` through
-`cnaster`'s kernels: three `lgamma` a negative-binomial score and six a
-beta-binomial one. Every one of the nine is a function of an integer count
-and a per-state parameter -- `lgamma(k + r)`, `lgamma(k + a)`,
-`lgamma(n - k + b)`, `lgamma(n + a + b)`, `lgamma(k + 1)` and their
-constants -- and only the negative binomial's `r log p + k log(1 - p)`
-reads the continuous exposure. So each is computed once per `(state, count)`
-and read back, which is sal's approach to the same emission
-(`sal.emissions.nb`, `sal.emissions.bb`, and `oxisal.external_field`, which
-tabulates this field's own sum).
-
-**Referee: bitwise.** A table entry is the same `lgamma` at the same
-argument, built in the same order of operations as `cnaster`'s
-`nbinom_logpmf_numba` and `betabinom_logpmf_numba` -- `lgamma(n + a + b)` is
-`lgamma((n + a) + b)`, as upstream writes it -- and the per-bin sums run in
-the fused kernel's order, so `np.array_equal` is the bar against it.
-
-**Under `log_space=True`** the tables are `port.patch.emission`'s, the one
-evaluation every site scores (T- #776): the negative binomial's
-`T(r, y) = S(r, y) - lgamma(y + 1)` (:func:`~port.patch.emission.nb_table`)
-and the beta-binomial's three scaled rising factorials and log rates
-(:func:`~port.patch.emission.bb_tables`), built before the compiled pass and
-completed per entry by :func:`~port.patch.emission.nb_complete` and
-:func:`~port.patch.emission.bb_complete`, in `sal`'s order. No
-`lgamma(r)`- or `lgamma(tau)`-sized term is cancelled, and `tau = inf` is the
-binomial. Equal to :func:`~port.patch.emission.nb_log_pmf` and
-:func:`~port.patch.emission.bb_log_pmf` summed per bin to rounding: `numba`'s
-`log` and NumPy's may differ in the last place.
-
-**Why not sal's kernels.** `sal.emissions.coded.log_emission` scores every
-state at every observation, where the field reads one per `(bin, clone)`;
-and `oxisal.external_field` sums both channels with one weight, where
-`cnaster` weighs read depth per spot (`rel_valid_emision_weight`). The third
-reason, sal's negative binomial completing the exposure term in another
-order, is gone: sal #1336 made one order on every route and #1340 removed
-`Order`.
-
-Counts that are not non-negative integers cannot index a table, and
-:func:`spot_clone_field` hands those to the fused kernel unchanged.
+Each `lgamma` in the fused field depends only on an integer count and a
+per-state parameter, so it is computed once per `(state, count)`. Referee:
+bitwise against `fused_spot_clone_field`. Under `log_space` the tables are
+`port.patch.emission`'s (T- #776), equal to its pmfs to rounding. Non-integer
+counts go to the fused kernel (:func:`spot_clone_field`).
 """
 
 from __future__ import annotations
@@ -66,10 +32,7 @@ else:
 __all__ = ["field_kernel", "spot_clone_field", "tabulated_spot_clone_field"]
 
 EPS = DISPERSION_FLOOR
-"""`cnaster`'s floors: `alpha` in `_nb_logpmf_1d`, `a` and `b` in `_bb_logpmf_1d`.
-
-`port.patch.hmm_nophasing.bb_logpmf.DISPERSION_FLOOR`, the one statement (T- #617).
-"""
+"""`cnaster`'s floor on `alpha`, `a` and `b` (T- #617)."""
 
 LIMIT = 2**24
 """The largest count a table is built to; beyond it the fused kernel scores."""
@@ -98,10 +61,7 @@ def tabulated_spot_clone_field(
 ) -> np.ndarray:
     """`fused_spot_clone_field`'s `(n_spots, n_clones)` field, from tables.
 
-    Takes what the fused kernel takes, with integer-valued counts: the
-    caller checks that (:func:`spot_clone_field`), because a count that is not
-    an integer would index the wrong row rather than fail. Under `log_space`
-    the tables are `port.patch.emission`'s, built here.
+    Counts must be non-negative integers (unchecked: see :func:`spot_clone_field`).
     """
     if log_space:
         nb_extent = int(counts_nb.max()) + 1 if counts_nb.size else 1
@@ -221,11 +181,8 @@ def _tabulated_kernel(
 
     field = out
 
-    # NB clones decoded to one state in a bin score the same terms at every
-    #    spot, so each distinct state of a bin is scored once and added to
-    #    every clone that holds it (T- #776). Each accumulator still adds
-    #    over the bins in order, so the field is bitwise the per-clone
-    #    loop's. Threads take blocks of spots, each its own rows.
+    # NB each distinct state of a bin is scored once and added to every clone
+    #    holding it, bins in order, so bitwise the per-clone loop's (T- #776).
     accumulated_rdr = np.zeros((n_spots, n_clones))
     accumulated_baf = np.zeros((n_spots, n_clones))
     n_blocks = max(1, min(n_spots, get_num_threads()))
@@ -260,16 +217,13 @@ def _tabulated_kernel(
                 denom = denominator[state]
 
                 for spot in range(lo, hi):
-                    # NB `_nb_logpmf_1d`: no baseline, or `p` rounded to 0 or
-                    #    1, scores 0; otherwise the coefficient, then `r log p`,
-                    #    then `k log(1 - p)`, summed in that order.
+                    # NB `_nb_logpmf_1d`: 0 for no baseline or `p` in {0, 1};
+                    #    else summed in upstream's order.
                     rdr = 0.0
                     lambda_i = base_nb_mean[o, spot] * mu
 
                     if log_space:
-                        # NB `nb_complete`'s order with `q = lambda / r` taken
-                        #    as `lambda * (1 / r)`, `1 / r` once per state: one
-                        #    division a score where it takes two (T- #776).
+                        # NB `nb_complete`'s order, `q = lambda * (1 / r)` (T- #776).
                         k = counts_nb[o, spot]
                         if lambda_i > 0.0:
                             q = lambda_i * inverse_sizes[state]
@@ -357,12 +311,7 @@ def field_kernel(
     *,
     log_space: bool = False,
 ) -> Any:
-    """The kernel :func:`spot_clone_field` would run on these counts.
-
-    The choice reads every count, so a caller scoring the same counts more
-    than once -- per clone, per sweep -- makes it once (#488). `log_space`
-    is bound into the kernel it returns.
-    """
+    """The kernel :func:`spot_clone_field` would run on these counts, `log_space` bound (#488)."""
     if _integral(counts_nb) and _integral(counts_bb) and _integral(total_bb_RD):
         kernel = tabulated_spot_clone_field
     else:
@@ -386,11 +335,7 @@ def spot_clone_field(
     *,
     log_space: bool = False,
 ) -> Any:
-    """The field from tables where the counts are integers, else the fused kernel's.
-
-    Both write `out`, and the two are bitwise equal where both apply, with
-    `log_space` or without.
-    """
+    """The field from tables where the counts are integers, else the fused kernel's; writes `out`."""
     arguments = (
         counts_nb,
         base_nb_mean,

@@ -1,21 +1,8 @@
-"""`cnaster.count_encoder.CountEncoder`, its codes gathered and summed by index (T- #799).
+"""Replaces `cnaster.count_encoder.CountEncoder`, decoding by gather and encoding by `bincount` (T- #799).
 
-**A row (T- #799).** `cnaster` maps each spot's entries to their distinct
-`(obs, total)` pairs through a one-hot float64 CSR matrix, `(n_obs,
-n_unique)`, about 16 bytes an entry, and decodes and encodes by sparse
-matmul. The `inverse` that `np.unique(..., return_inverse=True)` already
-returns is that map: decoding is `array[..., inverse]` and encoding a
-`bincount` by it, 4 bytes an entry. The codes are `cnaster`'s: the same
-rounding to `hmm.compression_decimals` (T- #798 decides whether it stays),
-the same collapse of a zero total, the same order.
-
-**Referee.** `cnaster`'s encoder (`tests/test_count_encoder.py`): the codes
-equal, decode bitwise -- the one-hot product sums one term, `value * 1.0`
--- and encode to 1e-12 relative, the order its sums are taken in being the
-only difference. The CSR matrices are built only where `mapping_matrices`
-is read; no live reader does.
-
-**Ratio.** In `docs/measurements.md`, `port.patch.count_encoder`.
+Uses the `np.unique` inverse in place of `cnaster`'s one-hot CSR maps; codes
+are `cnaster`'s (same rounding, zero-total collapse and order). Decode is
+bitwise, encode to 1e-12 relative. CSR maps are built only on read.
 """
 
 from __future__ import annotations

@@ -1,47 +1,12 @@
-r"""The M step's gradient in closed form, where `cnaster` differences it (#433).
-
-`hmm_nophasing._run_optimization_pipeline` fits the emission by `scipy`'s
-BFGS with no `jac`, so every gradient is `approx_derivative`: one objective
-call per coordinate. At `K = 8` with shared dispersions that is 26
-coordinates, 8 of them start probabilities the EM objective never reads, and
-a three-iteration fit on the dev instance makes 90 to 162 objective calls.
-
-The objective is closed form in the packed coordinates. With `gamma` the
-posteriors the fit is holding and `u` a unique `(obs, total)` code,
+r"""The M step's gradient in closed form, where `cnaster`'s BFGS differences it (#433).
 
 .. math::
     f(x) = -\sum_{i,u} W_{iu} \left[\ell^{NB}_{iu} + \ell^{BB}_{iu}\right],
     \qquad W_{iu} = \sum_{g \to u} \gamma_{ig},
 
-and each term's derivative is a rising digamma or a ratio, the partials of
-`port.patch.emission`'s densities, the one evaluation every site scores
-(T- #776, `sal`'s Rust `coded.log_emission_partials` since sal #1353;
-:func:`~port.patch.emission.nb_partials`,
-:func:`~port.patch.emission.bb_partials`):
-
-- negative binomial, `r = 1 / max(alpha, 1e-10)`, `mu = c exp(eta)`,
-  `p = 1 / (1 + max(alpha, 1e-10) mu)`, logged as `-log1p` (#560): `d ell / d eta = k - (r + k) alpha mu / (1 + alpha mu)`,
-  and, where `alpha` is above the floor, `d ell / d log alpha =
-  -r (psi(k + r) - psi(r) + log p) + k - (r + k) alpha mu / (1 + alpha mu)`,
-  the `psi` pair `sal`'s `digamma_rising`, so nothing cancels at `r` up to
-  1e10;
-- beta-binomial, `a = max(p tau, 1e-10)`, `b = max((1 - p) tau, 1e-10)`:
-  `d ell / d a = psi(k + a) - psi(n + a + b) - psi(a) + psi(a + b)`, and
-  `b`'s with `n - k` for `k`, each `digamma` pair `sal`'s `digamma_rising`
-  so nothing near `log tau` cancels at a large `tau` (#561, T- #781).
-
-**Under the shift the rate is `exp(log_mu_i - S_c)`**, with
-`S_c = logsumexp_g(log_mu_{d(g)} + log lambda_g)` over clone `c`'s segments
-at the decode `d` (`port.patch.hmm_nophasing.logmu_shift`). `S_c` depends on
-`log_mu`, so `d eta / d log_mu_j = delta_ij - P_cj`, with `P_cj` the softmax
-weight clone `c`'s segments decoded to `j` carry. That term is what makes
-the shifted likelihood flat along `log_mu -> log_mu + c`, and the gradient
-here has zero sum over states there, as it must.
-
-**Referee:** `port.extensions.jax_hmm`, the same objective differentiated by
-`jax` (`tests/test_mstep_gradient.py`). Nothing here is a second route to a
-fit: `cnaster`'s own `cost_fn` still computes every value BFGS reads, and
-its own callback still updates the posteriors.
+with partials from `port.patch.emission` (T- #776). Under the shift the rate
+is `exp(log_mu_i - S_c)` and `d eta / d log_mu_j = delta_ij - P_cj`. `cnaster`'s
+`cost_fn` and callback still drive the fit. Referee: `port.qa.jax_hmm`.
 """
 
 from __future__ import annotations
@@ -77,12 +42,7 @@ __all__ = [
 
 @dataclass
 class EmGradient:
-    """The EM objective's gradient for one fit, in the fit's packed coordinates.
-
-    Built once per `_run_optimization_pipeline` from what it is called with,
-    and read at each `x` against the posteriors the model is holding then,
-    which are the ones `cnaster`'s `cost_fn` weighs by.
-    """
+    """The EM objective's gradient for one fit, in the fit's packed coordinates, at the model's current posteriors."""
 
     model: Any
     n_states: int
@@ -103,11 +63,7 @@ class EmGradient:
         total_bb_RD: np.ndarray,
         **kwargs: Any,
     ) -> EmGradient:
-        """Read the fit's settings as `_run_optimization_pipeline` would.
-
-        Defaults come from that function's own signature rather than a copy
-        of them here, so a changed default upstream reaches both.
-        """
+        """Read the fit's settings, defaulting from `_run_optimization_pipeline`'s own signature."""
         defaults = {
             name: parameter.default
             for name, parameter in inspect.signature(
@@ -119,8 +75,7 @@ class EmGradient:
         base = np.array(base_nb_mean, dtype=np.float64)
         max_rdr = setting["max_rdr"]
 
-        # NB `hmm_nophasing.py:822-826`, restated: bins above `max_rdr`
-        #    lose their baseline, so score 0 and carry no gradient.
+        # NB `hmm_nophasing.py:822-826`: bins above `max_rdr` lose their baseline.
         if max_rdr is not None:
             with np.errstate(divide="ignore", invalid="ignore"):
                 ratio = X[:, 0, :] / base
@@ -171,8 +126,7 @@ class EmGradient:
 
         g_p, g_tau = self._allele(gamma, p_binom, taus)
 
-        # NB zeros where the depth channel is not fitted; `_pack` then
-        #    leaves its blocks out, as `pack_params` does.
+        # NB zeros where depth is not fitted; `_pack` leaves those blocks out.
         g_mu = g_alpha = np.zeros(self.n_states)
 
         if self.nb is not None and "m" in model.params:
@@ -229,11 +183,7 @@ class EmGradient:
         return self._shifted_depth(encoder, gamma, rates, dispersions, *shifted)
 
     def _shift_inputs(self) -> tuple[np.ndarray, tuple[int, ...]] | None:
-        """The decode and clone lengths the shifted emission uses, or `None`.
-
-        The same four conditions `compute_emission_probability_nb_betabinom_coded`
-        reads, so the gradient is of the objective actually scored.
-        """
+        """The decode and clone lengths the shifted emission uses, or `None` under the same conditions."""
         from port.patch.hmm_nophasing.shifted_emission import (
             current_clone_lengths,
             shifted,
@@ -387,25 +337,16 @@ BFGS_OPTIONS = frozenset(
 
 
 def analytic_bfgs(gradient: Callable[[np.ndarray], np.ndarray]) -> Any:
-    """A `scipy.optimize.minimize` `method` that is BFGS with `gradient` as `jac`.
+    """A `scipy.optimize.minimize` `method`: BFGS with `gradient` as `jac`.
 
-    `cnaster` passes its `optimizer` argument to `minimize` as `method`, and a
-    callable there is `scipy`'s custom-method protocol. So the fit stays
-    `cnaster`'s -- its `cost_fn`, its callback, its options -- and only the
-    gradient changes. Value and gradient are taken together (`jac=True`), so
-    the gradient always reads the posteriors the value just used, and the
-    callback's E step reads the emission at a point BFGS evaluated rather
-    than at a finite-difference probe.
+    Keeps `cnaster`'s `cost_fn`, callback and options; value and gradient taken together.
     """
 
     def method(
         fun: Any, x0: np.ndarray, args: tuple[Any, ...] = (), **kwargs: Any
     ) -> scipy.optimize.OptimizeResult:
         callback = kwargs.pop("callback", None)
-        # NB BFGS's own options only (#448): `cnaster` passes `ftol`, which
-        #    BFGS has not got, and `scipy` warns "Unknown solver options:
-        #    ftol" and drops it -- 13 times a run. Dropping it here is the
-        #    same fit, without the warning.
+        # NB BFGS's own options only (#448): drops `cnaster`'s `ftol`, which scipy warns on.
         options = {key: value for key, value in kwargs.items() if key in BFGS_OPTIONS}
 
         def value_and_gradient(x: np.ndarray) -> tuple[float, np.ndarray]:
@@ -425,13 +366,7 @@ def analytic_bfgs(gradient: Callable[[np.ndarray], np.ndarray]) -> Any:
 
 
 def configured_solver() -> tuple[str, dict[str, float]]:
-    """`hmm.solver` and the `em_*` options `cnaster` pairs with it (#448).
-
-    `get_em_solver_params` is `cnaster`'s own map from the solver to its keys
-    -- `L-BFGS-B` reads `em_maxiter` and `em_ftol`, `BFGS` `em_xrtol` -- and
-    its M step reads neither: it runs BFGS whatever the configuration says.
-    `("BFGS", {})` where no configuration is set.
-    """
+    """`hmm.solver` and the `em_*` options `cnaster` pairs with it, or `("BFGS", {})` unconfigured (#448)."""
     from cnaster.config import get_global_config
     from cnaster.hmm_utils import get_em_solver_params
 
@@ -446,16 +381,10 @@ def configured_solver() -> tuple[str, dict[str, float]]:
 
 
 def configured_method(gradient: Callable[[np.ndarray], np.ndarray]) -> Any:
-    """The M step as the configuration states it, with `gradient` where it is used.
+    """The M step as the configuration states it, with `gradient` where used.
 
-    **Not installed** (#448): `cnaster` runs BFGS whatever `hmm.solver` says,
-    and the shipped configurations state `L-BFGS-B`, so installing this
-    changes the default fit. It is here for that decision, measured.
-
-    `BFGS` is :func:`analytic_bfgs` plus `em_xrtol`; `L-BFGS-B` takes
-    `em_maxiter` and `em_ftol` and `cnaster`'s `gtol`; `Nelder-Mead`, which
-    uses no gradient, takes `em_maxiter`, `em_xtol` and `em_ftol` as its
-    `maxiter`, `xatol` and `fatol`.
+    Not installed (#448): `cnaster` runs BFGS whatever `hmm.solver` says.
+    Supports `BFGS`, `L-BFGS-B` and `Nelder-Mead`; raises `ValueError` otherwise.
     """
     solver, params = configured_solver()
 

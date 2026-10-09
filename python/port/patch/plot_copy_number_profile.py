@@ -1,29 +1,8 @@
-"""`cnaster.plot_copy_number_profile`, one row per clone and aberrations hatched.
+"""Replaces `cnaster.plot_copy_number_profile`: one row per clone, aberrations hatched.
 
-`cnaster` draws each clone as two half-rows, A above B, and marks a segment
-whose alleles are swapped in another clone with chevrons. At a text column's
-width the half-rows are 0.1 in tall and the chevrons fill them.
-
-**One row per clone.** A normal segment, `(1, 1)`, is the faint normal
-colour as before. Any other segment is filled with A's colour and hatched
-with B's -- A first, each as its box on `plot_ascn_legend`'s colour bar shows
-it (`swatch`) -- so both alleles read at the row's full height.
-
-**The hatch orientation is the mirror.** Hatching rises to the right where
-A >= B and to the left where A < B, so a pair of segments whose alleles are
-swapped between clones -- what the chevrons marked -- hatch in opposite
-directions, and every segment carries its orientation rather than only
-mirrored ones. The legend shows the two orientations, unnumbered, stacked,
-with `MIRROR` to their right: what it keys is that a pair hatches opposite
-ways.
-
-**The hatch is drawn, not a matplotlib hatch.** A hatch pattern is fixed at
-45 degrees and a spacing matplotlib chooses. Here each aberrant segment
-carries a `LineCollection` of B's colour clipped to it, at `HATCH_ANGLE`
-from the horizontal and `HATCH_SPACING` apart, both in inches on the page,
-so the lines keep their angle and density whatever the axis's data scale.
-
-A `FIGURE_SWAPS` row: the figure changes by design.
+A normal `(1, 1)` segment is faint; any other is A's colour hatched with B's,
+rising right where A >= B and left where A < B, so mirrored segments hatch
+opposite ways. Hatch lines are drawn in page inches. A `FIGURE_SWAPS` row.
 """
 
 from __future__ import annotations
@@ -65,35 +44,25 @@ COPY_COLOURS = {
     6: "#bd0026",
     "7+": "#660013",
 }
-"""Copies 2 to 7+ on `chisel_single`'s scale, its `khaki` 2 dropped: each
-moves one step redder along ColorBrewer's YlOrRd, which adds a red (#339)."""
+"""Copies 2 to 7+ along ColorBrewer's YlOrRd, replacing `chisel_single`'s (#339)."""
 
 HATCH = {1: 1, -1: -1}
 """Rising to the right where A >= B (`h=0`), to the left where A < B (`h=1`)."""
 
 HATCH_ANGLE = 35.0
-"""Degrees from the horizontal: flatter than a 45-degree hatch, so a row a
-tenth of an inch tall carries several lines, and steep enough that the two
-phases cross at 70 degrees and read apart."""
+"""Degrees from the horizontal."""
 
 HATCH_SPACING = 0.10
-"""Inches between lines, along the row: wide enough that each stripe, A's
-and B's, reads at print size."""
+"""Inches between hatch lines, along the row."""
 
 HATCH_LINEWIDTH = 72.0 * HATCH_SPACING * float(np.sin(np.radians(HATCH_ANGLE))) / 2.0
-"""Points: half the lines' period measured across them, `HATCH_SPACING`
-along the row times the sine of `HATCH_ANGLE`, so A's stripes and B's are the
-same width (2.065 pt at 0.10 in and 35 degrees)."""
+"""Points: half the line period across the lines, so A's and B's stripes match."""
 
 NORMAL_OPACITY = 0.35
-"""Copy 1's opacity over white, for a normal `(1, 1)` segment and a hatch's
-1: over `cnaster`'s 0.25, so it reads as blue rather than as the page (#339
-had halved it to 0.125, which read as white), and still paler than copy 2's
-orange, so the aberrations are what the eye finds."""
+"""Copy 1's opacity over white, for a normal segment and a hatch's 1 (#339)."""
 
 LINEWIDTH = 0.5
-"""Points, for each row's outline and the chromosome boundaries: what
-`plot_clones_genomic` draws its boundaries at."""
+"""Points, for row outlines and chromosome boundaries."""
 
 
 def _palette(palette_name: str) -> tuple[dict[Any, Any], Any]:
@@ -107,12 +76,7 @@ def _palette(palette_name: str) -> tuple[dict[Any, Any], Any]:
 
 
 def swatch(style: Any, copies: Any) -> tuple[float, float, float]:
-    """Copy number `copies`'s colour as its legend box shows it, opaque.
-
-    Copy 1 is `cnaster`'s colour at `NORMAL_OPACITY` over white, so a fill or
-    hatch line of it is the colour of its box rather than the full colour the
-    box fades: lines of a translucent colour would vanish into the fill.
-    """
+    """Copy number `copies`'s colour as its legend box shows it, opaque over white."""
     rgb = np.asarray(
         mcolors.to_rgb(style.get(copies, style.get("default", "lightgray")))
     )
@@ -137,8 +101,7 @@ def _order(df_cnv: pd.DataFrame, clone_ids: list[str]) -> list[str]:
 def _segment(
     ax: Any, x0: float, y0: float, w: float, h: float, a: Any, b: Any, style: Any
 ) -> None:
-    """One segment: faint if normal, else A's fill under B's hatch, its two
-    ends drawn as boundaries."""
+    """One segment: faint if normal, else A's fill under B's hatch, ends outlined."""
     default = style.get("default", "lightgray")
 
     if a == 1 and b == 1:
@@ -159,8 +122,7 @@ def _segment(
     )
     ax.add_patch(fill)
     _hatch(ax, fill, swatch(style, b), HATCH[1 if a >= b else -1])
-    # NB the aberration's ends, at the outline's weight: where it starts and
-    #    stops reads without following the fill's edge into the next colour.
+    # NB the aberration's ends, at the outline's weight.
     ax.vlines(
         [x0, x0 + w],
         ymin=y0,
@@ -173,12 +135,7 @@ def _segment(
 
 
 class _Hatch(LineCollection):
-    """B's lines over one fill, laid out when drawn, in the page's inches.
-
-    At draw time the fill's extent on the page is known, so exactly the
-    lines that cross it are made: `HATCH_SPACING` apart along its bottom
-    edge, at `HATCH_ANGLE`, clipped to it.
-    """
+    """B's lines over one fill, laid out at draw time in page pixels, clipped to it."""
 
     def __init__(self, fill: Rectangle, colour: Any, orientation: int) -> None:
         # NB under the outlines (zorder 3), over the fill (1).
@@ -204,9 +161,8 @@ def _hatch(ax: Any, fill: Rectangle, colour: Any, orientation: int) -> None:
     """Attach B's lines to `fill`, drawn over it."""
     hatch = _Hatch(fill, colour, orientation)
     ax.add_collection(hatch, autolim=False)
-    # NB as a path and its transform, after `add_collection`: a `Rectangle`
-    #    is turned into a clip box, and `add_collection` then replaces it
-    #    with the axis's own, which is what let the lines cross rows.
+    # NB a path clip, after `add_collection`, which would replace a clip box
+    #    with the axis's.
     hatch.set_clip_path(fill.get_path(), fill.get_transform())
     fill.set_gid(f"hatch{orientation:+d}")
 
@@ -235,15 +191,9 @@ def plot_copy_number_profile(
 ) -> Any:
     """`cnaster`'s profile, one row per clone, aberrations hatched A then B.
 
-    `rows`, the clone ids of `df_cnv`'s `clone<id> A` columns top to bottom,
-    sets the rows' order; `None` is `cnaster`'s, least aberrant first
-    (PR- #701).
-
-    `axis`, a `port.extensions.genomic_axis.GenomicAxis` on `df_cnv`'s bins
-    or a `Ticks` made on them, draws the segments and boundaries on its
-    coordinate and ticks every 10 Mb, unlabelled: the chromosome names hold
-    the line below the rows (T- #683). `None` is `cnaster`'s axis. A page of
-    its own carries its inputs for `cnamaste.h5` (T- #817).
+    `rows` orders the clone ids top to bottom (`None`: least aberrant first,
+    #701); `axis` (`GenomicAxis` or `Ticks`) sets the coordinate, `None` is
+    `cnaster`'s (#683). A page of its own is recorded for `cnamaste.h5` (#817).
     """
     from port.extensions import figure_record
 
@@ -272,17 +222,7 @@ def profile_page(
     axis: GenomicAxis | Ticks | None = None,
     rows: list[str] | None = None,
 ) -> Any:
-    """`cnaster`'s profile, one row per clone, aberrations hatched A then B.
-
-    `rows`, the clone ids of `df_cnv`'s `clone<id> A` columns top to bottom,
-    sets the rows' order; `None` is `cnaster`'s, least aberrant first
-    (PR- #701).
-
-    `axis`, a `port.extensions.genomic_axis.GenomicAxis` on `df_cnv`'s bins
-    or a `Ticks` made on them, draws the segments and boundaries on its
-    coordinate and ticks every 10 Mb, unlabelled: the chromosome names hold
-    the line below the rows (T- #683). `None` is `cnaster`'s axis.
-    """
+    """`plot_copy_number_profile`'s figure, unrecorded."""
     state_style, _ = _palette(palette_name)
     clone_ids = [c.split(" ")[0][5:] for c in df_cnv.columns if c.endswith(" A")]
     clone_ids = _order(df_cnv, clone_ids) if rows is None else list(rows)
@@ -337,8 +277,7 @@ def profile_page(
     if genome is not None:
         ch_coords = list(genome.edges)
 
-    # NB unclipped: the first and last edges sit on the x limits, where the
-    #    axes clip would cut them to half the width of every other line.
+    # NB unclipped, so the edges on the x limits keep full width.
     for k in range(num_clones):
         y0 = gap / 2 + k * h
         ax.vlines(
@@ -407,20 +346,19 @@ def profile_page(
 
 
 MIRROR = "Local Mirror"
-"""The mirror swatches' label, right of them in every figure that draws the key (PR- #701)."""
+"""The mirror swatches' label (#701)."""
 
 TITLE = r"$\mathbb{N}$-CNA"
-"""The colour bar's title, `cnaster`'s own: the "(A, B)" port appended is dropped (T- #794)."""
+"""The colour bar's title, `cnaster`'s own (#794)."""
 
 MIRROR_GAP = 0.15
 """The white between the stacked mirror swatches, against a box's height."""
 
 KEY_GROWTH = (0.6 + 1.575 * 0.8 + 0.05) / (0.6 + 0.8 + 0.05)
-"""A key axis's height against its height before the swatches stacked
-(PR- #715), at the default `box_h` 0.8: its y range runs from the numerals'
--0.6 to 0.05 over the upper swatch, at `(1.5 + MIRROR_GAP / 2) * box_h`,
-where it ran to 0.05 over the bar. A caller grows its key row by this so a
-box keeps its size on the page."""
+"""A key axis's height against its height before the swatches stacked (#715).
+
+A caller grows its key row by this so a box keeps its size on the page.
+"""
 
 
 def plot_ascn_legend(
@@ -433,16 +371,10 @@ def plot_ascn_legend(
     *,
     span: float | None = None,
 ) -> Any:
-    """The mirror swatches, `MIRROR` to their right, then `cnaster`'s colour bar titled on its left.
+    """The stacked mirror swatches, `MIRROR`, then `cnaster`'s colour bar titled on its left.
 
-    The swatches, black lines on white, one per hatch orientation, are
-    stacked, `MIRROR_GAP` of a box apart, about the bar's centre, and start
-    on the axis's left edge, so a caller that sets the axis over its plot
-    gets them on the plot's left edge. `MIRROR` is centred on the white
-    between them. With `span`, the axis runs `0` to `span` and the bar ends
-    there, on the plot's right edge; without it, the axis is sized to the
-    swatches, their label, the bar's title and the bar. The axis's y range
-    is `KEY_GROWTH` of what it was with the swatches side by side.
+    With `span` the axis runs `0` to `span` and the bar ends there; without it
+    the axis is sized to its contents.
     """
     state_style, ordered_acn = _palette(palette_name)
     ax.axis("off")
@@ -485,9 +417,7 @@ def plot_ascn_legend(
 
     bar = len(ordered_acn) * box_w
     if span is None:
-        # NB data units per pixel follow from the axis's width once its
-        #    limits are set: the two labels' pixels and the rest's units
-        #    solve for the end that fits both.
+        # NB solve for the end that fits the labels' pixels and the rest's units.
         renderer = ax.figure.canvas.get_renderer()
         pixels = ax.get_window_extent(renderer).width
         words = sum(t.get_window_extent(renderer).width for t in (mirror, title))

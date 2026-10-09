@@ -1,32 +1,7 @@
-"""The boundary's loop invariants, computed once instead of per iteration.
+"""Per-spot valid-segment counts and channel weight, hoisted out of `cnaster.hmrf`'s outer loop (#59 item 4).
 
-Issue #59 item 4. `cnaster.hmrf` recomputes two full passes over
-`(n_obs, n_spots)` on every outer iteration:
-
-    num_valid_nb_spotwise = (single_base_nb_mean > 0).sum(axis=0)   # :261
-    num_valid_bb_spotwise = (single_total_bb_RD > 0).sum(axis=0)    # :262
-
-Both are properties of the **input data**. `single_base_nb_mean` and
-`single_total_bb_RD` are read by `load_input_data` and conditioned on
-throughout -- `cnaster` never fits them -- so neither count can change while
-the loop runs. `CLAUDE.md`: recompute or store is a decision, and unmade it
-defaults to recompute.
-
-`compute_loglike_spot_assignment` then rebuilds `rel_valid_emision_weight`
-from those counts, per call, inside its own `prange` -- also invariant, and
-hoisted with them.
-
-A **simplification** rather than a speedup: a quantity which cannot change
-stops being recomputed. Measured: `docs/measurements.md`,
-`port.patch.hmrf.invariants`.
-
-**What this module is for.** The patch is two expressions, so shipping them
-is not the point -- the point is the pair of facts a caller needs before
-hoisting: that the counts depend on nothing the loop changes, and that the
-relative channel weight derived from them therefore does not either.
-:func:`boundary_invariants` computes both together so the call site hoists
-one call, and `tests/test_hmrf_invariants_patch.py` is where the invariance
-is asserted rather than asserted about.
+Both depend only on the input data, which the loop never fits; a
+simplification, not a speedup.
 """
 
 from __future__ import annotations
@@ -40,15 +15,7 @@ __all__ = ["BoundaryInvariants", "boundary_invariants"]
 
 @dataclass(frozen=True)
 class BoundaryInvariants:
-    """What the HMM/spatial boundary recomputes and need not.
-
-    Parameters
-    ----------
-    num_valid_nb_spotwise, num_valid_bb_spotwise : np.ndarray
-        Segments per spot with a positive baseline and a positive read depth,
-        shape `(n_spots,)`. `cnaster`'s own names, so the call site changes
-        only where they are computed.
-    """
+    """Per-spot segment counts with a positive baseline and positive read depth, `(n_spots,)`."""
 
     num_valid_nb_spotwise: np.ndarray
     num_valid_bb_spotwise: np.ndarray
@@ -59,35 +26,11 @@ class BoundaryInvariants:
         smooth_indices: np.ndarray,
         single_tumor_prop: np.ndarray | None = None,
     ) -> np.ndarray:
-        """`pooled_bb / pooled_nb` per spot, the weight the field applies.
+        """`pooled_bb / pooled_nb` per spot, the weight the field applies (#58).
 
-        Also invariant, and for the same reason: the smoothing neighbourhood
-        is built from the spatial layout and `single_tumor_prop` is read with
-        the data, neither of which the loop changes.
-        `compute_loglike_spot_assignment` recomputes this per call inside its
-        own `prange`, once per clone-assignment update.
-
-        Carried here so a caller hoisting the counts hoists the weight with
-        them rather than leaving half the work in the loop. Ones where a
-        spot's pooled counts are not both positive, as `cnaster` does.
-
-        Pooled with `bincount` rather than a loop over spots. The sums are of
-        counts bounded by `n_obs`, so every partial sum is exact in
-        `float64` and reassociating them cannot move the result -- which is
-        what lets the comparison against `cnaster`'s sequential accumulation
-        be bitwise rather than approximate.
-
-        Parameters
-        ----------
-        single_tumor_prop : np.ndarray or None
-            When given, neighbours with a `nan` proportion are skipped --
-            `cnaster`'s `is_tumor_mixed` branch. `None` pools every
-            neighbour, which is its unmixed branch.
-
-        **This is not an endorsement of the weight.** Down-weighting the read
-        depth against the allele channel by a count ratio is issue #58's
-        finding; this reproduces it so that hoisting changes nothing, and
-        fixing it is a separate change.
+        Ones where either pooled count is zero, as `cnaster`. Bitwise
+        `cnaster`'s, as the sums are exact in `float64`. With
+        `single_tumor_prop`, `nan` neighbours are skipped (`is_tumor_mixed`).
         """
         n_spots = self.num_valid_nb_spotwise.shape[0]
 
@@ -115,14 +58,7 @@ class BoundaryInvariants:
 def boundary_invariants(
     single_base_nb_mean: np.ndarray, single_total_bb_RD: np.ndarray
 ) -> BoundaryInvariants:
-    """Both per-spot valid-segment counts, in one call.
-
-    Raises
-    ------
-    ValueError
-        If the two arrays disagree in shape, where they cannot describe the
-        same `(n_obs, n_spots)` grid and one of them is the wrong input.
-    """
+    """Both per-spot valid-segment counts; `ValueError` if the shapes disagree."""
     base = np.asarray(single_base_nb_mean)
     total = np.asarray(single_total_bb_RD)
 

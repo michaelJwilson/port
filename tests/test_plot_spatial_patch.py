@@ -1,19 +1,20 @@
 """`port.patch.plotting.spatial` against `cnaster.plotting.plot_clones_spatial` (#309).
 
-The patch changes one thing, a spot's area. What upstream asserts -- which
-clone and which tumour proportion each spot shows, at which position -- is
-compared spot by spot: every colour bitwise, every tile centred on the point
-upstream draws. The tiles are then held to their own claim: `TILE` of the
-pitch on a side, so a gap of `1 - TILE` between neighbours.
+Per spot: colour bitwise and tile centred on upstream's point; tiles are `TILE` of the
+pitch on a side.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+from cnaster.plotting import plot_clones_spatial as upstream
+from port.patch.plotting.spatial import TILE, pitch, plot_clones_spatial
 
 
 def _instance() -> tuple[np.ndarray, Any, np.ndarray]:
@@ -52,12 +53,8 @@ def test_every_spot_has_upstreams_colour_at_upstreams_point(
     with_proportion: bool,
 ) -> None:
     """Colour and opacity bitwise, centre exact, on 108 spots and 3 clones."""
-    import matplotlib as mpl
 
     mpl.use("Agg")
-
-    from cnaster.plotting import plot_clones_spatial as upstream
-    from port.patch.plotting.spatial import TILE, pitch, plot_clones_spatial
 
     coords, assignment, proportion = _instance()
     tumour = proportion if with_proportion else None
@@ -83,18 +80,9 @@ def test_every_spot_has_upstreams_colour_at_upstreams_point(
 
 @pytest.mark.patch
 def test_two_samples_are_offset_and_titled_as_upstream_does() -> None:
-    """Sample 1 shifted right by sample 0's width plus 10, colours bitwise.
-
-    Upstream lays samples side by side along `x`, each after the previous
-    one's largest `x` plus 10, and titles the page with the sample names.
-    The same 108 spots split into two samples by row parity.
-    """
-    import matplotlib as mpl
+    """Sample 1 is offset by sample 0's width plus 10, colours bitwise upstream's."""
 
     mpl.use("Agg")
-
-    from cnaster.plotting import plot_clones_spatial as upstream
-    from port.patch.plotting.spatial import plot_clones_spatial
 
     coords, assignment, _ = _instance()
     samples = (np.arange(coords.shape[0]) % 2).astype(int)
@@ -111,8 +99,7 @@ def test_two_samples_are_offset_and_titled_as_upstream_does() -> None:
     centres = np.array([path.vertices[:4] for path in tiles.get_paths()]).mean(axis=1)
 
     np.testing.assert_array_equal(np.asarray(tiles.get_facecolors()), theirs)
-    # NB a centre is recovered as the mean of four float corners, which is
-    #    exact only where the half-side sums without round-off; realized 4.4e-16.
+    # NB a centre is the mean of four float corners; realized 4.4e-16.
     np.testing.assert_allclose(
         centres, np.column_stack([shifted[:, 0], -shifted[:, 1]]), rtol=0, atol=1e-12
     )
@@ -124,19 +111,9 @@ def test_two_samples_are_offset_and_titled_as_upstream_does() -> None:
 def test_each_sample_panel_is_upstreams_spots_of_that_sample(
     with_proportion: bool,
 ) -> None:
-    """`sample_layout` against upstream's one axis, spot by spot (#328).
-
-    Upstream draws three samples side by side along `x`, each after the
-    previous one's largest `x` plus 10. Each panel carries that sample's
-    spots only, colour and opacity bitwise upstream's for the same spot, and
-    centred on the sample's own coordinates rather than the offset ones.
-    """
-    import matplotlib as mpl
+    """`sample_layout` per panel: each sample's spots, colours bitwise upstream's, own coordinates (#328)."""
 
     mpl.use("Agg")
-    import matplotlib.pyplot as plt
-    from cnaster.plotting import plot_clones_spatial as upstream
-    from port.patch.plotting.spatial import plot_clones_spatial
 
     coords, assignment, proportion = _instance()
     tumour = proportion if with_proportion else None

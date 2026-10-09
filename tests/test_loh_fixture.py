@@ -1,22 +1,8 @@
 """LOH and mirrored LOH in the copy-lattice fixture (`loh=True`).
 
-A mirrored event is one set of bins whose LOH loses allele `B` in one clone
-and allele `A` in another: same `mu`, `p` reflected about one half. Phasing
-is shared across clones, so the pair is exactly what a clone-shared phase
-has to carry, and what an unphased model folds into one state.
-
-What is pinned:
-
-- the planted `(mu, p)` of each LOH state is `(A, B)`'s, `p` held
-  `LOH_EPSILON = 1e-5` from 0 and 1 (`analytic`);
-- every mirrored pair covers the same bins in two tumor clones, with
-  `p_clone + p_mirror = 1` exactly and `mu` equal (`analytic`);
-- the drawn allele fraction in those bins is the planted one: above
-  `1 - 1e-3` in one clone and below `1e-3` in the other (`analytic`). At
-  `tau = 30` the lost allele's beta shape is `3e-4`, so the expected lost
-  fraction is `1e-5`, the worst drawn 2.1e-5, and the tolerance 1e-3;
-- `loh=False` draws what it drew, and `loh` refuses a fixture it cannot
-  mirror (`snapshot`, `infra`).
+Referees: the planted `(A, B)` with `p` held `LOH_EPSILON` from 0 and 1, `p_clone +
+p_mirror = 1`,
+and drawn allele fractions within 1e-3 (`analytic`); `loh=False` unchanged (`snapshot`).
 """
 
 from __future__ import annotations
@@ -25,14 +11,13 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
+from port.sim.truth import COPY_LATTICE, LOH_EPSILON, LOH_STATES, dev_instance
 
 if TYPE_CHECKING:
     from port.sim.truth import CoreInferenceTruth
 
 
 def _truth(**overrides: object) -> CoreInferenceTruth:
-    from port.sim.truth import COPY_LATTICE, dev_instance
-
     settings: dict[str, object] = {
         "n_states": len(COPY_LATTICE),
         "copy_lattice": True,
@@ -44,8 +29,6 @@ def _truth(**overrides: object) -> CoreInferenceTruth:
 
 @pytest.mark.analytic
 def test_the_loh_states_are_their_integer_pairs_held_off_the_boundary() -> None:
-    from port.sim.truth import COPY_LATTICE, LOH_EPSILON, LOH_STATES
-
     truth = _truth()
     first = len(COPY_LATTICE)
     copies = np.asarray(LOH_STATES, dtype=np.float64)
@@ -105,8 +88,6 @@ def test_the_drawn_allele_fraction_is_the_planted_phase() -> None:
 
 @pytest.mark.snapshot
 def test_loh_off_draws_what_the_lattice_drew() -> None:
-    from port.sim.truth import COPY_LATTICE, dev_instance
-
     before = dev_instance(n_states=len(COPY_LATTICE), copy_lattice=True)
     again = _truth(loh=False)
 
@@ -117,8 +98,6 @@ def test_loh_off_draws_what_the_lattice_drew() -> None:
 
 @pytest.mark.infra
 def test_loh_is_refused_where_it_cannot_be_mirrored() -> None:
-    from port.sim.truth import dev_instance
-
     with pytest.raises(ValueError, match="needs copy_lattice"):
         dev_instance(loh=True)
     with pytest.raises(ValueError, match="two tumor clones"):

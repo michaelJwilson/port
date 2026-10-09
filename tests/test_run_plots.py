@@ -1,14 +1,24 @@
-"""T- #817: a `--sal` run's `cnamaste.h5` holds its stages as its own outputs state them, and `run_plots` draws its pages again byte for byte."""
+"""T- #817: a `--sal` run's `cnamaste.h5` against the run's own outputs; `run_plots` redraws them byte for byte."""
 
 from __future__ import annotations
 
+import dataclasses
 import os
+import shutil
 from collections.abc import Iterator
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
+from port.extensions import cnamaste as c
+from port.extensions.cnamaste import FILE
+from port.extensions.combined_figure import PAGES, recording, run_slide, write_pages
+from port.extensions.outputs import integer_clones
+from port.qa import stage
+from port.qa.audit import drawn_config, run_tables, score_sample
+from port.scripts.run_cnaster import main as run_cnaster_main
+from port.scripts.run_plots import main
 
 from tests import ROOT
 
@@ -21,10 +31,7 @@ RECORDED: dict[Path, object] = {}
 
 @pytest.fixture(scope="module")
 def output(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
-    """`run_cnaster_port --sal` on dev_tree_1s_hard r0 (`9ec90dc2`), its PDFs dated by `SOURCE_DATE_EPOCH=0`."""
-    from port.qa.audit import drawn_config
-    from port.scripts.run_cnaster import main
-    from port.studies import stage
+    """Run `run_cnaster_port --sal` on dev_tree_1s_hard r0 (`9ec90dc2`) at `SOURCE_DATE_EPOCH=0`."""
 
     root = tmp_path_factory.mktemp("run_plots")
     here, epoch = Path.cwd(), os.environ.get("SOURCE_DATE_EPOCH")
@@ -33,10 +40,10 @@ def output(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
     try:
         member = next(stage.members(MANIFEST, root / "sim", n=1))
         assert member.hash == "9ec90dc2"
-        from port.extensions.combined_figure import recording
-
         with recording() as recorded:
-            main(["--sal", str(drawn_config(member.sample, root / "run", {}))])
+            run_cnaster_main(
+                ["--sal", str(drawn_config(member.sample, root / "run", {}))]
+            )
         RECORDED[root / "run" / "output"] = recorded
         SAMPLES[root / "run" / "output"] = member.sample
         yield root / "run" / "output"
@@ -53,12 +60,9 @@ def output(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
 def test_run_plots_draws_every_page_the_run_wrote_byte_for_byte(
     output: Path, tmp_path: Path
 ) -> None:
-    """All 19 PDFs of a `--sal` run, from the file alone, against the run's own: the same bytes."""
-    from port.scripts.run_plots import main
+    """`run_plots` redraws all 19 PDFs of the run from the file alone, byte for byte."""
 
     assert main([str(output / "cnamaste.h5"), "--out", str(tmp_path)]) == 0
-
-    from port.extensions.combined_figure import PAGES
 
     # NB the run's own pages after `cnaster`'s (`combined_figure.PAGES`) are drawn from its calls, not the file
     wrote = sorted(
@@ -83,7 +87,6 @@ def test_the_stages_are_what_the_run_wrote(output: Path) -> None:
     `outputs.integer_clones`, on `cnv_seglevel.tsv` at its `merge_agreement`.
     Port writes no table of its own beside them (T- #817).
     """
-    from port.extensions import cnamaste as c
 
     h5 = output / c.FILE
     run = next(output.glob("clone*"))
@@ -99,7 +102,7 @@ def test_the_stages_are_what_the_run_wrote(output: Path) -> None:
         "normal_candidates",
     ]
     assert sum(g.startswith("figures/") for g in found) == 19
-    # NB a page holds references, not data, and each level's counts are written once
+    # NB pages hold references, not data; each level's counts are written once
     assert all(not c.read(h5, g)[0] for g in found if g.startswith("figures/"))
     assert sorted(g for g in found if g.startswith("counts/")) == [
         "counts/normal_candidates",
@@ -134,8 +137,7 @@ def test_the_stages_are_what_the_run_wrote(output: Path) -> None:
     ) as written:
         for ours, theirs in (("log_mu", "new_log_mu"), ("p_binom", "new_p_binom")):
             np.testing.assert_array_equal(fit[ours], np.ravel(written[theirs]))
-        # NB the stage's clones before `reindex_clones`, the npz's after: one permutation, which
-        #    the stage's assignment against `/clone_assignment` states
+        # NB the stage's clones precede `reindex_clones`: one permutation apart
         pairs = {
             (int(b), int(a))
             for b, a in zip(fit["assignment"], final["assignment"], strict=True)
@@ -147,8 +149,6 @@ def test_the_stages_are_what_the_run_wrote(output: Path) -> None:
         np.testing.assert_array_equal(reindexed, np.asarray(written["pred_cnv"]))
     assert fit_attrs["level"] == final_attrs["level"] == "normal_candidates"
     assert fit["pred_cnv"].shape[0] == len(seglevel)
-
-    from port.extensions.outputs import integer_clones
 
     integer, integer_attrs = c.read(h5, "integer_clones")
     names = integer_clones(seglevel, integer_attrs["merge_agreement"])
@@ -171,12 +171,6 @@ def test_the_audits_score_the_file_as_they_scored_the_tables(
     field is equal, both integer ARIs included, and the 0.99 merge QA scores
     holds as many clones as the run's own `/integer_clones`.
     """
-    import dataclasses
-    import shutil
-
-    from port.extensions import cnamaste
-    from port.extensions.cnamaste import FILE
-    from port.qa.audit import run_tables, score_sample
 
     tables = tmp_path / "output"
     shutil.copytree(output, tables, ignore=shutil.ignore_patterns(FILE, "plots"))
@@ -207,7 +201,7 @@ def test_the_audits_score_the_file_as_they_scored_the_tables(
     for key in ours:
         assert repr(ours[key]) == repr(theirs[key]), key
     # NB the 0.99 merge QA scores is the run's own, its default `merge_agreement`
-    held, attrs = cnamaste.read(output / cnamaste.FILE, "integer_clones")
+    held, attrs = c.read(output / FILE, "integer_clones")
     assert attrs["merge_agreement"] == 0.99
     assert ours["n_integer_clones_99"] == held["integer_ids"].size
 
@@ -222,7 +216,6 @@ def test_the_run_draws_the_paper_pages_from_its_own_calls(
 
     dev_tree_1s_hard has no slide, so `run_slide` is `None` and the slide panel is left empty.
     """
-    from port.extensions.combined_figure import PAGES, run_slide, write_pages
 
     plots = next(output.glob("clone*")) / "plots"
     config = output.parent / "config.yaml"

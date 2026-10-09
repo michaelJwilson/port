@@ -1,23 +1,17 @@
-"""The seam rebound one level up (#206), in the pieces that can be isolated.
+"""Pieces of the rebound `pipeline_clone_assignment` (#206, #59) against `cnaster`'s arithmetic.
 
-`pipeline_clone_assignment` is the name `port` rebinds so that #59's
-measured patches install at all -- each of them needs a call-site edit
-inside `cnaster.hmrf`, which is read only, and rebinding the caller is what
-makes those edits `port`'s to make. The whole-function claim is the
-whole-run one in `tests/test_patched_entry_point.py`: two `run_cnaster` runs
-compared artifact by artifact.
-
-What is here is the arithmetic that whole-run comparison cannot localize --
-the channel weight, the decoded layout, and the delegation that once called
-itself.
+Whole-run equivalence is in `tests/test_patched_entry_point.py`.
 """
 
 from typing import Any
 
+import cnaster.hmrf
 import numpy as np
 import pytest
-from port.patch.hmrf.clone_assignment import _decoded
+from port.patch.hmrf import clone_assignment
+from port.patch.hmrf.clone_assignment import _BOUNDARY, _decoded, boundary
 from port.patch.hmrf.invariants import BoundaryInvariants
+from port.pipeline import FIGURE_SWAPS, SWAPS, patched
 
 
 def _cnaster_weight(
@@ -26,12 +20,7 @@ def _cnaster_weight(
     indices: np.ndarray,
     indptr: np.ndarray,
 ) -> np.ndarray:
-    """`rel_valid_emision_weight` as `compute_loglike_spot_assignment` writes it.
-
-    Transcribed from `hmrf.py` rather than called, because `cnaster` computes
-    it inside an `njit` function that also computes the field and exposes
-    neither separately.
-    """
+    """`rel_valid_emision_weight` transcribed from `hmrf.py` (computed inside `njit` there)."""
     n_spots = len(indptr) - 1
     weight = np.ones(n_spots, dtype=np.float64)
 
@@ -52,13 +41,7 @@ def _cnaster_weight(
 @pytest.mark.patch
 @pytest.mark.parametrize("n_spots", [1, 7, 40])
 def test_the_channel_weight_is_cnasters_segment_sum(n_spots: int) -> None:
-    """A `bincount` over CSR rows, against the loop it replaces, bitwise.
-
-    The fixture carries the three cases the loop branches on: a spot whose
-    neighbourhood pools a zero RDR count, one that pools a zero BAF count,
-    and an **empty** neighbourhood -- which is where a `reduceat` would read
-    the next row instead of returning zero, and is why this is a `bincount`.
-    """
+    """CSR `bincount` weight equals `cnaster`'s loop bitwise, including empty neighbourhoods."""
     generator = np.random.default_rng(19)
 
     degrees = generator.integers(0, 4, n_spots)
@@ -79,13 +62,7 @@ def test_the_channel_weight_is_cnasters_segment_sum(n_spots: int) -> None:
 @pytest.mark.patch
 @pytest.mark.parametrize(("n_obs", "n_clones"), [(1, 1), (5, 3), (40, 4)])
 def test_the_flat_pred_is_read_as_cnaster_reads_it(n_obs: int, n_clones: int) -> None:
-    """`pred[c * n_obs + o]` is `decoded[o, c]`, entry by entry.
-
-    **The live pipeline passes the flat form**, which was found by delegating
-    on it and reading the log rather than by reading the call sites -- so the
-    layout here is the difference between a patch that runs and one that
-    never leaves its fallback.
-    """
+    """`pred[c * n_obs + o]` reads as `decoded[o, c]`, entry by entry."""
     flat = np.arange(n_obs * n_clones)
     decoded = _decoded(flat, n_obs)
 
@@ -95,25 +72,13 @@ def test_the_flat_pred_is_read_as_cnaster_reads_it(n_obs: int, n_clones: int) ->
         for position in range(n_obs):
             assert decoded[position, clone] == flat[clone * n_obs + position]
 
-    # A caller that already passed the two-dimensional form gets it back.
     square = flat.reshape(n_clones, n_obs).T
     assert _decoded(square, n_obs) is square
 
 
 @pytest.mark.infra
 def test_the_fallback_does_not_call_itself() -> None:
-    """The delegation resolves `cnaster`'s function at import, not at call.
-
-    `port.pipeline.patched()` imports this module to resolve the replacement
-    and *then* rebinds `cnaster.hmrf.pipeline_clone_assignment`, so a
-    delegation that looked the name up late would find itself. It did, and
-    the symptom was a `RecursionError` two minutes into a whole run --
-    reachable only from a real pipeline, which is why it is pinned here
-    where it costs nothing.
-    """
-    import cnaster.hmrf
-    from port.patch.hmrf import clone_assignment
-    from port.pipeline import patched
+    """The fallback binds `cnaster`'s function at import, so it cannot recurse into itself."""
 
     captured = clone_assignment.UPSTREAM
 
@@ -131,13 +96,7 @@ def test_the_fallback_does_not_call_itself() -> None:
 
 @pytest.mark.infra
 def test_the_swap_is_in_the_default_table() -> None:
-    """It reproduces `cnaster` bitwise, so it belongs with the rest.
-
-    The whole-run test is what establishes that; this pins that the row is
-    where that claim is asserted rather than in `FIGURE_SWAPS`, which is for
-    replacements that change their output.
-    """
-    from port.pipeline import FIGURE_SWAPS, SWAPS
+    """The swap is a default-table row, as it reproduces `cnaster` bitwise."""
 
     rows: Any = [swap for swap in SWAPS if swap.name == "pipeline_clone_assignment"]
 
@@ -148,19 +107,7 @@ def test_the_swap_is_in_the_default_table() -> None:
 
 @pytest.mark.patch
 def test_the_boundary_invariants_are_computed_once_per_dataset() -> None:
-    """#59 item 4, hoisted across calls rather than out of a loop body.
-
-    The two valid-segment counts and the channel weight derived from them are
-    functions of the input data, which the outer loop never fits, and
-    `cnaster` recomputes all three on every iteration.
-    `port.patch.hmrf.clone_assignment.boundary` returns the same object for the
-    same arrays, which is what "computed where they are constant" means when
-    the loop is inside a dependency this repository cannot edit.
-
-    The values are checked against a fresh computation too: a cache that
-    returned the same wrong answer twice would pass an identity check alone.
-    """
-    from port.patch.hmrf.clone_assignment import boundary
+    """Boundary invariants are cached per dataset and equal a fresh computation (#59 item 4)."""
 
     generator = np.random.default_rng(13)
 
@@ -183,18 +130,7 @@ def test_the_boundary_invariants_are_computed_once_per_dataset() -> None:
 
 @pytest.mark.smoke
 def test_the_invariant_cache_holds_the_arrays_it_is_keyed_on() -> None:
-    """Why the entry keeps references, and why there is only ever one.
-
-    The cache is keyed on `id()`, which is unique only while the object is
-    alive, so an entry that did not hold its arrays could be handed a
-    recycled address and answer with another dataset's counts. The arrays are
-    the pipeline's own inputs and outlive the loop regardless, so holding
-    them costs nothing.
-
-    One slot, because a run conditions on one dataset: a second entry would
-    mean something is calling the seam with data it did not load.
-    """
-    from port.patch.hmrf.clone_assignment import _BOUNDARY, boundary
+    """The single `id()`-keyed cache entry holds references to its arrays."""
 
     first = np.ones((4, 3))
     second = np.ones((4, 3))

@@ -1,33 +1,10 @@
 """CalicoST, run on the configuration `run_cnaster_port` reads (#347).
 
-`run_calicost config.yaml` reads the `run_cnaster` YAML, writes the
-`key : value` file CalicoST reads, and calls `calicost.calicost_main.main` in
-this process. The inputs are the same files: `spaceranger_dir` and `snp_dir`
-from the sample sheet, and the configuration's gene table and genetic map.
-CalicoST writes into `<output_dir>_calicost`, because both programs name their
-run directory `clone{n}_rectangle{r}_w{w}` and would overwrite each other.
-
-**It is an adapter, not a fork.** Nothing in CalicoST is edited. What differs
-from a plain `calicost_main.main` call is one of two kinds, and the two are
-kept apart:
-
-- `compatible()`: what CalicoST at `c1abcae` needs to import and run in this
-  environment at all. That is `turtle` (imported and unused, and it needs
-  tkinter), `np.NAN` (removed in numpy 2), `spmatrix.A` (removed in scipy 1.14)
-  and `Series.nonzero` (removed in pandas 1.0, and called by scipy 1.18 on a
-  boolean mask). None of these changes a result.
-- `aligned(config)`: the constants CalicoST hard-codes, set to the values the
-  `run_cnaster` configuration gives `cnaster`, where a keyword argument
-  reaches them. It is on by default; `--no-align` runs CalicoST's own
-  constants on the same inputs. `ALIGNED` lists what it sets, and
-  `UNALIGNED` lists what it cannot reach.
-
-`terminating()` refuses, with an error, the one input found on which
-CalicoST's rectangle initializer loops forever; it is on in both modes,
-because a hang is not a result.
-
-`--no-figures` stubs CalicoST's three plotting calls. CalicoST writes its
-figures after its tables, so the tables do not depend on the flag.
+Translates the `run_cnaster` YAML to CalicoST's `key : value` file and calls
+`calicost.calicost_main.main` in-process, writing to `<output_dir>_calicost`.
+An adapter, not a fork: `compatible()` shims imports for this environment,
+`aligned()` sets hard-coded constants to the configuration's (`ALIGNED`;
+`UNALIGNED` it cannot reach), and `terminating()` refuses a looping initializer.
 """
 
 from __future__ import annotations
@@ -111,11 +88,7 @@ def _sample(sheet: Path) -> tuple[Path, Path]:
 
 
 def input_filelist(sheet: Path) -> str:
-    """CalicoST's `input_filelist` for a sheet of several slices (#494).
-
-    CalicoST's joint loader reads it without a header: bam, sample_id and
-    spaceranger_dir per slice (`utils_IO.load_joint_data`).
-    """
+    """CalicoST's headerless `input_filelist` (bam, sample_id, spaceranger_dir) for several slices (#494)."""
     rows = _slices(sheet)[["bam", "sample_id", "spaceranger_dir"]]
     return "".join("\t".join(map(str, row)) + "\n" for row in rows.itertuples(False))
 
@@ -125,13 +98,7 @@ def _none(value: Any) -> Any:
 
 
 def calicost_config(document: dict[str, Any]) -> dict[str, Any]:
-    """CalicoST's keys, from a `run_cnaster` configuration.
-
-    Each value is the `run_cnaster` value where the two programs share a key
-    or a meaning. Keys with no `run_cnaster` counterpart take the value that
-    comes closest to `cnaster`'s behaviour, with the reason stated beside
-    each one.
-    """
+    """CalicoST's keys from a `run_cnaster` configuration; unshared keys take `cnaster`'s nearest behaviour."""
     paths, quality = document["paths"], document["quality"]
     hmrf, hmm = document["hmrf"], document["hmm"]
     phasing, references = document["phasing"], document["references"]
@@ -149,11 +116,9 @@ def calicost_config(document: dict[str, Any]) -> dict[str, Any]:
         "tumorprop_file": _none(document["preprocessing"]["tumorprop_file"]),
         "filtergenelist_file": _none(references["filtergenelist_file"]),
         "filterregion_file": _none(references["filterregion_file"]),
-        # NB CalicoST's `secondary_min_umi` counts SNP UMIs per bin
-        #    (`create_bin_ranges`), which is `cnaster`'s `secondary_min_snp_umi`.
+        # NB CalicoST's `secondary_min_umi` is SNP UMIs per bin, as `cnaster`'s.
         "secondary_min_umi": quality["secondary_min_snp_umi"],
-        # NB one threshold on both a spot's total UMIs (`>`) and its SNP UMIs
-        #    (`>=`), where `cnaster` thresholds SNP UMIs alone.
+        # NB thresholds total (`>`) and SNP (`>=`) UMIs; `cnaster` only SNP UMIs.
         "min_snpumi_perspot": quality["spot_min_snp_umis"],
         "min_percent_expressed_spots": quality["min_percent_expressed_spots"],
         "bafonly": document["run"]["bafonly"],
@@ -164,15 +129,13 @@ def calicost_config(document: dict[str, Any]) -> dict[str, Any]:
         "n_clones_rdr": hmrf["n_clones_rdr"],
         "min_spots_per_clone": hmrf["min_spots_per_clone"],
         "min_avgumi_per_clone": hmrf["min_avgumi_per_clone"],
-        # NB `cnaster` passes `maxspots_pooling=1` whatever is configured
-        #    (`run_cnaster.py:531`): no pooling, which is 1 here too.
+        # NB `cnaster` passes `maxspots_pooling=1` regardless (`run_cnaster.py:531`).
         "maxspots_pooling": 1,
         "tumorprop_threshold": hmrf["tumorprop_threshold"],
         "max_iter_outer": hmrf["max_iter_outer"],
-        # NB `cnaster` scores a clone by its argmax path; "max" is CalicoST's
-        #    argmax, "weighted_sum" (its default) the posterior-weighted one.
+        # NB `cnaster` scores a clone by its argmax path: CalicoST's "max".
         "nodepotential": "max",
-        # NB one initialization, seeded as `cnaster`'s `random_state` is.
+        # NB one initialization, seeded as `cnaster`'s `random_state`.
         "num_hmrf_initialization_start": start,
         "num_hmrf_initialization_end": start + 1,
         "spatial_weight": hmrf["spatial_weight"],
@@ -189,9 +152,8 @@ def calicost_config(document: dict[str, Any]) -> dict[str, Any]:
         "max_iter": hmm["max_iter"],
         "tol": hmm["tol"],
         "gmm_random_state": hmm["gmm_random_state"],
-        # NB `cnaster`'s Neyman-Pearson merge is commented out
-        #    (`run_cnaster.py:744`); at -inf CalicoST merges only clones whose
-        #    decoded paths agree at every bin.
+        # NB `cnaster`'s Neyman-Pearson merge is commented out (`run_cnaster.py:744`);
+        #    at -inf CalicoST merges only clones with identical paths.
         "np_threshold": -math.inf,
         "np_eventminlen": 0,
         "nonbalance_bafdist": copies.get("nonbalance_bafdist", 1.0),
@@ -199,9 +161,7 @@ def calicost_config(document: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-#: The keys `--shipped` takes from the run's configuration: where the inputs
-#: are and where the output goes, with `spaceranger_dir` for one slice or
-#: `input_filelist` for several. Every other value is the shipped file's.
+#: Keys `--shipped` takes from the run's configuration; the rest are the shipped file's.
 PATHS = (
     "snp_dir",
     "output_dir",
@@ -215,11 +175,8 @@ PATHS = (
 def shipped_config(document: dict[str, Any], shipped: Path) -> dict[str, Any]:
     """CalicoST's own configuration file, its paths replaced by the run's (#494).
 
-    CalicoST's tutorial runs its simulated example on `configuration_cna` as
-    shipped, filling in the paths and keeping every other value; this does
-    the same. A sheet of several slices takes CalicoST's joint file,
-    `configuration_cna_multi`, and :func:`main` writes its `input_filelist`.
-    Values are kept as the file's text, which CalicoST parses itself.
+    `configuration_cna` for one slice, `configuration_cna_multi` for several
+    (raises ValueError on a mismatch); values kept as text.
     """
     config: dict[str, Any] = {}
 
@@ -278,11 +235,7 @@ def _text(value: Any) -> str:
 
 
 def write_calicost_config(config: dict[str, Any], path: Path) -> Path:
-    """Write `config` as CalicoST's `key : value` file.
-
-    CalicoST splits each line on every `:`, so a value containing one would be
-    read truncated; that is refused rather than written.
-    """
+    """Write `config` as CalicoST's `key : value` file; raises ValueError on a `:` in a value."""
     lines = []
 
     for key, value in config.items():
@@ -319,8 +272,7 @@ def compatible() -> Iterator[None]:
 
     with ExitStack() as stack:
         if "turtle" not in sys.modules:
-            # NB `from turtle import reset` at `hmrf.py:2` and `phasing.py:2`,
-            #    unused, and `turtle` needs tkinter.
+            # NB imported unused by CalicoST; `turtle` needs tkinter.
             turtle = types.ModuleType("turtle")
             turtle.reset = lambda: None  # type: ignore[attr-defined]
             stack.enter_context(_set_module("turtle", turtle))
@@ -331,9 +283,7 @@ def compatible() -> Iterator[None]:
                 _set(scipy.sparse.spmatrix, "A", property(lambda s: s.toarray()))
             )
         if not hasattr(pd.Series, "nonzero"):
-            # NB CalicoST masks sparse matrices with a boolean `Series`
-            #    (`utils_IO.py:59`); scipy 1.18 calls `.nonzero()` on the
-            #    mask, which pandas removed in 1.0.
+            # NB scipy 1.18 calls `.nonzero()` on CalicoST's boolean `Series` mask.
             stack.enter_context(
                 _set(pd.Series, "nonzero", lambda s: s.to_numpy().nonzero())
             )
@@ -354,8 +304,7 @@ def _palette(
 ) -> tuple[dict[tuple[int, int], Any], list[tuple[int, int]]]:
     """CalicoST's `get_full_palette`, extended to every pair up to `cap`.
 
-    `original` is CalicoST's function, taken before `aligned` rebinds the
-    name: read through the module afterwards, it is this one, and recurses.
+    `original` is captured before `aligned` rebinds the name, avoiding recursion.
     """
     import matplotlib as mpl
 
@@ -442,11 +391,8 @@ def aligned(document: dict[str, Any]) -> Iterator[None]:
                 ),
             )
         )
-        # NB CalicoST's figures colour `(major, minor)` pairs from a table
-        #    that stops at total 6 (`utils_plotting.py:23`), so a state the
-        #    raised cap decodes, `(5, 2)` on the quadrant fixture, is a
-        #    `KeyError` after every table is written. Its own colours are
-        #    kept; the pairs above them are added, graded by total.
+        # NB CalicoST's palette stops at total 6 (`utils_plotting.py:23`), so a
+        #    raised cap would `KeyError` in the figures; pairs above are added.
         stack.enter_context(
             _set(
                 utils_plotting,
@@ -493,19 +439,11 @@ class UnterminatedInitialization(RuntimeError):
 
 @contextmanager
 def terminating() -> Iterator[None]:
-    """Refuse the initialization CalicoST would loop on forever.
+    """Refuse the initialization CalicoST would loop on forever (#347; cnaster #248).
 
-    `rectangle_initialize_initial_clone` (`utils_hmrf.py:177`) draws its
-    blocks once, then redraws only the block-to-clone map until every clone
-    holds more than `0.2 * n_spots / n_clones` spots. With `p * p == n_clones`
-    blocks the map is a permutation, so the smallest clone is the smallest
-    block on every draw: if that block is under the floor, the loop never
-    ends. Measured on the dev instance at `n_clones_rdr = 4`: 8 spots against
-    a floor of 14.75, in the first BAF clone. `cnaster` #248 is the same
-    defect in the code rewritten from this.
-
-    The check draws the blocks with CalicoST's own seed and arithmetic and
-    then calls CalicoST, which reseeds, so a run that terminates is unchanged.
+    With `p * p == n_clones` blocks the smallest block is always a clone, so
+    a block under `0.2 * n_spots / n_clones` never terminates. Raises
+    UnterminatedInitialization; a terminating run is unchanged.
     """
     from calicost import calicost_main
 

@@ -1,21 +1,18 @@
 """The phased HMM's posteriors from sal's Kronecker-switch ragged kernel (#426, sal #1133).
 
-Referee: `cnaster.hmm_phased`'s own forward and backward lattices,
-normalized as `get_state_posteriors` normalizes them, under both switch
-variants. Realized 2.0e-13 (`KRONECKER`) and 2.3e-13 (`KRONECKER_DIAGONAL`)
-at the gate instance, 4.3e-10 at 10,000 positions, ten states and twenty
-spots; stated at 1e-9.
-
-Not on the run's path: at that stress size it takes 0.212 s against the Rust
-lattices' 0.033 s the run already uses (#318), and `cnaster`'s 0.125 s.
+Referee: `cnaster.hmm_phased`'s forward and backward lattices normalized as
+`get_state_posteriors` does, to 1e-9. Not on the run's path (#318).
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+import cnaster.hmm_phased as phased
 import numpy as np
 import pytest
+from port.qa.kronecker_posteriors import kronecker_state_posteriors
+from sal.likelihood.ragged import kronecker_order
 from scipy.special import logsumexp
 
 
@@ -46,8 +43,6 @@ def test_the_kronecker_posteriors_are_cnasters_lattices(
     diagonal: bool, shape: tuple[int, tuple[int, ...], int]
 ) -> None:
     """Both variants, including a one-position segment, to 1e-9."""
-    import cnaster.hmm_phased as phased
-    from port.extensions.kronecker_posteriors import kronecker_state_posteriors
 
     arguments = _instance(*shape)
     model = phased.hmm_phased()
@@ -67,7 +62,6 @@ def test_the_kronecker_posteriors_are_cnasters_lattices(
 @pytest.mark.parametrize("n_states", range(1, 10))
 def test_kronecker_order_is_the_reorder_it_replaces(n_states: int) -> None:
     """sal #1144's `kronecker_order` against the index port built (T- #632): a permutation, so bitwise."""
-    from sal.likelihood.ragged import kronecker_order
 
     ours = (2 * np.arange(n_states)[None, :] + np.arange(2)[:, None]).reshape(-1)
     order = kronecker_order(2 * n_states, layer_major=True)

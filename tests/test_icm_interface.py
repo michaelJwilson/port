@@ -1,26 +1,20 @@
-"""The reduced label-solver interface, pinned bitwise against `cnaster`.
+"""`port.patch.icm.interface`'s eight-parameter solver call, bitwise against cnaster's
+fifteen-argument `icm_sweep_deque` (#59 item 5).
 
-Issue #59 item 5. `port.patch.icm.interface` presents
-`cnaster.icm.icm_sweep_deque`'s fifteen parameters as eight, by folding the
-terms the solver adds inside its own inner loop into the field it is given
-and by passing one graph as one argument.
-
-**The claim is equivalence, and nothing else.** `CLAUDE.md`: a patch that
-makes the existing code plainer is worth landing on its evidence of
-equivalence alone. So every test here is a bitwise comparison against the
-fifteen-argument call on the same problem, and the dropped parameters each
-carry a test showing what happens to them -- folded, or never read.
-
-The sweep draws from the legacy global `numpy` RNG for its queue order, so
-each comparison seeds it identically before both calls. That is a property
-of `cnaster`'s solver, recorded in `test_the_sweep_is_not_reproducible`
-rather than worked around silently.
+Each comparison seeds the legacy global RNG identically, since the sweep's queue order
+draws from it.
 """
+
+import inspect
 
 import numpy as np
 import pytest
+from cnaster import icm
 from port.patch.icm.interface import CsrGraph, fold_unary, icm_sweep
 from scipy.sparse import csr_matrix
+
+from tests.adapters import cnaster_sweep
+from tests.builders import random_graph
 
 N_SPOTS = 400
 N_CLONES = 4
@@ -32,64 +26,19 @@ SEED = 6_803
 def _problem(
     seed: int = SEED,
 ) -> tuple[np.ndarray, csr_matrix, np.ndarray, np.ndarray]:
-    """A field, a spatial graph, a labelling and the sample each spot is in.
-
-    The field is drawn rather than scored: what the solver does with it
-    depends on the differences between clones, not on their being
-    log-densities, and issue #59's items 1 and 2 are where the field's
-    provenance is the subject.
-    """
+    """A drawn field, a spatial graph, a labelling and each spot's sample."""
     rng = np.random.default_rng(seed)
 
     field = rng.normal(-50.0, 5.0, (N_SPOTS, N_CLONES))
 
-    rows, cols, data = [], [], []
-    for spot in range(N_SPOTS):
-        for neighbour in rng.choice(
-            N_SPOTS, size=int(rng.integers(2, 8)), replace=False
-        ):
-            rows.append(spot)
-            cols.append(int(neighbour))
-            data.append(float(rng.uniform(0.5, 2.0)))
-
-    graph = csr_matrix((data, (rows, cols)), shape=(N_SPOTS, N_SPOTS))
+    graph = random_graph(rng, N_SPOTS, (2, 8))
     assignment = rng.integers(0, N_CLONES, N_SPOTS)
     sample_ids = rng.integers(0, N_SAMPLES, N_SPOTS)
 
     return field, graph, assignment, sample_ids
 
 
-def _cnaster_sweep(
-    field: np.ndarray,
-    graph: csr_matrix,
-    assignment: np.ndarray,
-    spatial_weight: float,
-    *,
-    seed: int,
-    posterior: np.ndarray | None = None,
-    **kwargs: object,
-) -> tuple[np.ndarray, int, float]:
-    """The fifteen-argument call, as `hmrf.py:307` makes it."""
-    from cnaster.icm import icm_sweep_deque
-
-    # NPY002 is the finding, not the violation: `cnaster`'s sweep shuffles
-    # its queue with the legacy global RNG, so a `Generator` cannot reach it.
-    np.random.seed(seed)  # noqa: NPY002
-    labels = assignment.copy()
-
-    niter, cost = icm_sweep_deque(
-        single_llf=field,
-        adj_indptr=graph.indptr,
-        adj_indices=graph.indices,
-        adj_weights=graph.data,
-        new_assignment=labels,
-        spatial_weight=spatial_weight,
-        posterior=posterior,
-        min_clone_spots=0,
-        **kwargs,
-    )
-
-    return labels, int(niter), float(cost)
+_cnaster_sweep = cnaster_sweep
 
 
 def _patched_sweep(
@@ -101,8 +50,7 @@ def _patched_sweep(
     seed: int,
 ) -> tuple[np.ndarray, int, float]:
     """The eight-parameter call, on an already-folded field."""
-    # NPY002 is the finding, not the violation: `cnaster`'s sweep shuffles
-    # its queue with the legacy global RNG, so a `Generator` cannot reach it.
+    # NPY002: cnaster's sweep shuffles with the legacy global RNG.
     np.random.seed(seed)  # noqa: NPY002
     labels = assignment.copy()
 
@@ -124,12 +72,7 @@ def _assert_same(
 @pytest.mark.patch
 @pytest.mark.parametrize("seed", [11, 23])
 def test_the_reduced_call_is_bitwise_cnasters(seed: int) -> None:
-    """Same labelling, same iteration count, same cost, on the plain problem.
-
-    Bitwise because the patch reorders no arithmetic: it passes `cnaster`'s
-    own solver the same floats through fewer arguments. A tolerance here
-    would be admitting that something moved.
-    """
+    """Same labelling, iteration count and cost on the plain problem, bitwise."""
     field, graph, assignment, _ = _problem()
 
     expected = _cnaster_sweep(field, graph, assignment, BETA, seed=seed)
@@ -141,14 +84,7 @@ def test_the_reduced_call_is_bitwise_cnasters(seed: int) -> None:
 
 @pytest.mark.patch
 def test_the_per_sample_weights_fold_bitwise() -> None:
-    """`log_persample_weights[c, sample_ids[i]]`, added once instead of per visit.
-
-    `cnaster` adds it to `single_llf[i, c]` before the edge term, left to
-    right; `fold_unary` performs that same first addition once. The floats
-    and their order are identical, so the labelling is too -- and if the fold
-    had transposed the indexing, the weights would still be the right
-    numbers in the wrong places and this would fail.
-    """
+    """Folding `log_persample_weights[c, sample_ids[i]]` once matches cnaster's per- visit add, bitwise."""
     field, graph, assignment, sample_ids = _problem()
 
     rng = np.random.default_rng(SEED)
@@ -175,13 +111,7 @@ def test_the_per_sample_weights_fold_bitwise() -> None:
 
 @pytest.mark.patch
 def test_the_allowed_clone_mask_folds_bitwise() -> None:
-    """`onehot_allowed_clones`, folded as `-inf` rather than branched on.
-
-    `cnaster` overwrites the cost with `-inf` **after** adding the edge term;
-    the fold writes `-inf` before it. They agree because `-inf` plus a finite
-    number is `-inf`, which is asserted separately in
-    `test_the_mask_is_exact_under_the_edge_term`.
-    """
+    """`onehot_allowed_clones` folded as `-inf` matches cnaster's post-edge-term overwrite, bitwise."""
     field, graph, assignment, _ = _problem()
 
     rng = np.random.default_rng(SEED)
@@ -208,12 +138,7 @@ def test_the_allowed_clone_mask_folds_bitwise() -> None:
 @pytest.mark.patch
 @pytest.mark.parametrize("temp", [0.5, 2.0])
 def test_the_temperature_folds_into_the_coupling(temp: float) -> None:
-    """`spatial_weight / temp` is the only use `temp` has.
-
-    So the reduced interface takes the quotient. Bitwise because `cnaster`
-    forms exactly that quotient once, before the sweep, and the patch forms
-    it in the caller instead.
-    """
+    """Passing `spatial_weight / temp` matches cnaster's own quotient, bitwise."""
     field, graph, assignment, _ = _problem()
 
     expected = _cnaster_sweep(field, graph, assignment, BETA, seed=SEED, temp=temp)
@@ -224,14 +149,7 @@ def test_the_temperature_folds_into_the_coupling(temp: float) -> None:
 
 @pytest.mark.bug
 def test_the_posterior_argument_is_never_read_or_written() -> None:
-    """The dropped parameter, shown dead rather than asserted to be.
-
-    `posterior` is a **required positional** whose only uses in the live body
-    are commented out, and `hmrf.py:314` passes `None` to it. Dropping it
-    from the interface is therefore free -- but only if that is true, so it
-    is driven: a finite array is passed in, and it comes back untouched while
-    the sweep produces the same labelling as passing `None`.
-    """
+    """`posterior` is unread: a finite array comes back untouched and the labelling equals `None`'s."""
     field, graph, assignment, _ = _problem()
 
     posterior = np.full((N_SPOTS, N_CLONES), 0.25)
@@ -248,17 +166,7 @@ def test_the_posterior_argument_is_never_read_or_written() -> None:
 
 @pytest.mark.patch
 def test_the_live_sweep_is_the_csr_one() -> None:
-    """Which of the four `icm_sweep_deque` definitions `cnaster.icm` exports.
-
-    `icm.py` binds that name at lines 363, 513, 658 and 807. Only the last
-    survives the module body, and it takes CSR where the first takes the COO
-    triple `hmrf.py:284-285` still builds. The patch wraps the live one, so a
-    reordering of `icm.py` that changed the winner would change the solver
-    silently -- this is what would have to be wrong for this to fail.
-    """
-    import inspect
-
-    from cnaster import icm
+    """`cnaster.icm` exports the last of four `icm_sweep_deque` definitions, the CSR one the patch wraps."""
 
     source = inspect.getsource(icm)
     assert source.count("\ndef icm_sweep_deque(") == 4, "the shadowing changed"
@@ -272,22 +180,14 @@ def test_the_live_sweep_is_the_csr_one() -> None:
 
 @pytest.mark.bug
 def test_the_sweep_is_not_reproducible_without_seeding_a_global() -> None:
-    """Why every comparison above seeds `np.random`.
-
-    `cnaster`'s sweep shuffles its queue with the legacy global RNG, which is
-    neither seeded nor threaded through a `Generator`. Two runs of one
-    problem give two answers. Recorded, not fixed: seeding it inside the
-    patch would be a behaviour change hiding inside an interface change.
-    """
+    """Two unseeded runs of cnaster's sweep differ: it shuffles with the legacy global RNG."""
     field, graph, assignment, _ = _problem()
 
-    # NPY002 is the finding, not the violation: `cnaster`'s sweep shuffles
-    # its queue with the legacy global RNG, so a `Generator` cannot reach it.
+    # NPY002: cnaster's sweep shuffles with the legacy global RNG.
     np.random.seed(1)  # noqa: NPY002
     first = _patched_sweep(field, graph, assignment, BETA, seed=1)
 
-    # NPY002 is the finding, not the violation: `cnaster`'s sweep shuffles
-    # its queue with the legacy global RNG, so a `Generator` cannot reach it.
+    # NPY002: cnaster's sweep shuffles with the legacy global RNG.
     np.random.seed(2)  # noqa: NPY002
     second = _patched_sweep(field, graph, assignment, BETA, seed=2)
 
@@ -296,12 +196,7 @@ def test_the_sweep_is_not_reproducible_without_seeding_a_global() -> None:
 
 @pytest.mark.smoke
 def test_the_mask_is_exact_under_the_edge_term() -> None:
-    """`-inf + finite == -inf`, which is what makes the fold exact.
-
-    The fold moves the mask from after the edge term to before it. That is
-    only equivalent while the edge term is finite -- it is a sum of edge
-    weights -- so the property is pinned rather than assumed.
-    """
+    """`-inf + finite == -inf`, which makes the fold exact."""
     edge = np.array([0.0, 1e300, -1e300, np.finfo(np.float64).max])
 
     assert np.all(-np.inf + edge == -np.inf)
@@ -309,11 +204,7 @@ def test_the_mask_is_exact_under_the_edge_term() -> None:
 
 @pytest.mark.smoke
 def test_the_fold_leaves_the_field_it_was_given() -> None:
-    """A copy, not a write-through.
-
-    The unfolded field is what the next outer iteration recomputes against,
-    and `cnaster` reads `single_llf` after the sweep for `merge_assignment`.
-    """
+    """Folding returns a copy; cnaster reads the unfolded field after the sweep."""
     field, _, _, sample_ids = _problem()
     witness = field.copy()
 
@@ -341,12 +232,7 @@ def test_the_fold_leaves_the_field_it_was_given() -> None:
 def test_the_fold_refuses_a_shape_it_cannot_index(
     kwargs: dict[str, np.ndarray], match: str
 ) -> None:
-    """Broadcasting here would silently score the wrong clone.
-
-    A `(n_clones + 1, n_samples)` weight and a wider mask both have shapes
-    `numpy` is willing to do something with, and what it does is not what the
-    solver was asked for.
-    """
+    """Mis-shaped weights or mask raise rather than broadcast."""
     field, _, _, _ = _problem()
 
     with pytest.raises(ValueError, match=match):
@@ -355,12 +241,7 @@ def test_the_fold_refuses_a_shape_it_cannot_index(
 
 @pytest.mark.smoke
 def test_the_graph_is_the_matrixs_own_arrays() -> None:
-    """`CsrGraph.from_matrix` names the call site's expression, it does not copy.
-
-    `hmrf.py:309-311` passes these three attributes. A copy here would add an
-    allocation per outer iteration to an interface change that is supposed to
-    cost nothing.
-    """
+    """`CsrGraph.from_matrix` references the matrix's arrays without copying."""
     _, graph, _, _ = _problem()
     wrapped = CsrGraph.from_matrix(graph)
 

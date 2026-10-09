@@ -1,17 +1,20 @@
 """`run_cnaster_port`'s defaults of port's own (`port.pipeline.DEFAULTS`, T- #617 rule 8).
 
-`--sal` selects sal's labelling, the `kmeans++x5+em` start and the segment
-floor; the refinement mask and the floor merge are on in every patched arm,
-each with an off flag. The floor stays `--sal`'s (PR- #645). What is pinned: each arm's settings
-(`infra`), and that the `--sal` arm resolves as it did before the move.
+Pins each arm's settings (`infra`) and that `--sal` resolves as before the move (PR-
+#645).
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
+import cnaster.scripts.run_cnaster as pipeline
+import port.scripts.run_cnaster as entry
 import pytest
+from port.pipeline import DEFAULTS, SWAPS, with_options
+from port.scripts.run_cnaster import GENOMIC_FIGURE, Settings
 
 ARMS = {
     (): (False, True, True, "none"),
@@ -29,9 +32,7 @@ ARMS = {
 
 
 def _settings(*flags: str) -> tuple[bool, bool, bool, str]:
-    from port.scripts.run_cnaster import _parser, _settings
-
-    settings = _settings(_parser().parse_args(["config.yaml", *flags]))
+    settings = entry._settings(entry._parser().parse_args(["config.yaml", *flags]))
     return (
         settings.min_segment_normal_umi,
         settings.refinement_mask,
@@ -50,25 +51,22 @@ def test_each_arm_resolves_port_defaults(flags: tuple[str, ...]) -> None:
 @pytest.mark.infra
 def test_the_defaults_table_names_settings_and_flags() -> None:
     """Every `DEFAULTS` row is a `Settings` field with a flag that turns it off."""
-    from port.pipeline import DEFAULTS
-    from port.scripts.run_cnaster import Settings, _parser, _settings
 
     for default in DEFAULTS:
         assert default.setting in Settings._fields
         off = f"--no-{default.flag.removeprefix('--')}"
-        settings = _settings(_parser().parse_args(["config.yaml", off]))
+        settings = entry._settings(entry._parser().parse_args(["config.yaml", off]))
         assert getattr(settings, default.setting) is False
 
 
 @pytest.mark.infra
 def test_the_segment_floor_is_refused_where_its_row_is_not_installed() -> None:
     """`--no-patch` leaves `create_bin_ranges` out, so asking for its floor is an error."""
-    from port.scripts.run_cnaster import _parser, _refusals, _settings
 
-    arguments = _parser().parse_args(
+    arguments = entry._parser().parse_args(
         ["config.yaml", "--no-patch", "--min-segment-normal-umi"]
     )
-    refused = _refusals(arguments, _settings(arguments))
+    refused = entry._refusals(arguments, entry._settings(arguments))
 
     assert any("--min-segment-normal-umi" in refusal for refusal in refused)
 
@@ -76,12 +74,11 @@ def test_the_segment_floor_is_refused_where_its_row_is_not_installed() -> None:
 @pytest.mark.infra
 def test_an_hmm_start_is_refused_without_the_shift_row_that_reads_it() -> None:
     """`--sal --no-shift` printed an HMM start it never bound (T- #617)."""
-    from port.scripts.run_cnaster import _parser, _refusals, _settings
 
-    arguments = _parser().parse_args(
+    arguments = entry._parser().parse_args(
         ["config.yaml", "--no-shift", "--no-copy-cap", "--hmm-start", "lattice"]
     )
-    refused = _refusals(arguments, _settings(arguments))
+    refused = entry._refusals(arguments, entry._settings(arguments))
 
     assert any(refusal.startswith("--hmm-start") for refusal in refused)
 
@@ -89,7 +86,6 @@ def test_an_hmm_start_is_refused_without_the_shift_row_that_reads_it() -> None:
 @pytest.mark.infra
 def test_an_option_for_a_row_not_selected_is_refused() -> None:
     """`with_options` dropped it silently, so the option never reached the run."""
-    from port.pipeline import SWAPS, with_options
 
     with pytest.raises(ValueError, match="no selected row installs"):
         with_options(SWAPS, "port.patch.plot_genomic:plot_clones_genomic", x=1)
@@ -97,10 +93,6 @@ def test_an_option_for_a_row_not_selected_is_refused() -> None:
 
 def _selected(monkeypatch: pytest.MonkeyPatch, tmp_path: Any, *flags: str) -> Any:
     """The rows `main` installs for `flags`, with `cnaster`'s run stubbed out."""
-    from contextlib import contextmanager
-
-    import cnaster.scripts.run_cnaster as pipeline
-    import port.scripts.run_cnaster as entry
 
     seen: list[Any] = []
 
@@ -126,7 +118,6 @@ def test_the_shift_draws_its_genomic_line_with_or_without_the_figure_swaps(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Any, figures: str
 ) -> None:
     """`cnaster`'s figure drew the line at `mu` and the points at `mu / Z_c` (T- #617)."""
-    from port.scripts.run_cnaster import GENOMIC_FIGURE
 
     rows = [
         swap
@@ -143,7 +134,6 @@ def test_without_the_shift_or_the_figures_cnaster_draws_its_own_genomic_figure(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Any
 ) -> None:
     """Nothing to correct, so no figure row."""
-    from port.scripts.run_cnaster import GENOMIC_FIGURE
 
     selected = _selected(monkeypatch, tmp_path, "--no-figure-swaps", "--no-shift")
 

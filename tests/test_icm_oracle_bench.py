@@ -1,19 +1,6 @@
-"""What the label solvers cost, `cnaster` against upstream's two (#140).
+"""Benchmark: `cnaster`'s `icm_sweep_deque` against upstream's ICM and alpha expansion (#140, #8).
 
-Three solvers on one instance and one objective, so the numbers are
-comparable: `cnaster`'s `icm_sweep_deque`, upstream's
-`iterated_conditional_modes` -- the same move set, which is what makes it a
-fair baseline -- and `alpha_expansion`, a stronger one.
-
-`tests/test_icm_oracle.py` establishes what each buys: the sweep is
-single-site optimal, and expansion lowers its energy by 4.62 from the same
-start. These say what that costs, so #8's question -- whether `cnaster`
-should use a stronger solver -- has both halves.
-
-No ratio is asserted. Upstream's ICM defaults to its `numba` backend and
-`cnaster`'s is `njit` throughout, so a first call pays compilation; the
-benchmark's own warmup absorbs it, which is why these are timed here rather
-than inferred from a test's wall clock.
+Gate 400 nodes, stress 3,600; no ratio asserted. Agreement is `test_icm_oracle.py`'s.
 """
 
 from collections.abc import Callable
@@ -23,7 +10,7 @@ import numpy as np
 import pytest
 from pytest_benchmark.fixture import BenchmarkFixture
 
-from tests.adapters import cnaster_icm_labelling
+from tests.adapters import cnaster_icm_labelling, upstream_expansion, upstream_icm
 from tests.fixtures import PottsLabels, potts_labels, scaled_graph, tiers
 
 if TYPE_CHECKING:
@@ -33,7 +20,7 @@ GATE_SHAPE = (20, 20)
 """400 nodes, three clones: the per-pull-request size."""
 
 STRESS_SHAPE = (60, 60)
-"""3,600 nodes, an order of magnitude up, where a move set's cost shows."""
+"""3,600 nodes, an order of magnitude up."""
 
 
 def _cnaster_sweep(fixture: PottsLabels, _: "PottsGraph", start: np.ndarray) -> Any:
@@ -41,31 +28,28 @@ def _cnaster_sweep(fixture: PottsLabels, _: "PottsGraph", start: np.ndarray) -> 
 
 
 def _upstream_icm(fixture: PottsLabels, graph: "PottsGraph", _: np.ndarray) -> Any:
-    from sal.search.icm import iterated_conditional_modes
-
-    return iterated_conditional_modes(graph, fixture.field, np.random.default_rng(0))
+    return upstream_icm(fixture, graph)
 
 
 def _upstream_expansion(
     fixture: PottsLabels, graph: "PottsGraph", _: np.ndarray
 ) -> Any:
-    from sal.backend import Backend
-    from sal.search.alpha_expansion import alpha_expansion
+    return upstream_expansion(fixture, graph)
 
-    # NB PYTHON was the default before e0aeb19 made it RUST (#410).
-    return alpha_expansion(graph, fixture.field, backend=Backend.PYTHON)
+
+def _sized(shape: tuple[int, int]) -> tuple[PottsLabels, "PottsGraph", np.ndarray]:
+    fixture = potts_labels(shape=shape, n_clones=3)
+    return fixture, scaled_graph(fixture), np.zeros(fixture.n_nodes, dtype=np.int64)
 
 
 @pytest.fixture(scope="module")
 def gate() -> tuple[PottsLabels, "PottsGraph", np.ndarray]:
-    fixture = potts_labels(shape=GATE_SHAPE, n_clones=3)
-    return fixture, scaled_graph(fixture), np.zeros(fixture.n_nodes, dtype=np.int64)
+    return _sized(GATE_SHAPE)
 
 
 @pytest.fixture(scope="module")
 def stress() -> tuple[PottsLabels, "PottsGraph", np.ndarray]:
-    fixture = potts_labels(shape=STRESS_SHAPE, n_clones=3)
-    return fixture, scaled_graph(fixture), np.zeros(fixture.n_nodes, dtype=np.int64)
+    return _sized(STRESS_SHAPE)
 
 
 @pytest.mark.benchmark
@@ -81,10 +65,5 @@ def test_labelling(
     arm: Callable[..., Any],
     size: str,
 ) -> None:
-    """`icm_sweep_deque`, upstream's ICM on the same move set, and its expansion.
-
-    The expansion is the stronger move set, expected to cost more and find
-    more. `upstream` rather than `upstream_oracle`: this times the baseline,
-    it does not consult it. The agreement claims are in `test_icm_oracle.py`.
-    """
+    """Time the three solvers on one instance and objective, warmed by the benchmark."""
     benchmark(arm, *request.getfixturevalue(size))

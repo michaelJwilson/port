@@ -1,18 +1,7 @@
 """The quantile inversion `normal_baf_bin_filter` does not need (#174).
 
-Three claims, and they are different claims:
-
-1. the substitution is an **identity** for a discrete law, checked over a grid
-   rather than on the instance it is used on;
-2. the patched filter returns what `cnaster`'s returns, **bitwise**, on the dev
-   fixture;
-3. what it returns is still right -- the planted imbalanced bins and no others,
-   which is the claim `tests/test_run_cnaster_stages.py` makes of `cnaster`'s
-   own filter and which a patch has to keep.
-
-The third is what makes this more than an agreement between two
-implementations: two functions computing the same wrong mask would satisfy the
-second.
+Referees: the identity over a grid; `cnaster`'s filter, bitwise; and the planted
+imbalanced bins.
 """
 
 from collections.abc import Iterator
@@ -21,6 +10,9 @@ from typing import Any
 import numpy as np
 import pytest
 import scipy.stats
+from cnaster.normal_spot import normal_baf_bin_filter as upstream
+from port.patch.normal_spot import normal_baf_bin_filter as patched
+from port.patch.normal_spot import removal_indicator
 from port.sim.inputs import read_to_bins, written_config
 from port.sim.run_config import PlantedInstance
 from port.sim.truth import CoreInferenceTruth, balanced_clone
@@ -28,23 +20,14 @@ from port.sim.truth import CoreInferenceTruth, balanced_clone
 pytestmark = pytest.mark.preprocessing
 
 SHIPPED_CONFIDENCE = (0.01, 0.99)
-"""`zenodo_sim_config.yaml`'s `quality.normal_allele_specific_confidence`.
-
-`python/port/sim/run_config.py` widens it to `(0.0, 1.0)`, under which the filter removes
-nothing and the comparison would be between two empty masks.
-"""
+"""`zenodo_sim_config.yaml`'s confidence; `run_config.py`'s `(0.0, 1.0)` would make both masks empty."""
 
 
 @pytest.fixture(scope="module")
 def binned_instance(
     planted_instance: PlantedInstance,
 ) -> Iterator[tuple[CoreInferenceTruth, Any, Any, np.ndarray]]:
-    """The prep chain's table and counts, and the planted normal spots.
-
-    The filter takes what the binner produced, so the input is the pipeline's
-    rather than one this module built: a hand-made table would not exercise the
-    renumbering, which is most of what the function does after the test.
-    """
+    """The prep chain's table and counts, and the planted normal spots."""
     truth, _, written, config_path = planted_instance
 
     with written_config(config_path):
@@ -78,20 +61,7 @@ def _arguments(
 def test_the_quantile_test_is_a_distribution_function_comparison(
     quantile: float,
 ) -> None:
-    """**`x < ppf(q)` is `cdf(x) < q`, and `x > ppf(q)` is `cdf(x-1) >= q`.**
-
-    The identity the patch rests on, and it is a property of any discrete law
-    rather than of this one: `ppf(q) = min{k : cdf(k) >= q}`, so `cdf(x) < q`
-    says exactly that `x` is below that minimum, and `cdf(x-1) < q` says
-    exactly that `x` is at most it.
-
-    Checked over the whole support at three trial counts rather than at the
-    values the filter happens to produce, because an identity that held only
-    where it is used would be a coincidence. Five quantiles, including the two
-    that ship and the median, where `ppf` lands on the mode and an off-by-one
-    would be invisible at the tails.
-    """
-    from port.patch.normal_spot import removal_indicator
+    """`x < ppf(q)` iff `cdf(x) < q` and `x > ppf(q)` iff `cdf(x-1) >= q`, over the whole support at three trial counts."""
 
     alpha, beta = 15.0, 15.0
 
@@ -114,16 +84,7 @@ def test_the_quantile_test_is_a_distribution_function_comparison(
 def test_a_closed_end_removes_nothing_on_its_side_as_cnaster(
     interval: tuple[float, float],
 ) -> None:
-    """`cnaster`'s `ppf` mask, bitwise, where a tail saturates (#332).
-
-    A normal pool diluted by an LOH clone reads BAF 0.62 over 29,000 reads,
-    against a fitted `alpha = beta = 500`: the upper tail is below `1e-50`,
-    and `cdf(x - 1)` rounds to exactly 1.0. At `hi = 1` the distribution-
-    function form removed that bin and `ppf(1) = n` keeps it; the whole-run
-    LOH fixture lost 6 bins to it and crashed in `run_cnaster`'s gene writer.
-    The mirrored bins, BAF 0.38 and 0.02, saturate the lower tail.
-    """
-    from port.patch.normal_spot import removal_indicator
+    """`cnaster`'s `ppf` mask, bitwise, where a tail saturates (#332)."""
 
     totals = np.array([3_000.0, 29_000.0, 29_000.0, 29_000.0, 29_000.0])
     counts = np.array([2_950.0, 17_980.0, 11_020.0, 580.0, 14_500.0])
@@ -143,19 +104,7 @@ def test_a_closed_end_removes_nothing_on_its_side_as_cnaster(
 def test_the_patched_filter_returns_what_cnasters_returns(
     binned_instance: tuple[CoreInferenceTruth, Any, Any, np.ndarray],
 ) -> None:
-    """Every array and the renumbered column, bitwise.
-
-    The counts are integers and the mask is boolean, so there is no arithmetic
-    here for a tolerance to absorb: the two either drop the same bins and
-    relabel the survivors the same way, or they do not.
-
-    The `bin_id` column is compared as well as the arrays. It carries the
-    renumbering, which is where an off-by-one in the survivor map would land,
-    and the arrays alone would not see it -- they are sliced by the same
-    `index_remaining` either way.
-    """
-    from cnaster.normal_spot import normal_baf_bin_filter as upstream
-    from port.patch.normal_spot import normal_baf_bin_filter as patched
+    """The patched filter returns `cnaster`'s arrays and renumbered `bin_id`, bitwise."""
 
     _, table, binned, index_normal = binned_instance
 
@@ -183,18 +132,7 @@ def test_the_patched_filter_returns_what_cnasters_returns(
 def test_the_patched_filter_removes_the_planted_imbalanced_bins(
     binned_instance: tuple[CoreInferenceTruth, Any, Any, np.ndarray],
 ) -> None:
-    """**The patch keeps the claim, not just the output (#160).**
-
-    `tests/test_run_cnaster_stages.py` establishes that `cnaster`'s filter
-    removes exactly the bins the planted normal clone carries an event in. Two
-    implementations agreeing says nothing about whether either is right, so the
-    patch is put to the same referee: the planted states.
-
-    Realized: eight bins removed, eight planted, no bin either way -- and the
-    surviving segmentation is the planted `[10, 21, 9]` less the removals
-    charged to each chromosome.
-    """
-    from port.patch.normal_spot import normal_baf_bin_filter as patched
+    """The patched filter removes exactly the eight planted imbalanced bins (#160)."""
 
     truth, table, binned, index_normal = binned_instance
 

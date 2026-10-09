@@ -1,51 +1,33 @@
-"""`port.patch.omics.summaries.summarize_blocks` against `cnaster`'s (#191).
+"""`port.patch.omics.summaries.summarize_blocks` against cnaster's, log line for line
+(#191).
 
-**The same log lines, from two passes and a `bincount` instead of a per-block
-slice of the count matrix.** The function returns nothing -- every figure it
-computes exists to be logged -- so the log is what the equivalence test
-compares, line for line.
-
-Two asymmetries upstream's aggregation carries and a faster summary has to
-carry too: the genes of a block are taken as a **set**, so a gene name on two
-rows contributes its UMIs once, and the SNPs as a **list**, so a repeated
-`snp_id` contributes twice.
+Genes per block count as a set, SNPs as a list, as upstream does.
 """
 
 import logging
 from typing import Any
 
+import cnaster.omics as reference_module
+import numpy as np
+import port.patch.omics.summaries as patched_module
 import pytest
-from port.sim.run_config import PlantedInstance
+from cnaster.omics import summarize_blocks as upstream
+from port.patch.omics.blocks import assign_initial_blocks
+from port.patch.omics.summaries import summarize_blocks as patched
 
 pytestmark = pytest.mark.preprocessing
 
 BLOCK_KEYS = ["initial_block_id", "block_id"]
-"""Both keys `assign_initial_blocks` summarizes by, and they differ.
-
-The first has one block per merged gene interval and the second the segments
-those were grouped into, so the second exercises blocks spanning many rows
-where the first mostly does not.
-"""
+"""Both keys `assign_initial_blocks` summarizes by; the second spans many rows per block."""
 
 
 @pytest.fixture(scope="module")
-def blocked(
-    planted_instance: PlantedInstance,
-    gate_config: Any,
-) -> tuple[Any, Any]:
+def blocked(gate_table: tuple[Any, Any]) -> tuple[Any, Any]:
     """A table carrying both block columns, and the instance it came from."""
-    from cnaster.io import load_input_data
-    from cnaster.omics import form_gene_snp_table
-    from port.patch.omics.blocks import assign_initial_blocks
 
-    _, _, written, _ = planted_instance
-    loaded = load_input_data(gate_config)
-    table = form_gene_snp_table(
-        loaded.unique_snp_ids, str(written.hgtable), loaded.adata
-    )
+    loaded, table = gate_table
 
-    # NB the patched blocker keeps `initial_block_id` off the return, so the
-    #    frame handed in is the one that carries both columns afterwards.
+    # NB the patched blocker keeps `initial_block_id` off the return.
     assign_initial_blocks(
         table,
         loaded.adata,
@@ -70,13 +52,7 @@ class _Capture(logging.Handler):
 
 
 def _lines(module: Any, call: Any) -> list[str]:
-    """Every line one summary logs, taken from its own logger.
-
-    `cnaster.logger.get_logger` sets `propagate = False` and installs its own
-    stream handler, so `caplog` -- which listens at the root -- sees nothing
-    from either module. The handler is attached to the module's own logger
-    instead, and removed again.
-    """
+    """Every line one summary logs, from the module's own non-propagating logger."""
     capture = _Capture()
     module.logger.addHandler(capture)
 
@@ -90,57 +66,20 @@ def _lines(module: Any, call: Any) -> list[str]:
 
 @pytest.mark.patch
 @pytest.mark.parametrize("block_key", BLOCK_KEYS)
+@pytest.mark.parametrize(
+    "with_candidates", [False, True], ids=["pipeline", "normal-candidates"]
+)
 def test_the_summary_logs_what_cnaster_logs(
-    blocked: tuple[Any, Any], block_key: str
+    blocked: tuple[Any, Any], block_key: str, with_candidates: bool
 ) -> None:
-    """**Line for line, which is the only contract this function has.**
-
-    Comparing the frames would compare an implementation detail; comparing the
-    numbers alone would miss the ordering, and the breakdown is sorted by
-    total UMI so a tie broken differently is a different table on screen.
-    """
-    import cnaster.omics as reference_module
-    import port.patch.omics.summaries as patched_module
-    from cnaster.omics import summarize_blocks as upstream
-    from port.patch.omics.summaries import summarize_blocks as patched
+    """The patched summary logs the same lines as cnaster's, in order, also on the `normal_candidates` branch the pipeline does not use."""
 
     loaded, table = blocked
-    arguments = (
-        table,
-        loaded.adata,
-        loaded.cell_snp_Aallele,
-        loaded.cell_snp_Ballele,
-        loaded.unique_snp_ids,
-    )
-
-    reference = _lines(
-        reference_module, lambda: upstream(*arguments, block_key=block_key)
-    )
-    realized = _lines(patched_module, lambda: patched(*arguments, block_key=block_key))
-
-    assert realized == reference
-
-
-@pytest.mark.patch
-@pytest.mark.parametrize("block_key", BLOCK_KEYS)
-def test_the_summary_logs_what_cnaster_logs_with_normal_candidates(
-    blocked: tuple[Any, Any], block_key: str
-) -> None:
-    """The `normal_candidates` branch, which `assign_initial_blocks` never takes.
-
-    Its two columns are zeros on every call the pipeline makes, so a patch
-    could leave them unimplemented and pass everything else. They are reached
-    here directly, with a mask that keeps two thirds of the spots.
-    """
-    import cnaster.omics as reference_module
-    import numpy as np
-    import port.patch.omics.summaries as patched_module
-    from cnaster.omics import summarize_blocks as upstream
-    from port.patch.omics.summaries import summarize_blocks as patched
-
-    loaded, table = blocked
-    candidates = np.zeros(loaded.adata.shape[0], dtype=bool)
-    candidates[::3] = True
+    options: dict[str, Any] = {"block_key": block_key}
+    if with_candidates:
+        candidates = np.zeros(loaded.adata.shape[0], dtype=bool)
+        candidates[::3] = True
+        options["normal_candidates"] = candidates
 
     arguments = (
         table,
@@ -150,13 +89,7 @@ def test_the_summary_logs_what_cnaster_logs_with_normal_candidates(
         loaded.unique_snp_ids,
     )
 
-    reference = _lines(
-        reference_module,
-        lambda: upstream(*arguments, block_key=block_key, normal_candidates=candidates),
-    )
-    realized = _lines(
-        patched_module,
-        lambda: patched(*arguments, block_key=block_key, normal_candidates=candidates),
-    )
+    reference = _lines(reference_module, lambda: upstream(*arguments, **options))
+    realized = _lines(patched_module, lambda: patched(*arguments, **options))
 
     assert realized == reference

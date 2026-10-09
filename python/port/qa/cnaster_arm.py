@@ -21,7 +21,7 @@ ROW = "normal_baf_bin_filter"
 
 def main(argv: Sequence[str] | None = None) -> int:
     from port.pipeline import SWAPS, patched
-    from port.scripts import run_audit
+    from port.qa.scripts import run_audit
 
     arguments = list(sys.argv[1:] if argv is None else argv)
     if "--no-patch" not in arguments:

@@ -1,38 +1,35 @@
 """The shift's three drop-ins, each against the `cnaster` code it replaces (#293).
 
-The per-clone `logmu_shift` reaches a run through `SHIFT_SWAPS` and through
-`pipeline_clone_assignment`'s shifted branch. Each is pinned here against
-`cnaster`'s own function, fed the input the shift says it should see:
-the exposure rescaled by `exp(-shift)`. Tolerances rather than bitwise,
-because the replacement forms `exp(log_mu - shift)` from recentred factors
-and upstream from the raw ones, so the last bits of the product differ.
+Referee: `cnaster`'s own function on the exposure rescaled by `exp(-shift)`; to
+tolerance,
+since the product is formed from recentred factors.
 """
 
 import inspect
 from typing import Any
 
 import numpy as np
+import port.patch.hmrf.core_inference as module
 import pytest
+import scipy.special
+from cnaster.hmm_nophasing import hmm_nophasing as upstream
+from port.patch.hmm_nophasing import hmm_nophasing
+from port.patch.hmrf.clone_assignment import UPSTREAM, pipeline_clone_assignment
+from port.pipeline import with_attributes
 
-from tests.adapters import clone_assignment_arguments
-from tests.fixtures import spot_clone_field, two_clone_stacked_instance
+from tests.adapters import clone_assignment_arguments, clone_assignment_call
+from tests.fixtures import (
+    spot_clone_field,
+    two_clone_optimize_arguments,
+    two_clone_stacked_instance,
+)
 
 
 @pytest.mark.cnaster
 @pytest.mark.patch
 @pytest.mark.usefixtures("cnaster_config")
 def test_a_shifted_clone_is_scored_as_upstream_scores_its_rescaled_exposure() -> None:
-    """One clone, so upstream's single exposure can carry the clone's shift.
-
-    `port`'s shifted field against `cnaster.hmrf.pipeline_clone_assignment`
-    handed `base * exp(-shift)`, with `shift = log sum_g lambda_g mu_{s(g)}`
-    and `lambda` from the unscaled baseline, as the replacement builds it.
-    Stated to 1e-9 relative.
-    """
-    import scipy.special
-    from port.patch.hmm_nophasing import hmm_nophasing
-    from port.patch.hmrf.clone_assignment import UPSTREAM, pipeline_clone_assignment
-    from port.pipeline import with_attributes
+    """One clone's shifted field against `pipeline_clone_assignment` on `base * exp(-shift)`, to 1e-9 relative."""
 
     fixture = spot_clone_field(n_states=3, n_obs=40, n_spots=16, n_clones=1)
     arguments = clone_assignment_arguments(fixture, width=4)
@@ -42,17 +39,8 @@ def test_a_shifted_clone_is_scored_as_upstream_scores_its_rescaled_exposure() ->
     shift = scipy.special.logsumexp(fixture.log_mu[fixture.pred[0]] + log_lambda)
 
     def call(function: Any, base: np.ndarray, hmmclass: Any) -> Any:
-        return function(
-            arguments["single_X"],
-            base,
-            arguments["single_total_bb_RD"],
-            arguments["res"],
-            arguments["pred"],
-            arguments["adjacency_mat"],
-            arguments["prev_assignment"].copy(),
-            arguments["sample_ids"],
-            arguments["spatial_weight"],
-            hmmclass=hmmclass,
+        return clone_assignment_call(
+            function, arguments, single_base_nb_mean=base, hmmclass=hmmclass
         )
 
     shifted = with_attributes(hmm_nophasing, apply_logmu_shift=True)
@@ -67,31 +55,10 @@ def test_a_shifted_clone_is_scored_as_upstream_scores_its_rescaled_exposure() ->
 @pytest.mark.patch
 @pytest.mark.usefixtures("cnaster_config")
 def test_the_fit_is_upstreams_off_and_decodes_under_its_own_shift_on() -> None:
-    """`optimize`, off and on.
-
-    Off, and under `cnaster`'s finite-difference gradient, the replacement
-    returns what `cnaster`'s class returns, bitwise; the closed-form gradient
-    (#433) is pinned to it in `tests/test_mstep_gradient.py`.
-    On, its `log_gamma` is `cnaster`'s own `get_state_posteriors` on the
-    emission of the rescaled exposure `base * exp(-shift)`, with the shift
-    the replacement recorded, to 1e-9 -- so the decode it returns is the one
-    its shift describes, which `hmm_nophasing.py:1085` alone would not give.
-    """
-    from cnaster.hmm_nophasing import hmm_nophasing as upstream
-    from port.patch.hmm_nophasing import hmm_nophasing
-    from port.pipeline import with_attributes
+    """`optimize` off is `cnaster`'s bitwise (#433); on, `log_gamma` is `get_state_posteriors` at the recorded shift, to 1e-9."""
 
     instance = two_clone_stacked_instance()
-    kwargs = {
-        "init_log_mu": np.log(np.array([[1.0], [2.0]])),
-        "init_p_binom": np.array([[0.5], [0.25]]),
-        "max_iter": 20,
-        "normal_lambda": instance["normal_lambda"],
-        "clone_lengths": instance["clone_lengths"],
-        "shared_NB_dispersion": True,
-        "shared_BB_dispersion": True,
-    }
-    args = (instance["X"], instance["lengths"], 2, instance["base"], instance["total"])
+    args, kwargs = two_clone_optimize_arguments(instance)
 
     theirs = upstream(params="smp", t=0.99).optimize(*args, **kwargs)
     differenced = with_attributes(hmm_nophasing, analytic_gradient=False)
@@ -129,15 +96,7 @@ def test_the_fit_is_upstreams_off_and_decodes_under_its_own_shift_on() -> None:
 
 @pytest.mark.patch
 def test_the_pin_applies_to_a_shifted_rate_fit_only() -> None:
-    """`run_core_inference` pins after upstream's inference, and only then.
-
-    A shifted fit of `mu` is pinned so the balanced, lowest-`mu` state is 1;
-    an unshifted one, or a fit with no `mu` (`params="sp"`, the BAF-only
-    stage), is returned as upstream returned it.
-    """
-    import port.patch.hmrf.core_inference as module
-    from port.patch.hmm_nophasing import hmm_nophasing
-    from port.pipeline import with_attributes
+    """`run_core_inference` pins only a shifted `mu` fit; unshifted or BAF-only fits are upstream's."""
 
     def fake(*_: Any, **__: Any) -> dict[str, np.ndarray]:
         return {

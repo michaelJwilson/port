@@ -1,10 +1,4 @@
-"""Every environment variable `port` reads, declared (T- #617, rule 1).
-
-A drop-in's options are bound at install; an environment variable bypasses
-that, so each read is a stated departure. The source is read for
-`os.environ` and `getenv`, so a new read fails here until it is declared
-with its reason. `port.sandbox` is set-aside work and not scanned.
-"""
+"""Every environment variable `port` reads outside `sandbox/` is declared (T- #617, rule 1)."""
 
 from __future__ import annotations
 

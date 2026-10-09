@@ -9,12 +9,21 @@ in for a run where a claim is about the arithmetic, not the run.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 import pytest
+from cnaster.hmm_nophasing import hmm_nophasing as upstream
+from port.extensions import cnamaste
+from port.extensions.outputs import config_keys, integer_clones, run_directories
+from port.patch.hmm_nophasing import hmm_nophasing
+from port.pipeline import with_attributes
+from port.sandbox.extensions import copy_errors
+from port.sim.run_config import run_written
+from port.sim.truth import core_inference_truth
 
 N_STATES, N_BINS = 4, 30
 # NB `cnaster`'s clone ids, in column order, and their positions in
@@ -88,7 +97,6 @@ def _run(tmp_path: Path, seed: int = 3, shift: np.ndarray | None = None) -> Path
 def test_clones_that_decode_alike_are_one_integer_clone() -> None:
     """Equal `(A, B)` at every bin is one clone, named by its smallest id;
     one differing bin keeps two clones apart."""
-    from port.extensions.outputs import integer_clones
 
     base = np.array([[1, 1], [2, 1], [1, 0], [1, 1]])
     frame = pd.DataFrame({"CHR": [1, 1, 2, 2]})
@@ -102,8 +110,6 @@ def test_clones_that_decode_alike_are_one_integer_clone() -> None:
 
 
 def _truth() -> Any:
-    from port.sim.truth import core_inference_truth
-
     return core_inference_truth(
         n_clones=2, n_states=3, lattice=(25, 40), n_obs=40, n_segments=3, seed=11
     )
@@ -125,8 +131,6 @@ def test_a_run_s_outputs_recover_the_planted_clones_and_the_flat_normal(
     Read from `/rdrbaf` and `/clone_assignment`; the per-bin posterior-mean
     `p` the removed `cnv_binlevel.tsv` held is the decoded state's `p` here.
     """
-    from port.extensions import cnamaste
-    from port.sim.run_config import run_written
 
     truth = _truth()
     # NB `cnaster`'s ICM draws from numpy's global generator unseeded, so the
@@ -189,7 +193,6 @@ def test_the_agreement_rule_joins_what_agrees_and_no_less() -> None:
     the closest distinct pair on the fixtures at 0.9863, so the thresholds
     below bracket both. 0.99 is the default; 1.0 is the exact rule (#344).
     """
-    from port.extensions.outputs import integer_clones
 
     frame = _profiles({"0": 0, "1": 7, "2": 14})
 
@@ -202,7 +205,6 @@ def test_the_agreement_rule_joins_what_agrees_and_no_less() -> None:
 @pytest.mark.parametrize("agreement", [0.0, -0.1, 1.5])
 def test_an_agreement_outside_the_unit_interval_is_refused(agreement: float) -> None:
     """A share of bins must be in (0, 1]; 0 would merge every clone into one."""
-    from port.extensions.outputs import integer_clones
 
     with pytest.raises(ValueError, match="merge agreement"):
         integer_clones(_profiles({"0": 0}), agreement)
@@ -211,7 +213,6 @@ def test_an_agreement_outside_the_unit_interval_is_refused(agreement: float) -> 
 @pytest.mark.infra
 def test_the_configured_agreement_is_what_config_keys_reads(tmp_path: Path) -> None:
     """`int_copy_num.merge_agreement` reaches `config_keys` (#518)."""
-    from port.extensions.outputs import config_keys
 
     config = tmp_path / "config.yaml"
     config.write_text("int_copy_num:\n  merge_agreement: 0.99\n")
@@ -222,9 +223,6 @@ def test_the_configured_agreement_is_what_config_keys_reads(tmp_path: Path) -> N
 @pytest.mark.infra
 def test_a_directory_an_earlier_run_left_is_not_this_run_s(tmp_path: Path) -> None:
     """`since` keeps the directories written at or after it (T- #617)."""
-    import os
-
-    from port.extensions.outputs import run_directories
 
     run = _run(tmp_path)
     table = run / "cnv_seglevel.tsv"
@@ -240,10 +238,6 @@ def test_copy_sets_go_beside_the_fit_this_run_wrote(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Not beside the newest fit under `output_dir`, another K's (T- #617)."""
-    import os
-
-    from port.extensions import copy_errors
-    from port.scripts.run_cnaster import _write_copy_sets
 
     ours, other = (
         tmp_path / "clone3_rectangle0_w1.0",
@@ -266,10 +260,10 @@ def test_copy_sets_go_beside_the_fit_this_run_wrote(
     config = tmp_path / "config.yaml"
     config.write_text(f"paths:\n  output_dir: {tmp_path}\nhmm:\n  n_states: 4\n")
 
-    _write_copy_sets(str(config), ["fit"], since=1_500.0)
+    copy_errors.write_beside_final_fit(str(config), ["fit"], since=1_500.0)
     assert placed == [ours]
 
-    _write_copy_sets(str(config), ["fit"], since=2_500.0)
+    copy_errors.write_beside_final_fit(str(config), ["fit"], since=2_500.0)
     assert placed == [ours]
 
 
@@ -280,8 +274,6 @@ def test_a_refused_fit_leaves_the_run_and_says_so(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """T- #599's refusal writes no sets and does not fail the run it follows (#705)."""
-    from port.extensions import copy_errors
-    from port.scripts.run_cnaster import _write_copy_sets
 
     (tmp_path / "rdrbaf_final_nstates4_smp.npz").write_bytes(b"")
 
@@ -293,7 +285,7 @@ def test_a_refused_fit_leaves_the_run_and_says_so(
     config = tmp_path / "config.yaml"
     config.write_text(f"paths:\n  output_dir: {tmp_path}\nhmm:\n  n_states: 4\n")
 
-    _write_copy_sets(str(config), ["fit"])
+    copy_errors.write_beside_final_fit(str(config), ["fit"])
 
     assert "T- #599); refused; cnv_copy_sets.tsv not written" in capsys.readouterr().err
 
@@ -310,9 +302,6 @@ def test_a_bin_s_mu_is_the_rate_the_shifted_emission_evaluates(
     as `cnaster`'s unshifted emission does at exposure `base * mu` and
     `log_mu = 0`, `mu = exp(log_mu[Z] - shift)`: the rate a reader of
     `cnamaste.h5` derives from `/rdrbaf` is the rate the fit used (#613)."""
-    from cnaster.hmm_nophasing import hmm_nophasing as upstream
-    from port.patch.hmm_nophasing import hmm_nophasing
-    from port.pipeline import with_attributes
 
     run = _run(tmp_path, shift=SHIFT)
     with np.load(
@@ -362,7 +351,6 @@ def test_the_run_rule_at_one_is_the_exact_rule_it_replaces() -> None:
     9 clones over 1 to 40 bins, copies drawn from 0..3 so that equal profiles
     are common, the two merge every clone alike.
     """
-    from port.extensions.outputs import integer_clones
 
     def exact(a: np.ndarray, b: np.ndarray) -> np.ndarray:
         merged = np.arange(a.shape[1])

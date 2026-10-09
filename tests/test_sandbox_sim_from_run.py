@@ -57,11 +57,7 @@ def _as_run(drawn: Drawn, into: Path) -> Run:
 def test_a_manifest_from_a_run_recovers_the_one_that_planted_it(
     tmp_path: Path,
 ) -> None:
-    """dev_shared_unique on a 20 x 20 array: 3 clones, 1 shared and 2 unique events.
-
-    With its offsets stated, the written manifest is one `port.sim.draw`
-    reads, and every recovered state is one the source can plant.
-    """
+    """dev_shared_unique's clone count, events, states, array and slices are recovered."""
     resources = references()
     if resources is None:
         pytest.skip("CalicoST's GRCh38_resources not found; set $PORT_GRCH38")

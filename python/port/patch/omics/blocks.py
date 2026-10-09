@@ -1,34 +1,8 @@
-"""`cnaster.omics`, with the Python walks over the genome vectorized.
+"""Replaces `cnaster.omics`' gene/SNP table and block/bin summaries, vectorized (#190).
 
-**Proposed for `cnaster`, written here.** #190. `form_gene_snp_table` assigns
-each SNP to the gene interval containing it by walking backwards through the
-sorted table in Python, up to `num_preceeding_rows` at a time, and writing the
-result with a `pandas` scalar assignment per SNP:
-
-```python
-for i in np.where(df_gene_snp.gene.isna())[0]:
-    ...
-    df_gene_snp.iloc[i, 4] = df_gene_snp.iloc[j]["gene"]
-```
-
-Those two `iloc` calls are **66 per cent of the function** at 782 SNPs -- 782
-of them, 260 microseconds each. A Visium slide carries 500,000 SNPs, where the
-same line is over two minutes on its own.
-
-The assignment is a window search over a sorted table, so it vectorizes
-exactly: one pass per offset rather than one Python iteration per SNP, and the
-first match at the smallest offset wins, which is what walking backwards and
-breaking means.
-
-`port` cannot land the change (`CLAUDE.md`, **Working against a repository you
-do not own**), so it is written here with its referee beside it in
-`tests/test_preprocessing_omics.py`. The return is **bitwise** what `cnaster`
-returns, column for column and row for row.
-
-**Not carried across:** `cnaster` decorates the function with
-`@cacher("gene_snp_table.tsv")`. The cache is orthogonal to what is being
-measured and writing one from a patch would put a second file under the same
-name, so this is the undecorated function.
+Python walks and per-block slices become window searches, `searchsorted` and
+sparse indicator products; outputs are bitwise `cnaster`'s except as stated
+per function (#466, #105, #551). `form_gene_snp_table` is undecorated (no `@cacher`).
 """
 
 from __future__ import annotations
@@ -58,23 +32,10 @@ def preceding_gene(
     unassigned: np.ndarray,
     num_preceeding_rows: int,
 ) -> np.ndarray:
-    """For each unassigned row, the nearest preceding gene containing it.
+    """For each unassigned row, the nearest preceding gene containing it, or `-1`.
 
-    `-1` where there is none. `cnaster` finds this by walking backwards from
-    each row and breaking at the first gene interval that contains the SNP's
-    position, stopping at `num_preceeding_rows` rows, at the start of the
-    table, or at a change of chromosome.
-
-    **The chromosome test is a stop and not a skip**, and it does not need to
-    be reproduced as one: the table is sorted by `(CHR, START)`, so every row
-    before the first one on another chromosome is on another chromosome too.
-    Requiring a match is therefore the same condition, and it is the one that
-    vectorizes.
-
-    One pass per offset, and a row keeps the match from the **smallest**
-    offset, which is what breaking out of a backwards walk means. That is
-    `num_preceeding_rows` passes over the table rather than one Python
-    iteration and two `pandas` scalar accesses per SNP.
+    One pass per offset up to `num_preceeding_rows`; the smallest offset wins.
+    Requires the table sorted by `(CHR, START)`.
     """
     rows = np.flatnonzero(unassigned)
     found = np.full(rows.size, -1, dtype=np.int64)
@@ -111,18 +72,10 @@ def form_gene_snp_table(
     verbose: bool = False,  # noqa: ARG001 -- upstream's signature, and unused there too
     num_preceeding_rows: int = 100,
 ) -> Any:
-    """What `cnaster.omics.form_gene_snp_table` returns, without the walk.
-
-    `verbose` is upstream's and gates a log of the genes absent from the
-    reference. It is kept in the signature so a caller can be pointed at
-    either function, and does nothing here for the same reason it does little
-    there.
-    """
+    """`cnaster.omics.form_gene_snp_table` without the per-SNP walk; `verbose` is unused, as upstream."""
     logger.info("Forming gene & snp meta data.")
 
-    # NB `port.patch.reference`, not `cnaster.reference`: the read is 13.3x
-    #    with `polars` at a human reference's size (#185), and the frame it
-    #    returns is bitwise the same.
+    # NB `port.patch.reference`: bitwise the same frame, read with `polars` (#185).
     df_gene = get_reference_genes(hgtable_file)
 
     common_genes = set(df_gene.gene) & set(adata.var.index)
@@ -190,24 +143,9 @@ def form_gene_snp_table(
 def merged_gene_intervals(
     chromosome: np.ndarray, start: np.ndarray, end: np.ndarray
 ) -> np.ndarray:
-    """Where each run of overlapping gene intervals begins.
+    """Where each run of overlapping gene intervals begins, sorted by `(CHR, START)`.
 
-    `cnaster` merges them by walking the gene rows and extending the last
-    interval whenever the next one overlaps it. Sorted by `(CHR, START)`, that
-    is the classic sweep: a new run begins exactly where a gene's start is at
-    or past the running maximum of the ends before it.
-
-    Within a chromosome the running maximum may be taken over the whole
-    chromosome rather than over the current run, because the two agree: if a
-    start were below a maximum attained in an **earlier** run, that run would
-    not have ended where it did, so the maximum is always attained inside the
-    current one.
-
-    **Across chromosomes it may not**, and that is the one thing the sweep has
-    to be told. Positions restart at each chromosome, so a running maximum
-    carried over from the last chromosome exceeds every start on the next one
-    and swallows it whole. The accumulation is therefore reset per
-    chromosome -- twenty-two short calls rather than one long one.
+    A sweep against the running maximum of ends, reset per chromosome.
     """
     if not chromosome.size:
         return np.zeros(0, dtype=np.int64)
@@ -228,24 +166,11 @@ def merged_gene_intervals(
 def block_of_row(
     chromosome: np.ndarray, start: np.ndarray, interval_row: np.ndarray
 ) -> np.ndarray:
-    """Which merged interval each row of the table falls in.
-
-    `cnaster` finds this the other way round -- for each merged interval, a
-    full-table `np.where` over the overlap condition, then the first and last
-    row it matched. That is `n_intervals` passes over `n_rows`, which at a
-    slide's scale is the product of two large numbers where the table is
-    already sorted.
-
-    The intervals tile the rows in order, which `cnaster` asserts, so the
-    interval a row belongs to is the last one that starts at or before it.
-    One `searchsorted` gives every row at once.
-    """
+    """Which merged interval each row of the sorted table falls in: one `searchsorted`."""
     keys = chromosome.astype(np.int64) * (1 << 40) + start.astype(np.int64)
     edges = keys[interval_row]
 
-    # NB genes open their own interval, so a gene row sitting exactly on an
-    #    edge belongs to that interval rather than to the one before it; a SNP
-    #    at the same key does too, since the gene precedes it in sort order.
+    # NB a row on an interval's edge belongs to that interval (genes sort first).
     placed = np.searchsorted(edges, keys, side="right") - 1
 
     return np.clip(placed, 0, None)
@@ -259,41 +184,17 @@ def assign_initial_blocks(
     unique_snp_ids: np.ndarray,
     initial_min_umi: int,
 ) -> Any:
-    """What `cnaster.omics.assign_initial_blocks` returns, in three passes.
+    """`cnaster.omics.assign_initial_blocks` via `searchsorted` and prefix sums.
 
-    `cnaster` takes two quadratic loops to get here:
-
-    *   one full-table `np.where` per merged gene interval, to find the rows
-        that interval covers -- `n_intervals` passes over `n_rows`;
-    *   one re-count of every SNP-covering UMI in `[s, t)` for **every**
-        candidate upper bound `t`, which its own comment marks
-        `TODO recalculates for every upper bound`.
-
-    Both answer questions the sort order has already answered. The intervals
-    tile the rows, so a row's interval is a `searchsorted`; and the UMI total
-    over a run of blocks is a difference of prefix sums, so the smallest `t`
-    meeting the threshold is another one.
-
-    **The two `summarize_blocks` calls stay**, because their log lines are
-    the only thing they produce and removing them is a behaviour change. They
-    come from `port.patch.omics.summaries` instead (#191), which logs the same lines
-    from two passes and a `bincount` rather than a fancy-indexed slice of the
-    count matrix per block -- 39% of this function, computed rather than
-    looped.
-
-    **One stated difference (#466):** a block never spans two chromosomes.
-    Where the last chromosome holds a single merged interval and the previous
-    chromosome's trailing blocks never reach `initial_min_umi`, `cnaster`
-    tests `reach_end` before `change_chr` and closes one block across both
-    chromosomes; here the block ends at the chromosome's end. Every later
-    stage reads blocks per chromosome, so `cnaster`'s block is a defect.
+    Logs via `port.patch.omics.summaries.summarize_blocks` (#191). Departure
+    (#466): a block never spans two chromosomes, where `cnaster` may close one
+    across a chromosome boundary.
     """
     from port.patch.omics.summaries import summarize_blocks
 
     if "known_id" in df_gene_snp.columns:
-        # NB upstream as imported, not as `cnaster.omics` binds it now: under
-        #    `patched()` that name is this function, and the call recursed
-        #    without end on any run with `annotation.clone_ranges` (#466).
+        # NB upstream as imported: under `patched()` the module name is this
+        #    function, and calling it recursed (#466).
         return _UPSTREAM_ASSIGN_INITIAL_BLOCKS(
             df_gene_snp,
             adata,
@@ -334,9 +235,7 @@ def assign_initial_blocks(
         block_key="initial_block_id",
     )
 
-    # NB one pass for every SNP's UMI total, then one per initial block. The
-    #    loop below reads prefix sums of these rather than re-summing the
-    #    allele matrices for every candidate upper bound.
+    # NB per-SNP then per-block UMI totals; the loop reads their prefix sums.
     per_snp = (
         np.asarray(cell_snp_Aallele.sum(axis=0)).ravel()
         + np.asarray(cell_snp_Ballele.sum(axis=0)).ravel()
@@ -415,12 +314,7 @@ def assign_initial_blocks(
 def _positions(
     values: np.ndarray, vocabulary: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Where each of `values` sits in `vocabulary`, and which ones are in it.
-
-    A dictionary comprehension over a column is a Python loop per row, which
-    is the cost the products below exist to remove -- so the lookup is a
-    `searchsorted` against the sorted vocabulary instead.
-    """
+    """Where each of `values` sits in `vocabulary`, and which ones are in it."""
     order = np.argsort(vocabulary)
     ordered = vocabulary[order]
 
@@ -435,21 +329,12 @@ def _group_indicator(
 ) -> Any:
     """A sparse `(n_rows, n_groups)` 0/1 matrix marking each row's group.
 
-    Summing a matrix's columns by group is a product with this. `cnaster`
-    does it the other way -- one fancy-indexed slice of the whole matrix per
-    group, each one `n_spots` deep -- which is `n_groups` passes over the data
-    where the product is one.
-
-    Duplicate `(row, group)` pairs are dropped rather than summed, because
-    upstream gathers each group's members as a **set** and a repeated member
-    contributes once.
+    Duplicate `(row, group)` pairs count once, as upstream's set membership.
     """
     if not rows.size:
         return sp.csr_matrix((n_rows, n_groups), dtype=np.int64)
 
-    # NB one key per pair rather than `np.unique(..., axis=0)`, which sorts
-    #    the rows of a two-column array and costs several times sorting the
-    #    integers those rows encode.
+    # NB integer keys: cheaper than `np.unique(..., axis=0)`.
     keys = np.unique(rows.astype(np.int64) * n_groups + groups.astype(np.int64))
     row, group = np.divmod(keys, n_groups)
 
@@ -460,56 +345,22 @@ def _group_indicator(
 
 
 SPOT_BLOCK = 64
-"""How many spots the grouped sum multiplies at once.
-
-`scipy` wants its dense operand C-contiguous and the transpose it is handed is
-not, so it copies. Copying the whole count matrix makes the peak **larger**
-than the per-slice loop this replaces, which would be buying time with memory.
-In row blocks the copy is bounded at `SPOT_BLOCK` rows, and the block size is
-a real trade rather than a free choice -- at 2,500 spots, against `cnaster`'s
-229.5 ms and 56.4 MB:
-
-| `SPOT_BLOCK` | time | peak |
-| ---: | ---: | ---: |
-| unchunked | 1.91x | 0.64x |
-| 1024 | 2.85x | 0.78x |
-| 256 | 4.14x | 0.94x |
-| **64** | **3.60x** | **0.99x** |
-| 32 | 3.45x | 1.00x |
-
-64 is where the peak stops regressing against what it replaces. 256 is 15%
-faster and 6% above upstream's peak, which is the wrong side of a patch whose
-point is to allocate less.
-
-Where the blocks fall cannot change a value: a spot's column sums do not
-depend on any other spot's, and the sweep above is bitwise identical at every
-size.
-"""
+"""Spots per grouped-sum block: bounds scipy's C-contiguous copy so peak memory
+does not exceed `cnaster`'s; values are independent of it."""
 
 
 def _grouped_column_sums(matrix: Any, indicator: Any) -> np.ndarray:
-    """`matrix`'s columns summed by group, as `(n_groups, n_rows_of_matrix)`.
+    """`matrix`'s columns summed by group, dense `(n_groups, n_rows_of_matrix)`.
 
-    `indicator.T @ matrix.T` rather than `matrix @ indicator`, so the sparse
-    operand leads and the result is the orientation the caller stores, without
-    a transpose of a large array.
-
-    **The product is densified deliberately.** Two sparse operands give a
-    sparse result, and `np.asarray` of one is a zero-dimensional object array
-    rather than its values -- so a caller that stored it would store garbage
-    instead of failing. The answer is `(n_groups, n_spots)`, which is the
-    dense shape the caller writes into either way. The loader returns dense
-    counts today and sparse under `sparse_counts` (#186), so both reach here.
+    Densified because `np.asarray` of a sparse product is an object array;
+    `matrix` may be dense or sparse (#186).
     """
     counts = _as_matrix(matrix)
     n_rows = counts.shape[0]
 
     out = np.zeros((indicator.shape[1], n_rows), dtype=np.int64)
 
-    # NB in row blocks, because `scipy` needs the dense operand C-contiguous
-    #    and `counts.T` is not: it copies, and an unchunked copy is the whole
-    #    matrix. The column sums are independent per row, so where the blocks
-    #    fall cannot change a value.
+    # NB row blocks bound scipy's copy of the non-contiguous `counts.T`.
     for start in range(0, n_rows, SPOT_BLOCK):
         block = counts[start : start + SPOT_BLOCK]
         product = indicator.T @ (block.toarray() if sp.issparse(block) else block).T
@@ -533,25 +384,7 @@ def summarize_counts_for_blocks(
     cell_snp_Ballele: Any,
     unique_snp_ids: np.ndarray,
 ) -> Any:
-    """What `cnaster.omics.summarize_counts_for_blocks` returns, in three products.
-
-    `cnaster` loops the blocks and, for each one, slices every spot's column
-    out of three matrices:
-
-    ```python
-    single_X[block_id, 1, :] = cell_snp_Aallele[:, snp_idx].sum(axis=1)
-    single_total_bb_RD[block_id, :] = (cell_snp_Aallele[:, snp_idx].sum(axis=1)
-                                       + cell_snp_Ballele[:, snp_idx].sum(axis=1))
-    gene_mask = np.isin(gene_names, genes)
-    single_X[block_id, 0, :] = gene_counts[:, gene_mask].sum(axis=1)
-    ```
-
-    Three things there, and the first is free: **the A-allele sum is computed
-    twice**, once for its own row and once inside the total. The second is
-    `np.isin` over every gene name per block, which is `n_blocks * n_genes`.
-    The third is the loop itself -- a grouped column sum is a product with a
-    0/1 indicator, and three products replace all of it.
-    """
+    """`cnaster.omics.summarize_counts_for_blocks` as three indicator products."""
     logger.info("Aggregating (snp, umi) counts for genome segmentation.")
 
     block_id = df_gene_snp.block_id.to_numpy()
@@ -586,9 +419,7 @@ def summarize_counts_for_blocks(
         a_allele + _grouped_column_sums(cell_snp_Ballele, by_snp)
     ).astype(int)
 
-    # NB from the blocks as a labelling of the genes (#438): the contig runs
-    #    of the segments the rows are indexed by, never zero, and recorded
-    #    while a run records its lineage.
+    # NB lengths from the blocks as a labelling of the genes (#438).
     lengths = observe(df_gene_snp, "block_id", "blocks").lengths
 
     return SpatioGenomicCounts(
@@ -606,19 +437,9 @@ def summarize_counts_for_bins(
     logphase_shift: float,  # noqa: ARG001 -- likewise
     geneticmap_file: Any,  # noqa: ARG001 -- likewise
 ) -> Any:
-    """What `cnaster.omics.summarize_counts_for_bins` returns, in two products.
+    """`cnaster.omics.summarize_counts_for_bins` as two indicator products.
 
-    The same defect one level up: `cnaster` loops the bins, gathers each one's
-    blocks, phases them and sums, then slices the count matrix per bin for the
-    genes. **The phasing does not depend on the bin** -- it is a `where` over
-    every block at once -- and what remains is two grouped sums.
-
-    **Three of the parameters are upstream's and unread**, here and there:
-    `nu`, `logphase_shift` and `geneticmap_file`. Its docstring promises a
-    `log_sitewise_transmat` return computed from the genetic map, and the
-    function returns a `SpatioGenomicCounts` with no such field. They are kept
-    in the signature so a caller can be pointed at either function; #196 is
-    where the signature belongs.
+    `nu`, `logphase_shift`, `geneticmap_file` are unread, as upstream (#196).
     """
     logger.info("Summarizing counts for bins.")
 
@@ -629,8 +450,7 @@ def summarize_counts_for_bins(
         f"Retaining {100.0 * np.mean(assigned):.2f}% of gene/snps with assigned bin."
     )
 
-    # NB upstream groups by bin_id with sort=True, so the output row for a bin
-    #    is its rank among the sorted ids rather than the id itself.
+    # NB upstream groups by sorted `bin_id`: a bin's row is its rank.
     bins, bin_rank = np.unique(bin_id[assigned], return_inverse=True)
     n_bins, n_spots = bins.size, adata.shape[0]
 
@@ -647,9 +467,8 @@ def summarize_counts_for_bins(
     gene_names = adata.var.index.to_numpy()
     columns, known = _positions(df_gene_snp.gene.to_numpy()[assigned], gene_names)
 
-    # NB genes the differential-expression filter flagged earlier in the run
-    #    leave the read depth of every bin summed after it (#440, #177): the
-    #    filter's own bins are re-cut before its result could be used.
+    # NB genes flagged by the differential-expression filter leave the read
+    #    depth (#440, #177).
     lineage = current()
     if lineage is not None and lineage.excluded_genes:
         flagged = np.isin(gene_names[columns], list(lineage.excluded_genes))
@@ -657,8 +476,7 @@ def summarize_counts_for_bins(
 
     by_gene = _group_indicator(columns[known], bin_rank[known], len(gene_names), n_bins)
 
-    # NB every block's phased B count at once; the choice is per block, not
-    #    per bin, so the bins never enter it.
+    # NB phasing is per block, independent of the bins.
     phased = np.where(
         np.asarray(phase_indicator).reshape(-1, 1),
         single_X[:, 1, :],
@@ -671,9 +489,7 @@ def summarize_counts_for_bins(
 
     bin_single_total_bb_RD = np.asarray(by_block.T @ single_total_bb_RD, dtype=int)
 
-    # NB from the bins as a labelling of the genes (#438). `cnaster` reindexes
-    #    over every contig with zeros; a zero is a contig every lattice
-    #    restarts on and never reaches (D5), so none is written.
+    # NB lengths from the bins (#438); no zero-length contigs, unlike `cnaster` (D5).
     lengths = observe(df_gene_snp, "bin_id", "bins").lengths
 
     return SpatioGenomicCounts(
@@ -701,24 +517,10 @@ def create_bin_ranges(
 ) -> Any:
     """`cnaster.omics.create_bin_ranges`, without the rows its merge leaves unbinned (#438 D8, #105).
 
-    `min_segment_normal_umi`, which `run_cnaster_port --sal` binds
-    (`MIN_SEGMENT_NORMAL_UMI`), is the read-depth segment floor where the
-    configuration states none (#551): `segment_floor`.
-
-    **A stated departure from `cnaster`** (T- #617): the bins are re-cut on
-    `quality.min_segment_mb` and `quality.min_segment_normal_umi`, keys
-    `cnaster` does not read, wherever the configuration states either, with
-    or without the bound option.
-
-    `normal_baf_bin_filter` sets `bin_id` to missing for every bin it removes,
-    and the merge (`key="bin_id"`, `run_cnaster.py:983`) carries the missing
-    ids through. `run_cnaster` then casts `bin_id` to `int` over every gene
-    (`run_cnaster.py:1476`): a missing id becomes `INT_MIN` and indexes out of
-    bounds, so any removed bin ends the run at its last stage, after the
-    inference. Dropping those rows here is the fix #105 names -- a gene in a
-    removed bin has no copy number -- and every other consumer of the table
-    already skips them. The rows' index labels are kept, so the lineage still
-    places every remaining gene.
+    Rows with missing `bin_id` (removed by `normal_baf_bin_filter`) are dropped,
+    since `run_cnaster` would index out of bounds on them. Departure (T- #617):
+    bins are re-cut by `floor_bins` where `segment_floor` is on (#551);
+    `min_segment_normal_umi` is the normal floor where no key is stated.
     """
     table = _UPSTREAM_CREATE_BIN_RANGES(
         df_gene_snp,
@@ -764,33 +566,20 @@ def create_bin_ranges(
 
 
 MIN_SEGMENT_MB = 0.75
-"""The read-depth segment floor `quality.min_segment_mb: true` sets, in Mb (#551).
-
-On dev_tree r0 (`3381575a`) it takes tumour-clone RDR outlier rows (|log RDR
-deviation| > 0.5 at planted-neutral segments) from 1,163 to 104, and the
-segments from 2,895 to 1,265."""
+"""The read-depth segment floor `quality.min_segment_mb: true` sets, in Mb (#551)."""
 
 MIN_SEGMENT_NORMAL_UMI = 300.0
-"""The normal-UMI floor `quality.min_segment_normal_umi: true` sets (#551),
-and the one `run_cnaster_port` binds where no key is stated (#547,
-`port.pipeline.DEFAULTS`).
-
-On dev_tree r0 (`3381575a`) it takes tumour-clone RDR outlier rows from 1,163
-to 802 and the segments from 2,895 to 2,624. Under `--sal` it holds every
-clone ARI on dev_tree r0, CalicoST easy (`2d4ce9a9`) and hard (`8797710b`) and
-raises hard's copy ARI from 0.9055 to 0.9181 (#547)."""
+"""The normal-UMI floor `quality.min_segment_normal_umi: true` sets, and
+`run_cnaster_port`'s default where no key is stated (#551, #547)."""
 
 
 def segment_floor(
     normal_umi: float | None = None,
 ) -> tuple[float | None, float | None]:
-    """`(Mb, normal UMI)`: `quality.min_segment_mb` and `quality.min_segment_normal_umi` from `cnaster`'s global config.
+    """`(Mb, normal UMI)` floors from `cnaster`'s config `quality` section.
 
-    A key stated `false` or `none` is off, `true` its default
-    (`MIN_SEGMENT_MB`, `MIN_SEGMENT_NORMAL_UMI`) and a number itself. An
-    absent key is off, but for the normal floor, which is then `normal_umi`:
-    what `run_cnaster_port` binds (`port.pipeline.DEFAULTS`). Either one switches the floor on; the normal floor
-    is then at least `secondary_min_normal_umi`.
+    Per key: `false`/`none` off, `true` its default, a number itself; absent
+    is off, except the normal floor, which is then `normal_umi`.
     """
     from cnaster.config import get_global_config
 
@@ -820,14 +609,8 @@ def floor_bins(
 ) -> Any:
     """`table`'s bins merged within each contig to `min_length` bp and `min_normal_umi` normal-spot UMIs (#551).
 
-    `cnaster`'s `create_bin_ranges` states `secondary_min_normal_umi` and
-    does not guarantee it: it merges only inside each BAF breakpoint run, and
-    a run of one block is never checked. `Segmentation.floored` merges
-    across them. Normal UMIs are counted per gene over `normal_candidates`, as
-    `cnaster` counts them per block, without the genes the
-    differential-expression filter removed (#440). While the run records its
-    lineage, the merge is recorded as `bins-floored` and the floor is set, so
-    every later level is checked against it.
+    Unlike `cnaster`, guarantees the floor across BAF breakpoint runs. Excludes
+    filtered genes (#440); records `bins-floored` and the floor on the lineage.
     """
     lineage = current()
     genes = None if lineage is None else lineage.genes

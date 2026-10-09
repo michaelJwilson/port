@@ -1,10 +1,4 @@
-"""No file the repository tracks, or would add, exceeds `[tool.port] max_file_bytes`.
-
-GitHub warns on a 50 MiB file and rejects a 100 MiB one; a clone carries
-every version of every file for good. `pyproject.toml` sets the limit, and
-this refuses a change that crosses it -- a generated sample outside
-`sim/generated/`, an uncompressed fixture -- before it is in the history.
-"""
+"""No tracked or addable file exceeds `pyproject.toml`'s `[tool.port] max_file_bytes`."""
 
 from __future__ import annotations
 

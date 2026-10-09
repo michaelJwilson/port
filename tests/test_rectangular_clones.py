@@ -1,10 +1,6 @@
-"""`initialize_rectangular_clones`, which `cnaster` can loop in forever (#304, T- #692).
+"""`initialize_rectangular_clones` against `cnaster`'s, which can loop forever (#304, #692).
 
-The two inputs under `tests/data/` are the arguments the dev instance's run
-passed on its first and third calls, captured after #298's normal clone made
-the third one hang: 297 spots into four clones, where the Dirichlet-drawn
-boundaries leave blocks of [194, 3, 77, 23] against `cnaster`'s floor of
-14.85 spots, so no assignment passes its 20 per cent test.
+`tests/data/` holds the dev run's captured first and third call arguments (#298).
 """
 
 from __future__ import annotations
@@ -15,6 +11,14 @@ from typing import Any
 
 import numpy as np
 import pytest
+from cnaster.spatial import initialize_rectangular_clones as upstream
+from port.patch.spatial import (
+    RECTANGLE_REDRAWS,
+    admits_assignment,
+    initialize_rectangular_clones,
+)
+from port.patch.spatial import initialize_rectangular_clones as replacement
+from sal.opt.termination import Stop
 
 from tests import TESTS
 from tests.adapters import square_coords
@@ -22,15 +26,7 @@ from tests.adapters import square_coords
 DATA = TESTS / "data"
 
 TRY_CAP = 3_000
-"""`randint` calls `cnaster`'s loop may make before a seed counts as not returning.
-
-With `n_clones <= 4` there are four blocks, and on a draw that admits a
-passing assignment each try passes with probability at least `1 / 81`
-(one surjection of four blocks onto three clones), so a returning draw
-outlives the cap with probability below `(80 / 81) ** 3000 < 1e-16`. At
-five and six clones on nine blocks the bound is weaker and the cap is
-empirical: no seed in the sweep reaches it.
-"""
+"""`randint` calls before a seed counts as not returning (false miss < 1e-16 at 4 clones)."""
 
 SEEDS = 120
 """Seeds per `(input, n_clones)` in the equivalence sweep: 1,800 calls."""
@@ -61,12 +57,7 @@ class _Exhausted(Exception):
 def _upstream_capped(
     monkeypatch: pytest.MonkeyPatch, coords: np.ndarray, n_clones: int, seed: int
 ) -> Any:
-    """`cnaster`'s call, or `None` where its loop exceeds `TRY_CAP` tries.
-
-    The cap counts calls to the legacy global `randint` and delegates every
-    one, so a call that returns drew exactly what it draws uncapped.
-    """
-    from cnaster.spatial import initialize_rectangular_clones as upstream
+    """`cnaster`'s call, or `None` past `TRY_CAP` draws; delegates each draw unchanged."""
 
     original = np.random.randint
     calls = [0]
@@ -100,12 +91,7 @@ def _upstream_capped(
 def test_where_cnaster_returns_it_returns_the_same(
     coords: str, n_clones: int, seed: int
 ) -> None:
-    """Bitwise, the index lists and the labels, where `cnaster` returns.
-
-    The dev instance's first call, and a 12 x 40 band at 1 to 4 clones.
-    """
-    from cnaster.spatial import initialize_rectangular_clones as upstream
-    from port.patch.spatial import initialize_rectangular_clones as replacement
+    """Bitwise equal to `cnaster` where it returns: the dev first call and a 12 x 40 band."""
 
     points = (
         _coords("rectangular_returns") if coords == "returns" else square_coords(12, 40)
@@ -123,16 +109,7 @@ def test_where_cnaster_returns_it_returns_the_same(
 def test_bitwise_on_every_seed_cnaster_returns(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """1,800 calls: bitwise wherever `cnaster` returns, a redraw wherever it cannot.
-
-    Both captured dev inputs and a 12 x 40 band, at 2 to 6 clones, seeds
-    0 to 119. Where `cnaster` returns, the replacement returns the same
-    labels and index lists with `Stop.CONVERGED` on its first draw. Where
-    `cnaster` exceeds `TRY_CAP` tries, the replacement refused that first
-    draw and redrew -- the two branches partition the seeds exactly.
-    """
-    from port.patch.spatial import initialize_rectangular_clones as replacement
-    from sal.opt.termination import Stop
+    """1,800 seeds: bitwise where `cnaster` returns, a redraw exactly where it cannot."""
 
     inputs = {
         "hang": _coords("rectangular_hang"),
@@ -165,16 +142,7 @@ def test_bitwise_on_every_seed_cnaster_returns(
 @pytest.mark.oracle
 @pytest.mark.parametrize("n_clones", [2, 3, 4, 5])
 def test_feasibility_agrees_with_enumerating_every_assignment(n_clones: int) -> None:
-    """`admits_assignment` against every map of blocks onto clones.
-
-    `cnaster`'s loop reaches exactly the surjective maps, so a draw admits a
-    passing assignment iff one surjection gives every clone more than the
-    floor. Enumerated outright -- `n_clones ** p ** 2` maps; 1,953,125 at
-    five clones on nine blocks -- over 200 seeded block sizes per count,
-    three in four drawn skewed (Dirichlet 0.3) so that blocks below the floor
-    are common. `oracle`, so `scripts.ci` runs it in the release step.
-    """
-    from port.patch.spatial import admits_assignment
+    """`admits_assignment` against enumerating every surjection of blocks onto clones."""
 
     p = int(np.ceil(np.sqrt(n_clones)))
     maps = np.stack(
@@ -224,13 +192,7 @@ def _within(seconds: int, call: Any) -> bool:
 @pytest.mark.bug
 @pytest.mark.merge
 def test_cnaster_does_not_return_on_the_captured_input() -> None:
-    """`cnaster`'s loop, on the third call's arguments, runs past 5 s.
-
-    Written to fail when `cnaster` redraws its boundaries or bounds the loop.
-    A returning call takes milliseconds on 297 spots, so five seconds is a
-    thousandfold margin rather than a guess.
-    """
-    from cnaster.spatial import initialize_rectangular_clones as upstream
+    """`cnaster` runs past 5 s on the third captured call; fails when fixed."""
 
     points = _coords("rectangular_hang")
 
@@ -239,15 +201,7 @@ def test_cnaster_does_not_return_on_the_captured_input() -> None:
 
 @pytest.mark.analytic
 def test_the_dev_blocks_are_refused_and_a_redraw_passes() -> None:
-    """On the input `cnaster` loops on: [194, 3, 77, 23] refused, one redraw.
-
-    The 3-spot block is below the 14.85 floor and four clones on four blocks
-    take one block each, so no assignment passes; the second draw does.
-    Every spot is labelled once and every clone holds more than a fifth of an
-    equal share -- `cnaster`'s own acceptance test, applied to the answer.
-    """
-    from port.patch.spatial import admits_assignment, initialize_rectangular_clones
-    from sal.opt.termination import Stop
+    """On that input [194, 3, 77, 23] is refused and one redraw passes `cnaster`'s acceptance test."""
 
     assert not admits_assignment(np.array([194, 3, 77, 23]), 4, 0.2 * 297 / 4)
 
@@ -272,15 +226,7 @@ def test_the_dev_blocks_are_refused_and_a_redraw_passes() -> None:
 
 @pytest.mark.analytic
 def test_a_one_row_strip_returns_bands_and_says_infeasible() -> None:
-    """200 spots in one row, four clones: no boundary draw can pass (#248).
-
-    Every spot shares one `y`, so the `y` split leaves two of four blocks
-    empty on every draw. After `RECTANGLE_REDRAWS` refused redraws the
-    partition is four bands of 50 along `x`, which passes the 20 per cent
-    test (threshold 10), and the result says `Stop.INFEASIBLE`.
-    """
-    from port.patch.spatial import RECTANGLE_REDRAWS, initialize_rectangular_clones
-    from sal.opt.termination import Stop
+    """A one-row strip falls back to bands of 50 and reports `Stop.INFEASIBLE` (#248)."""
 
     points = square_coords(1, 200)
     returned: list[Any] = []

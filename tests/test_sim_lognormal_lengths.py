@@ -1,11 +1,4 @@
-"""#619: `[cna.length] law = "lognormal"`, keyed by a stated mean or median.
-
-`port.sim.laws.lognormal_sigma` gives the spread that puts `share` of a
-lognormal below `below` times its median; the live `dev_tree` manifests state
-it rounded to 3 places. The referees: `scipy.stats.lognorm`, an independent
-implementation of the law (`analytic`), and the value the code derives
-(`snapshot`).
-"""
+"""#619: `[cna.length] law = "lognormal"` against `scipy.stats.lognorm` and the derived sigma."""
 
 from __future__ import annotations
 
@@ -27,7 +20,7 @@ SHARE, BELOW = 0.10, 0.5
 
 
 def _lognormal_manifests() -> list[Path]:
-    """Every manifest whose own `[cna.length]` states `law = "lognormal"`."""
+    """Return every manifest whose own `[cna.length]` states `law = "lognormal"`."""
     return [
         p
         for p in sorted(MANIFESTS.rglob("*.toml"))
@@ -59,8 +52,7 @@ def test_lognormal_sigma_puts_share_below_the_fraction_of_the_median(
 def test_lognormal_lengths_keep_the_stated_quantity_and_the_short_tail(
     manifest: str, key: str
 ) -> None:
-    """20,000 draws: the stated mean or median within 1%, P(< median / 2) at
-    0.100 +- 0.01, and log-lengths normal at the law's parameters by KS at 1%."""
+    """20,000 draws keep the stated mean or median within 1%, the tail at 0.10 +- 0.01, KS at 1%."""
     drawn = from_document(extended(MANIFESTS / manifest), MANIFESTS)
     law: dict[str, Any] = drawn.cna["length"]
     rng = np.random.default_rng(619)
@@ -79,8 +71,7 @@ def test_lognormal_lengths_keep_the_stated_quantity_and_the_short_tail(
 
 @pytest.mark.snapshot
 def test_every_lognormal_manifest_states_the_derived_sigma() -> None:
-    """`sigma` is `round(lognormal_sigma(0.10, 0.5), 3)` in every manifest that
-    states the law, so changing the criterion changes both together."""
+    """Every lognormal manifest states `round(lognormal_sigma(0.10, 0.5), 3)`."""
     paths = _lognormal_manifests()
     expected = round(lognormal_sigma(SHARE, BELOW), 3)
 
@@ -114,8 +105,7 @@ def test_a_lognormal_law_states_exactly_one_of_mean_or_median(
 
 @pytest.mark.infra
 def test_a_stated_law_replaces_the_base_length_table_whole() -> None:
-    """`dev_tree_1s_hard` states `median` over `dev_tree_1s`'s `mean`: the
-    extended table carries only the hard manifest's keys."""
+    """A stated law replaces the base length table whole."""
     length = extended(MANIFESTS / "dev_tree_1s_hard.toml")["cna"]["length"]
 
     assert set(length) == {"law", "median", "sigma", "minimum"}

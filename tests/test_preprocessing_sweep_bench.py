@@ -1,34 +1,6 @@
-"""What the preprocessing patches cost against what they replace (#190).
+"""The preprocessing patches' cost against what they replace, per component (#190).
 
-**21,368 ms to 1,007 ms on the whole chain from the files to
-`run_core_inference`, 21.2x, at 2,500 spots and 400 bins.** Per stage, timed
-best of three with the allocation pass taken separately:
-
-| stage | `cnaster` | patched | | peak |
-| --- | ---: | ---: | ---: | --- |
-| `normal_baf_bin_filter` | 19,926 ms | 249 ms | **80.0x** | 46 MB, unchanged |
-| `multislice_adjacency` | 72 ms | 4.8 ms | **15.1x** | 100.4 -> 1.4 MB |
-| `form_gene_snp_table` | 126 ms | 10.5 ms | **12.1x** | 0.5 MB |
-| `best_equal_partition` | 156 ms | 18.2 ms | **8.6x** | 0.2 MB |
-| `assign_initial_blocks` | 583 ms | 275 ms | 2.1x | 25 MB |
-| `load_input_data` (#186) | 283 ms | 228 ms | 1.2x | 159 MB |
-| unpatched remainder | 221 ms | 221 ms | 1.0x | 57 MB |
-
-The chain's peak is unchanged at 159 MB because it is set by the loader's
-dense return, which `sparse_counts` removes and which nothing downstream
-accepts yet (#186).
-
-The rows here are the components rather than the chain, because a chain
-measurement needs a written instance and a benchmark that builds one is
-timing the fixture. The synthetic sizes below are chosen to bracket what the
-chain measurement saw.
-
-**Peak is not a column.** `pytest-benchmark` measures time, and interleaving
-`tracemalloc` with it distorts both. The two allocation claims are in their
-own modules' docstrings: 100.4 MB to 1.4 MB for the adjacency at 2,500 spots,
-1,601 MB to 5.5 MB at 10,000, and 0.6 MB to 4.6 MB for the distribution
-function at a slide's read depth -- the one place a patch here allocates more
-than what it replaces.
+Results are recorded in #190.
 """
 
 from collections.abc import Callable
@@ -62,22 +34,12 @@ STRESS_LATTICE = (100, 100)
 
 GATE_DEPTH = (2_000, 400)
 STRESS_DEPTH = (20_000, 400)
-"""`(reads per bin, bins)` for the distribution function.
-
-A bin pools its B-allele counts across every normal spot, so the depth grows
-with the slide and the bin count does not. The stress row is where the
-summation is long enough for the tabulated log-gammas to matter.
-"""
+"""`(reads per bin, bins)` for the distribution function; depth grows with the slide."""
 
 
 @pytest.fixture(scope="module")
 def hgtable(tmp_path_factory: pytest.TempPathFactory) -> Any:
-    """A reference gene table of a given size, written once per size.
-
-    Synthetic rather than the fixture's own, because the claim is about a
-    human reference -- 250,000 transcripts against the dev instance's 1,213 --
-    and no fixture here carries one.
-    """
+    """A synthetic reference gene table of a given size, written once per size."""
     root = tmp_path_factory.mktemp("hgtable")
     written: dict[int, Any] = {}
 
@@ -132,14 +94,7 @@ def test_adjacency(
     arm: Callable[..., object],
     lattice: tuple[int, int],
 ) -> None:
-    """The dense block diagonal against sparse throughout.
-
-    14.9 ms against 2.49 ms at 1,000 spots, **6.0x**. At 10,000 spots
-    1,250 ms and 1,601 MB to hold 0.3 MB of graph, against 15.9 ms and
-    5.5 MB: **78x**, and 289x less allocated. The ratio grows with the spot
-    count because what is removed is quadratic in it and what is left -- the
-    k-d tree query -- is not.
-    """
+    """Dense block diagonal against sparse, at 1,000 and 10,000 spots."""
     coords = square_coords(*lattice).astype(float)
     sample_ids = np.zeros(len(coords), dtype=int)
 
@@ -165,14 +120,7 @@ def test_partition(
     lattice: tuple[int, int],
     n_trials: int,
 ) -> None:
-    """Index lists per trial against a summed-area table batched across trials.
-
-    24.2 ms against 3.90 ms at 1,000 spots and 200 trials, **6.2x**. At
-    10,000 spots and 1,000 trials 304 ms against 18.6 ms, **16x**, and
-    17.2 ms at 2,500 spots -- the same figure. The cost stops depending on
-    the spot count, which is the claim: a trial reads `x_part * y_part`
-    corners of a table built once.
-    """
+    """Per-trial index lists against a summed-area table batched across trials."""
     coords = square_coords(*lattice).astype(float)
 
     benchmark(arm, coords, 3, 3, n_trials=n_trials)
@@ -190,14 +138,7 @@ def test_distribution_function(
     arm: Callable[..., object],
     depth: tuple[int, int],
 ) -> None:
-    """Two `scipy` calls against one sweep for both.
-
-    53.9 ms against 7.36 ms at the gate depth, **7.3x**. At 20,000 reads per
-    bin `scipy` sums one element at a time, 404.6 ms against 73.1 ms:
-    **5.5x**, and 4.9x again at 100,000. Where the claim is made. Both forms
-    are linear in the terms summed, so the ratio is what a term costs: four
-    gathers against two `betaln` calls.
-    """
+    """Two scipy calls against one sweep for both, at gate and 20,000-read depths."""
     counts, totals = _bins(*depth)
 
     benchmark(arm, counts, totals, 15.0, 15.0)
@@ -216,23 +157,5 @@ def test_reference_read(
     arm: Callable[[str], object],
     rows: int,
 ) -> None:
-    """`pd.read_csv` against `pl.read_csv` handed back through Arrow (#185).
-
-    At 1,213 transcripts 6.31 ms against 4.03 ms, **0.98x**, and that is the
-    finding: a multi-threaded parser has nothing to divide and the Arrow
-    conversion's fixed cost is the whole of the read.
-
-    At 250,000 transcripts, a human reference's size, 430.7 ms and 49.5 MB
-    against 60.5 ms and 15.5 MB: **7.1x**, and **3.2x less allocated**. The
-    claim is the second figure. Reading the frame back column by column
-    through `numpy` is 42.8 ms and 23.3 MB -- **faster by 1.41x** and heavier
-    by 1.50x -- so `pyarrow` is a memory patch and a time cost, not a
-    speedup, and `CLAUDE.md`'s 2x bar is therefore not the rule that decides
-    it. The evidence that does is the bitwise test:
-    `tests/test_reference_patch.py` compares the frame, its index, its column
-    order and its dtypes against `cnaster`'s.
-
-    Warm, best of five, and both routes measured in the same pass -- the
-    first read of a 250,000-row file is the page cache, not the parser.
-    """
+    """`pd.read_csv` against `pl.read_csv` via Arrow, at 1,213 and 250,000 transcripts, warm (#185)."""
     benchmark(arm, str(hgtable(rows)))

@@ -1,10 +1,6 @@
-"""The `patched` badge's line mapping (#302).
+"""The `patched` badge's line mapping in `port.qa.benchmark` (#302).
 
-`port.qa.benchmark`'s patched share counts an executed `cnaster` line as patched when it
-sits inside a function a default row replaces. Two rows are the shapes that
-decide it: a function, whose whole body counts, and a class, of which only
-the methods the replacement overrides count. `infra`: this checks the
-repository's own accounting, not the subject.
+A function row counts its whole body; a class row only overridden methods. `infra`.
 """
 
 from __future__ import annotations
@@ -12,14 +8,15 @@ from __future__ import annotations
 import inspect
 import os
 
+import cnaster.hmrf
 import pytest
+from cnaster.hmm_nophasing import hmm_nophasing
+from port.qa.benchmark import patched_lines, share
 
 
 @pytest.mark.infra
 def test_a_function_row_counts_its_whole_body() -> None:
     """`pipeline_clone_assignment`, replaced whole, counts every line it has."""
-    import cnaster.hmrf
-    from port.qa.benchmark import patched_lines
 
     spans = patched_lines()
     function = cnaster.hmrf.pipeline_clone_assignment
@@ -31,13 +28,7 @@ def test_a_function_row_counts_its_whole_body() -> None:
 
 @pytest.mark.infra
 def test_a_class_row_counts_only_what_it_overrides() -> None:
-    """`hmm_nophasing`: `optimize` is overridden and counts; the rest does not.
-
-    `get_state_posteriors` is inherited unchanged, so a run still executes
-    `cnaster`'s own lines there, and counting them would overstate the share.
-    """
-    from cnaster.hmm_nophasing import hmm_nophasing
-    from port.qa.benchmark import patched_lines
+    """`hmm_nophasing`: only the overridden `optimize` counts, not inherited `get_state_posteriors`."""
 
     spans = patched_lines()
     path = os.path.realpath(inspect.getsourcefile(hmm_nophasing) or "")
@@ -54,7 +45,6 @@ def test_a_class_row_counts_only_what_it_overrides() -> None:
 @pytest.mark.infra
 def test_the_share_is_executed_lines_inside_patched_spans() -> None:
     """Three executed lines in one file, two of them patched: 2 of 3."""
-    from port.qa.benchmark import share
 
     assert share({"a.py": {1, 2, 3}}, {"a.py": {2, 3, 9}}) == (2, 3)
     assert share({"a.py": {1}}, {}) == (0, 1)

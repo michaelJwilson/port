@@ -1,11 +1,7 @@
-"""Baselines for the single-chain path, recorded so a later change has one.
+"""Single-chain baselines for cnaster and `snakes_and_ladders` on one gate-size fixture
+(#9).
 
-These measure `cnaster` and `snakes_and_ladders` on the same fixture at the
-same size. They assert nothing about the ratio: a benchmark that fails on a
-machine's speed is a flaky test, and `CLAUDE.md` puts the bar for acting on
-a ratio at a stress size, which these are not. What they are is the number a
-proposal has to beat, and the number issue #9's crossover measurement
-reports against.
+No ratio is asserted.
 """
 
 from collections.abc import Callable
@@ -65,35 +61,24 @@ def phased() -> PhasedChains:
             f.family.log_density,
             torch.as_tensor(f.dataset.observations, dtype=torch.float64),
         ),
-    ],
-    ids=["cnaster", "upstream"],
-)
-def test_emission(
-    benchmark: BenchmarkFixture,
-    chains: NegativeBinomialChains,
-    arm: Callable[[NegativeBinomialChains], Callable[[], object]],
-) -> None:
-    """The same scores from both, for the ratio between them."""
-    benchmark(arm(chains))
-
-
-@pytest.mark.benchmark
-@pytest.mark.parametrize(
-    "arm",
-    [
         lambda f: partial(
             cnaster_total_log_likelihood, from_negative_binomial_chains(f)
         ),
         lambda f: partial(upstream_total_log_likelihood, f),
     ],
-    ids=["cnaster", "upstream"],
+    ids=[
+        "emission-cnaster",
+        "emission-upstream",
+        "forward-cnaster",
+        "forward-upstream",
+    ],
 )
-def test_forward(
+def test_emission_and_forward(
     benchmark: BenchmarkFixture,
     chains: NegativeBinomialChains,
     arm: Callable[[NegativeBinomialChains], Callable[[], object]],
 ) -> None:
-    """The emission and forward recursion together."""
+    """The same scores from both, for the ratio between them; then the emission and forward recursion together."""
     benchmark(arm(chains))
 
 
@@ -113,10 +98,5 @@ def test_phased_forward(
     phased: PhasedChains,
     arm: Callable[[PhasedChains], Callable[[], object]],
 ) -> None:
-    """`cnaster`'s phased lattice against upstream's at the assembled transition.
-
-    `cnaster` reassembles its transfer matrix per position. The gap between
-    the two is the cost of reassembling a `2K x 2K` matrix at every position
-    where the kernel is constant and one matrix would do.
-    """
+    """cnaster's per-position phased lattice against upstream's at the assembled transition."""
     benchmark(arm(phased))

@@ -1,14 +1,6 @@
-"""The report that tells a pull request what it moved (#271).
+"""`scripts/badge_report.py`, the report of what a pull request moved (#271).
 
-`scripts/badge_report.py` is `port`'s own machinery, not the subject's
-behaviour, so these are `infra` -- the one marker `CLAUDE.md` reserves for
-this repository's rules, and which it asks to stay sparing. Nothing here
-reaches `cnaster`.
-
-The claims worth testing are the ones a wrong report would get wrong
-silently: that a delta is the head minus the base and not the head alone,
-that a missing base says so rather than rendering a move from zero, and
-that an unmeasured guard stays unmeasured instead of becoming a number.
+Deltas are head minus base; a missing base or unmeasured guard is reported, not zeroed.
 """
 
 from __future__ import annotations
@@ -18,6 +10,7 @@ from typing import Any
 import pytest
 
 from scripts.badge_report import NO_BASE, render, rows
+from scripts.badges import load
 
 
 def _measurements(**guards: Any) -> dict[str, Any]:
@@ -40,11 +33,7 @@ def _guard(
 
 @pytest.mark.infra
 def test_the_delta_is_head_minus_base() -> None:
-    """The delta is the claim, so it is the one number worth being sure of.
-
-    A report that restated the head figures would be the JSON diff with
-    borders; what a reviewer cannot get from the diff is the movement.
-    """
+    """The delta is head minus base."""
     base = _measurements(judged=_guard("e2e", 40.27))
     head = _measurements(judged=_guard("e2e", 41.01))
 
@@ -74,12 +63,7 @@ def test_a_guard_that_did_not_move_renders_no_delta() -> None:
 
 @pytest.mark.infra
 def test_a_missing_base_is_said_rather_than_rendered_as_zero() -> None:
-    """A first commit is not a coverage collapse.
-
-    The base is an input, and an absent one is reported. Rendering it as a
-    move from zero would be a claim about a measurement nobody took -- the
-    same reason `badges.UNMEASURED` is `/` rather than `0`.
-    """
+    """An absent base is reported, not rendered as a move from zero."""
     head = _measurements(judged=_guard("e2e", 41.01))
 
     report = render(None, head)
@@ -105,13 +89,7 @@ def test_an_unmeasured_guard_stays_unmeasured() -> None:
 
 @pytest.mark.infra
 def test_a_moved_denominator_is_called_out_separately() -> None:
-    """Two percentages over different denominators are not comparable.
-
-    #259 moved this denominator three times, and a delta read across such a
-    move is a number with no meaning. The report still prints the delta --
-    suppressing it would hide that the figure changed -- and says beside it
-    that the two were not measured against the same set.
-    """
+    """A delta across different denominators is printed and flagged (#259)."""
     base = _measurements(judged=_guard("e2e", 40.27, denominator="cnaster, 8522"))
     head = _measurements(judged=_guard("e2e", 41.01, denominator="cnaster, 8671"))
 
@@ -128,11 +106,7 @@ def test_a_moved_denominator_is_called_out_separately() -> None:
 
 @pytest.mark.infra
 def test_a_head_figure_below_its_floor_says_so() -> None:
-    """The floor is why the figure is recorded at all.
-
-    `check_badges` is what fails the job; this only has to make the reason
-    legible, so a reviewer reading the comment is not the last to know.
-    """
+    """A figure below its floor is flagged."""
     head = _measurements(judged=_guard("e2e", 41.00, floor=41.7))
 
     (row,) = rows(None, head)
@@ -143,12 +117,7 @@ def test_a_head_figure_below_its_floor_says_so() -> None:
 
 @pytest.mark.infra
 def test_a_guard_absent_from_the_base_is_not_a_move_from_nothing() -> None:
-    """A guard added on this branch has no base figure, and says so.
-
-    Driven by the head's keys, so a guard *deleted* on the branch does not
-    render as a fall to `/`: that is the diff's to show, and a row claiming
-    it fell would be wrong.
-    """
+    """A guard added on this branch has no base figure, and says so."""
     base = _measurements(judged=_guard("e2e", 40.27))
     head = _measurements(judged=_guard("e2e", 40.27), fresh=_guard("new", 12.5))
 
@@ -164,13 +133,7 @@ def test_a_guard_absent_from_the_base_is_not_a_move_from_nothing() -> None:
 
 @pytest.mark.infra
 def test_the_real_measurements_render() -> None:
-    """The committed file is the one input this has to survive.
-
-    Pinned because the notes in `measurements.json` are prose that grows,
-    and a renderer that only ever saw the fixtures above would break on it
-    without anyone noticing until CI.
-    """
-    from scripts.badges import load
+    """The committed `measurements.json` renders."""
 
     recorded = load()
     report = render(recorded, recorded)

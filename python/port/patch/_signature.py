@@ -1,15 +1,7 @@
 """A wrapper that takes exactly what the `cnaster` function it wraps takes (#517).
 
-A drop-in installs by rebinding a name, so it has to accept every call the
-original accepts and refuse the ones it refuses. `*args, **kwargs` does the
-first and not the second, and a body that reads `args[2]` depends on the
-caller passing by position. `as_upstream` gives the wrapper the original's
-signature and hands its body the arguments by name, as they were given:
-defaults are not filled in, so "was this passed?" keeps its meaning.
-
-`port`'s own options follow as keyword-only parameters with defaults, which a
-swap row binds at install; the body receives them in a second mapping, every
-one present.
+The body receives the arguments by name as given (defaults not filled in), and
+`port`'s keyword-only options, every one present, in a second mapping.
 """
 
 from __future__ import annotations

@@ -1,12 +1,5 @@
-"""The metrics ledger in `docs/metrics/` is consistent, and its latest `dev`
-run is the fixture built now (#409, #620).
-
-The ledger guards are what make a value comparable: a line whose run or
-definition is missing is a number with nothing to say what it measured. The
-hash check is what makes a run reproducible rather than a number with a
-commit beside it: a change that moves what `dev_instance` builds leaves every
-earlier run describing data that no longer comes out, and fails here until a
-run on the new data is recorded.
+"""The `docs/metrics/` ledger is consistent and its latest `dev` run hashes the fixture
+built now (#409, #620).
 """
 
 import ast
@@ -17,6 +10,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 from port.qa import ledger as metrics
 from port.qa.ledger import (
     COLUMNS,
@@ -35,6 +30,9 @@ from port.qa.ledger import (
     runs,
 )
 from port.sim import truth as sim_truth
+from port.sim.fixtures import SAMPLES, SIM_ROOT, realization_hash
+from port.studies import metrics_history
+from port.studies.metrics_history import SKIP, axis, label, ticks
 
 from tests import ROOT
 from tests.metrics import fixture_hash
@@ -61,8 +59,7 @@ def test_every_run_parses_and_is_in_timestamp_order() -> None:
 
 @pytest.mark.infra
 def test_every_ledger_line_names_a_run_and_a_definition() -> None:
-    """Each line's `run_id` is in `runs`, its `(metric, definition)` in
-    `definitions`, and its value a number."""
+    """Each line's `run_id` is in `runs`, its `(metric, definition)` in `definitions`, its value a number."""
     ids = {run["run_id"] for run in runs()}
     defined = {(d["metric"], d["definition"]) for d in definitions()}
     lines = ledger()
@@ -79,8 +76,7 @@ def test_every_ledger_line_names_a_run_and_a_definition() -> None:
 
 @pytest.mark.infra
 def test_definitions_are_numbered_from_one_and_cover_every_metric() -> None:
-    """Append-only versions: 1, 2, ... per metric, and every `METRICS` key
-    has one, so `--record` can name it."""
+    """Definition versions run 1, 2, ... per metric, and every `METRICS` key has one."""
     numbers: dict[str, list[int]] = {}
     for d in definitions():
         numbers.setdefault(d["metric"], []).append(int(d["definition"]))
@@ -98,17 +94,12 @@ ADDED = frozenset({"clone_ari_int_99"})
 
 CONVERTED_ROWS = 73
 CONVERTED_SHA256 = "0bcb7c57193ac696ed08cca106200ab817914289c3900ba35187373810b44e10"
-"""The SHA-256 of the 73 data lines of the hand-edited `docs/metrics.md` at
-ef2261d, joined by newlines: the table the ledger was converted from (#620),
-read from git, not from the ledger."""
+"""SHA-256 of the 73 data lines of `docs/metrics.md` at ef2261d, read from git (#620)."""
 
 
 @pytest.mark.infra
 def test_the_render_rebuilds_the_converted_rows() -> None:
-    """`--render`'s first 73 rows, parsed back and written in the old table's
-    form, hash to the table they were converted from: every cell of every
-    converted run survives the ledger, `[converted: ...]` remarks and the
-    later `benchmark` column aside."""
+    """`--render`'s first 73 rows, in the old table's form, hash to `TABLE_HASH`."""
     rows = parse(render())[:CONVERTED_ROWS]
     kept = {"note": lambda v: v.split(CONVERTED)[0]}
     # NB the converted table's columns: a metric added since (`ADDED`) has none
@@ -131,8 +122,7 @@ def test_the_render_rebuilds_the_converted_rows() -> None:
 def test_a_recorded_run_writes_one_line_per_measured_metric(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`write` appends one `runs` line and a `ledger` line per finite metric,
-    under its latest definition, and `read` and `best` give them back."""
+    """`write` appends one `runs` line and a `ledger` line per finite metric; `read` and `best` return them."""
     for name in ("LEDGER", "RUNS", "DEFINITIONS"):
         path = tmp_path / getattr(metrics, name).name
         path.write_text(getattr(metrics, name).read_text())
@@ -214,9 +204,7 @@ def test_the_hash_is_of_the_data_and_moves_with_it() -> None:
 
 @pytest.mark.snapshot
 def test_each_hash_holds_one_name() -> None:
-    """A dataset has one name (#588): across the ledger, a `fixture_hash` is
-    under one `fixture`, and every pair passes `check_identity`. A name holds
-    one hash per generation (#739)."""
+    """Each `fixture_hash` sits under one `fixture`, and every pair passes `check_identity` (#588, #739)."""
     lines = ledger()
     names: dict[str, set[str]] = {}
     for line in lines:
@@ -229,9 +217,7 @@ def test_each_hash_holds_one_name() -> None:
 
 @pytest.mark.snapshot
 def test_the_calicost_runs_carry_the_shipped_samples_hash() -> None:
-    """`easy` and `hard` lines hash the committed sample as
-    `realization_hash` reads it now (#588)."""
-    from port.sim.fixtures import SAMPLES, SIM_ROOT, realization_hash
+    """`easy` and `hard` lines hash the committed sample as `realization_hash` reads it now (#588)."""
 
     for name, sample in SAMPLES.items():
         recorded = {
@@ -262,8 +248,7 @@ def test_best_takes_a_name_alone_only_where_it_holds_one_hash() -> None:
 
 @pytest.mark.infra
 def test_the_last_benchmark_is_one_run_per_fixture_at_one_commit() -> None:
-    """`benchmark` is `true` or `false`; the latest sweep's runs share a commit
-    and each measures a dataset, a name and hash, the others do not."""
+    """`benchmark` is a boolean; the latest sweep's runs share a commit and each names a dataset."""
     assert {r["benchmark"] for r in runs()} <= {"true", "false"}
     sweep = metrics.last_benchmark()
     assert sweep
@@ -297,14 +282,7 @@ def test_a_hash_under_another_name_is_refused() -> None:
 def test_the_history_plots_draw_from_the_ledger(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`port.studies.metrics_history` writes both figures from the ledger,
-    and each stamps the hash of the ledger's history rows.
-
-    `first_parent` reads `origin/main`, absent from a shallow checkout, so
-    the merge order is the ledger's own order here.
-    """
-    from matplotlib.figure import Figure
-    from port.studies import metrics_history
+    """`port.studies.metrics_history` writes both figures, each stamped with the history rows' hash."""
 
     rows = metrics_history.history()
     monkeypatch.setattr(
@@ -339,13 +317,7 @@ def _history_row(commit: str, fixture: str, clone_ari: str) -> dict[str, str]:
 def test_a_run_of_unchanged_merges_keeps_its_first_and_last_tick(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Merges a..d hold one value, e moves it, f adds a fixture, g repeats f:
-    a and d stand for a..d with one horizontal `SKIP` between them, below
-    the axis; e and f each start a tick; g joins f's run of two, drawn as
-    is. Tick labels stay plain `#NNN`."""
-    from matplotlib.axes import Axes
-    from port.studies import metrics_history
-    from port.studies.metrics_history import SKIP, axis, label, ticks
+    """Unchanged merges collapse to one `SKIP`; a change or new fixture starts a tick labelled `#NNN`."""
 
     rows = [_history_row(c, "easy", "0.5") for c in "abcd"]
     rows += [_history_row("e", "easy", "0.6")]

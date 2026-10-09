@@ -1,22 +1,6 @@
-"""`aim` is an extra, and the recording path does not need it installed.
+"""`aim` is an optional extra: the recording seam works without it (#251, #312).
 
-**#251.** `sal.track.Run` is a `runtime_checkable` Protocol
-written with `aim.Run`'s own signatures, so `aim.Run` satisfies it
-structurally and sal imports `aim` nowhere at module scope. That property is
-the whole justification for declaring `aim` in an extra rather than as a
-dependency: if it were false, a default install would have to carry a web
-server and two unfixed advisories (`pyproject.toml`, the `track` extra).
-
-**The seam is in the revision `port` pins** since #312's step 0 moved
-`[tool.uv.sources]`'s lock from `c9f4250` to `186bc59`; before that the two
-tests that import it skipped. They import it directly now, so a pin that
-loses `track.py` fails here rather than skipping.
-
-`infra`: these assert `port`'s own packaging rule, not anything about
-`cnaster` or about a scientific result. The packaging test passes whether or
-not a reader installed the extra, which is deliberate -- a test that
-asserted `aim` was absent would fail for exactly the reader who followed the
-README.
+`infra`: asserts `port`'s packaging rule, not a scientific result.
 """
 
 from __future__ import annotations
@@ -24,19 +8,14 @@ from __future__ import annotations
 import tomllib
 
 import pytest
+from sal import track
 
 from tests import ROOT
 
 
 @pytest.mark.infra
 def test_the_recording_seam_imports_without_aim() -> None:
-    """Import and use the seam, and let it pick its own null store.
-
-    Calls `record` rather than only importing: the claim is that an
-    untracked run costs nothing and needs nothing, and an import alone would
-    not catch a store that reached for `aim` on first use.
-    """
-    from sal import track
+    """`record` through the seam runs without `aim`, using its null store."""
 
     tracked = track.current()
 
@@ -47,14 +26,7 @@ def test_the_recording_seam_imports_without_aim() -> None:
 
 @pytest.mark.infra
 def test_aim_is_declared_as_an_extra_and_never_imported_here() -> None:
-    """The packaging half: an extra, and no module-scope import in `port`.
-
-    A module-scope `import aim` anywhere in `python/port/` would make the
-    extra mandatory in fact while staying optional in `pyproject.toml`,
-    which is the failure this refuses. Tracking code reaches `aim` only
-    through `sal.track`, and an entry point that opens a
-    store imports it inside the function that does.
-    """
+    """`aim` is declared as an extra and no `python/port/` module imports it at module scope."""
     manifest = tomllib.loads((ROOT / "pyproject.toml").read_text())
     extras = manifest["project"]["optional-dependencies"]
 

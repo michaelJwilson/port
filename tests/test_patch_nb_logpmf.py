@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from cnaster.hmm_nophasing import _nb_logpmf_1d as upstream
 from port.patch.hmm_nophasing import nb_logpmf as patch
 from scipy.stats import nbinom
 
@@ -45,7 +46,6 @@ def test_the_patched_kernel_is_cnasters_where_cnasters_p_is_below_one(
     mu: float,
 ) -> None:
     """Where `alpha * lambda >= 1e-8`, upstream's kernel to 1e-9 relative: the patch changes only the rounding regime."""
-    from cnaster.hmm_nophasing import _nb_logpmf_1d as upstream
 
     np.testing.assert_allclose(
         _scores(patch._nb_logpmf_1d, mu, 0.12),
@@ -57,11 +57,7 @@ def test_the_patched_kernel_is_cnasters_where_cnasters_p_is_below_one(
 
 @pytest.mark.bug
 def test_cnaster_scores_any_count_at_probability_one_once_p_rounds_to_one() -> None:
-    """At `log mu = -43.22`, the state Baum-Welch reached on dev_tree_1s_hard r0, upstream scores 1,000 UMIs at log P = 0.
-
-    The patch scores the same count at `k log(alpha lambda)`, below -30,000.
-    """
-    from cnaster.hmm_nophasing import _nb_logpmf_1d as upstream
+    """At `log mu = -43.22` (dev_tree_1s_hard r0) upstream scores 1,000 UMIs at 0; the patch below -30,000."""
 
     mu, alpha = float(np.exp(-43.22)), 0.1184
     assert (_scores(upstream, mu, alpha) == 0.0).all()

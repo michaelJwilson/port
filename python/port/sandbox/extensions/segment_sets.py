@@ -298,7 +298,7 @@ def writing_segment_sets(output: Path, *, level: float = 0.95) -> Iterator[None]
     written. How `port.studies.population` reaches these sets without the
     entry point installing them.
     """
-    from port.extensions.copy_errors import captured_fits
+    from port.extensions.copy_likelihood import captured_fits
     from port.patch.integer_copy import recorded
 
     with captured_fits() as kept, recorded() as decodes:

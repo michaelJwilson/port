@@ -1,4 +1,4 @@
-"""T- #817: `cnamaste.h5` and `truth.h5` hold what their schema declares, staged, and refuse the rest."""
+"""`cnamaste.h5` and `truth.h5` hold what their schema declares, staged, and refuse the rest (#817)."""
 
 from __future__ import annotations
 
@@ -6,8 +6,11 @@ import re
 from pathlib import Path
 from typing import Any
 
+import h5py
 import numpy as np
 import pytest
+import scipy.sparse as sp
+from port.extensions import cnamaste as c
 
 from tests import ROOT
 
@@ -41,8 +44,6 @@ ROOT_ATTRS = {"commit": "6a1d215", "port": "0.0", "cnaster": "0.0", "sal": "0.3.
 
 
 def _array(spec: Any, rng: np.random.Generator) -> Any:
-    import scipy.sparse as sp
-
     shape = (3,) if spec.dims == ("...",) else tuple(SIZES[a] for a in spec.dims)
     if spec.dtype == "csr":
         return sp.random(*shape, density=0.3, format="csr", random_state=1)
@@ -68,7 +69,7 @@ def _group(
     }
     if "int_copy_num.*" in group.attrs:
         attrs["int_copy_num.max_total_copy"] = 6
-    # NB a group's family is a pattern: `contig` and `contig_int` are one column, two types
+    # NB a family is a pattern: `contig` and `contig_int` are one column, two types.
     arrays.pop(
         "contig_int", None
     ) if "contig" in arrays and "contig_int" in arrays else None
@@ -80,8 +81,6 @@ def _path(group: Any) -> str:
 
 
 def _equal(one: Any, two: Any) -> bool:
-    import scipy.sparse as sp
-
     if sp.issparse(one):
         return bool((one != two).nnz == 0 and one.dtype == two.dtype)
     return (
@@ -93,8 +92,7 @@ def _equal(one: Any, two: Any) -> bool:
 @pytest.mark.infra
 @pytest.mark.parametrize("truth", [False, True])
 def test_every_declared_group_reads_back_bitwise(tmp_path: Path, truth: bool) -> None:
-    """Every group of `GROUPS` (`TRUTH_GROUPS`), every dataset at its declared type, read back equal."""
-    from port.extensions import cnamaste as c
+    """Every declared group and dataset reads back equal at its declared type."""
 
     groups, schema = (c.TRUTH_GROUPS, c.TRUTH_SCHEMA) if truth else (c.GROUPS, c.SCHEMA)
     path = tmp_path / "file.h5"
@@ -118,9 +116,7 @@ def test_every_declared_group_reads_back_bitwise(tmp_path: Path, truth: bool) ->
 
 @pytest.mark.infra
 def test_a_stage_never_completed_is_not_read(tmp_path: Path) -> None:
-    """A run killed inside `/rdrbaf`: every earlier group reads, `/rdrbaf` does not, nothing later exists."""
-    import h5py
-    from port.extensions import cnamaste as c
+    """A run killed in `/rdrbaf`: earlier groups read, `/rdrbaf` does not, nothing later exists."""
 
     path = tmp_path / c.FILE
     c.create(path, **ROOT_ATTRS)
@@ -145,7 +141,6 @@ def test_a_stage_never_completed_is_not_read(tmp_path: Path) -> None:
 @pytest.mark.infra
 def test_levels_keep_the_order_the_run_recorded(tmp_path: Path) -> None:
     """Levels read in recording order; one rewritten keeps its place and its new labels."""
-    from port.extensions import cnamaste as c
 
     path = tmp_path / c.FILE
     c.create(path, **ROOT_ATTRS)
@@ -183,8 +178,7 @@ def test_what_the_schema_does_not_declare_is_refused(
     attrs: dict[str, Any],
     error: str,
 ) -> None:
-    """An undeclared or missing dataset or attribute, a wrong axis, an inexact cast, a truth-only group."""
-    from port.extensions import cnamaste as c
+    """Refuses undeclared or missing fields, wrong axes, inexact casts and truth-only groups."""
 
     path = tmp_path / c.FILE
     c.create(path, **ROOT_ATTRS)
@@ -196,8 +190,6 @@ def test_what_the_schema_does_not_declare_is_refused(
 @pytest.mark.infra
 def test_a_global_axis_holds_across_groups(tmp_path: Path) -> None:
     """`n_spots` fixed by `/inputs` refuses an `/adjacency` of another size."""
-    import scipy.sparse as sp
-    from port.extensions import cnamaste as c
 
     path = tmp_path / c.FILE
     c.create(path, **ROOT_ATTRS)
@@ -209,7 +201,6 @@ def test_a_global_axis_holds_across_groups(tmp_path: Path) -> None:
 @pytest.mark.infra
 def test_the_document_is_the_schema() -> None:
     """`docs/cnamaste-h5.md`'s tables are `render()` of both schemas, verbatim."""
-    from port.extensions import cnamaste as c
 
     text = (ROOT / "docs" / "cnamaste-h5.md").read_text()
     tables = re.findall(r"(\| Group \|.*?)\n\n", text, flags=re.DOTALL)

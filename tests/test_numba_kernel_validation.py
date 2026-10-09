@@ -1,24 +1,14 @@
-"""Every compiled kernel in `cnaster` is named, and says who validates it.
+"""Every compiled `@njit` kernel in cnaster is classified: validated by a named test, or
+a ticketed gap.
 
-**Coverage cannot make this claim.** `numba` reports no line information, so
-an `@njit` function reads as uncovered however hard it is exercised and as
-untested when it is not — the report says the same thing either way, which is
-why `CLAUDE.md` requires these tested against an independent reference
-regardless of what the figure does.
-
-So the claim is made here instead, and it is a human one: the registry says
-which test validates each kernel. What this module enforces is that the claim
-is *complete* and *current* — every kernel the package ships is classified, a
-new one fails until someone classifies it, every named test exists, and every
-kernel without one names the ticket that owns the gap.
-
-It cannot enforce that a named test is a good test. Nothing can; that is what
-the marker on the test itself is for.
+Coverage cannot see `numba` kernels, so the registry carries the claim.
 """
 
 import ast
 import pathlib
+import re
 
+import cnaster
 import pytest
 
 SUBJECT = "cnaster"
@@ -111,13 +101,7 @@ UNVALIDATED: dict[str, str] = {
 
 
 def _installed_kernels() -> dict[str, str]:
-    """Every `@njit` function the installed package ships, by `module:name`.
-
-    Read from the source with `ast` rather than by importing: a dispatcher
-    object hides the decorator that made it, and importing every module to
-    find out would execute the package to audit it.
-    """
-    import cnaster
+    """Every `@njit` function the installed package ships, by `module:name`, read with `ast`."""
 
     root = pathlib.Path(next(iter(cnaster.__path__)))
     kernels: dict[str, str] = {}
@@ -140,12 +124,7 @@ def _installed_kernels() -> dict[str, str]:
 
 @pytest.mark.infra
 def test_every_compiled_kernel_is_classified() -> None:
-    """A kernel is validated or it names the ticket that owns the gap.
-
-    The failure this exists for is a *new* `@njit` landing in a dependency
-    upgrade: it arrives invisible to coverage, and without this it arrives
-    invisible to review as well.
-    """
+    """Every kernel is validated or names the ticket that owns the gap."""
     installed = set(_installed_kernels())
     classified = set(VALIDATED) | set(UNVALIDATED)
 
@@ -163,13 +142,7 @@ def test_every_compiled_kernel_is_classified() -> None:
 def test_every_named_validation_test_exists(
     collected_items: list[pytest.Item],
 ) -> None:
-    """The registry cannot point at a test that was renamed or deleted.
-
-    Without this the entries decay into documentation: a test moves, the claim
-    stays, and the registry says a kernel is validated by something that is not
-    there. Checked against the collection, so a parametrized test matches by
-    its base id.
-    """
+    """Every named validating test exists in the collection."""
     collected = {item.nodeid.split("[")[0] for item in collected_items}
 
     missing = {
@@ -182,7 +155,6 @@ def test_every_named_validation_test_exists(
 @pytest.mark.infra
 def test_every_gap_names_a_ticket() -> None:
     """An excuse without a ticket is a decision nobody will revisit."""
-    import re
 
     unticketed = {
         kernel: reason
@@ -195,12 +167,7 @@ def test_every_gap_names_a_ticket() -> None:
 
 @pytest.mark.infra
 def test_the_registry_is_not_empty_and_the_scan_found_kernels() -> None:
-    """Each assertion above passes trivially over an empty scan.
-
-    `_installed_kernels` reads a path that carries a Python version, so it can
-    come back empty the same way the coverage source can, and every guard here
-    would go green over nothing.
-    """
+    """The kernel scan is non-empty."""
     installed = _installed_kernels()
 
     assert len(installed) >= 25, f"the scan found {len(installed)} kernels"

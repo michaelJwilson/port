@@ -1,11 +1,7 @@
-"""A run whose normal-BAF filter removes bins completes, and says which genes it lost (#438 D8, #105).
+"""A run whose normal-BAF filter removes bins completes and lists the genes it kept (#438
+D8, #105).
 
-The stages instance at the shipped interval, `(0.01, 0.99)`: the filter
-removes the 8 bins the normal clone carries an event in, and `cnaster`'s
-gene-level writer used to cast their missing `bin_id` to `INT_MIN` and fail.
-The referee is the run's own lineage: the genes the gene-level output lists
-are exactly those the merged bins keep, and the ones it omits are exactly
-those the filter removed.
+Referee: the run's own lineage from the merged bins to the gene-level output.
 """
 
 from __future__ import annotations
@@ -13,35 +9,25 @@ from __future__ import annotations
 import warnings
 from typing import Any
 
+import matplotlib as mpl
 import numpy as np
 import pandas as pd
 import pytest
 import yaml
+from port.extensions.segments import recording
+from port.scripts.run_cnaster import main
+from port.sim.inputs import write_tmp_inputs
+from port.sim.run_config import isolated_run, write_run_cnaster_config
+from port.sim.unsegment import unsegment
 
-from tests.fixtures import END_TO_END_LATTICE
+from tests.fixtures import end_to_end_truth
 
 
 @pytest.fixture(scope="module")
 def removed(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
-    import matplotlib as mpl
-    from port.extensions.segments import recording
-    from port.scripts.run_cnaster import main
-    from port.sim.inputs import write_tmp_inputs
-    from port.sim.run_config import isolated_run, write_run_cnaster_config
-    from port.sim.truth import core_inference_truth
-    from port.sim.unsegment import unsegment
-
     mpl.use("Agg")
     root = tmp_path_factory.mktemp("removed")
-    truth = core_inference_truth(
-        n_clones=2,
-        n_states=3,
-        lattice=END_TO_END_LATTICE,
-        n_obs=40,
-        n_segments=3,
-        seed=11,
-        normal_clone=False,
-    )
+    truth = end_to_end_truth(normal_clone=False)
     written = write_tmp_inputs(truth, unsegment(truth, flip_every=0), root)
     config = write_run_cnaster_config(written, truth, max_iter_outer=1, max_iter=3)
 

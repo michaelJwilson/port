@@ -1,33 +1,31 @@
-"""`plot_clones_genomic`'s `colour_by`: integer copies deduplicated, or states.
+"""`plot_clones_genomic`'s `colour_by` against the planted oversampled states.
 
-The instance oversamples: five fitted states over three integer pairs, two
-of them at `(2, 1)` and two at `(1, 1)`. The referee is that construction
-(`analytic`): `"integer"` draws one colour per distinct pair, three;
-`"states"` one per fitted state, five, each labelled with its own `2 mu`
-and `p`; and unset is upstream's choice, pinned against it (`patch`).
+Five fitted states over three integer pairs; unset is pinned against upstream.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+from matplotlib.collections import PathCollection
+from port.patch import plot_genomic
+from port.patch.plot_genomic import bin_colours
+from port.scripts.run_cnaster import main
+
+from tests.fixtures import genomic_plot_instance
 
 PAIRS = [(1, 1), (1, 1), (2, 1), (2, 1), (3, 0)]
 """State `k`'s decoded `(A, B)`: states 0/1 and 2/3 oversample one pair each."""
 
 
 def _instance() -> dict[str, Any]:
-    rng = np.random.default_rng(5)
     n_obs, n_spots = 40, 4
     path = np.repeat(np.arange(len(PAIRS)), n_obs // len(PAIRS))
-
-    total = rng.integers(20, 80, size=(n_obs, n_spots)).astype(float)
-    X = np.zeros((n_obs, 2, n_spots))
-    X[:, 0, :] = rng.poisson(150, size=(n_obs, n_spots))
-    X[:, 1, :] = rng.binomial(total.astype(int), 0.45)
     frame = {
         "CHR": np.ones(n_obs, dtype=int),
         "clone0 A": np.array([PAIRS[k][0] for k in path]),
@@ -35,12 +33,9 @@ def _instance() -> dict[str, Any]:
     }
 
     return {
-        "arguments": (
-            np.array([n_obs]),
-            X,
-            rng.uniform(100.0, 200.0, size=(n_obs, n_spots)),
-            total,
-        ),
+        "arguments": genomic_plot_instance(5, n_obs=n_obs, n_spots=n_spots)[
+            "arguments"
+        ],
         "result": {
             "new_assignment": np.zeros(n_spots, dtype=np.int64),
             "pred_cnv": path[:, None],
@@ -53,8 +48,6 @@ def _instance() -> dict[str, Any]:
 
 
 def _colours(colour_by: str | None) -> tuple[np.ndarray, list[str]]:
-    from port.patch.plot_genomic import bin_colours
-
     instance = _instance()
     colours, legend = bin_colours(
         df_cnv=instance["df_cnv"],
@@ -107,8 +100,6 @@ def test_unset_is_upstreams_choice() -> None:
 
 @pytest.mark.infra
 def test_a_mode_without_its_input_is_refused() -> None:
-    from port.patch.plot_genomic import bin_colours
-
     instance = _instance()
     common: dict[str, Any] = {
         "label": "0",
@@ -133,13 +124,9 @@ def test_a_mode_without_its_input_is_refused() -> None:
 
 @pytest.mark.infra
 def test_the_preference_reaches_a_figure_and_falls_back_where_it_cannot() -> None:
-    """Preferring "states" recolours the df_cnv figure; "integer" leaves a
-    figure without df_cnv coloured by state rather than refusing it."""
-    import matplotlib as mpl
+    """Preferring "states" recolours the figure; "integer" without `df_cnv` falls back to states."""
 
     mpl.use("Agg")
-    import matplotlib.pyplot as plt
-    from port.patch import plot_genomic
 
     instance = _instance()
     lengths, X, base, total = instance["arguments"]
@@ -154,7 +141,6 @@ def test_the_preference_reaches_a_figure_and_falls_back_where_it_cannot() -> Non
             phased_integer_copies=True,
             **keywords,
         )
-        from matplotlib.collections import PathCollection
 
         (points,) = (
             c for c in figure.axes[0].collections if isinstance(c, PathCollection)
@@ -173,7 +159,5 @@ def test_the_preference_reaches_a_figure_and_falls_back_where_it_cannot() -> Non
 
 @pytest.mark.infra
 def test_run_cnaster_port_refuses_the_colours_without_the_figure_swaps() -> None:
-    from port.scripts.run_cnaster import main
-
     with pytest.raises(SystemExit):
         main(["config.yaml", "--no-figure-swaps", "--genomic-colours", "states"])

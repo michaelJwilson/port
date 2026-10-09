@@ -1,26 +1,9 @@
 """Keep each read-depth sub-clone inside its BAF clone, as `cnaster` intends (#348).
 
-`run_cnaster` refines every BAF clone into `n_clones_rdr` read-depth
-sub-clones in one global HMRF. `cnaster.spatial.initialize_rdr_clone_refininement`
-returns the start **and** a one-hot mask saying which sub-clones each spot may
-take, its own BAF clone's, and the call to `run_core_inference` then
-drops the mask (`run_cnaster.py:1105`, `# onehot_allowed_clones=None,`).
-
-Without it the refinement is an unconstrained `n_baf * n_clones_rdr`-label
-problem, and `icm_sweep_deque`'s floor finishes it: any clone under 200 spots
-has its spots **randomly** reassigned to a clone that has 200 (`icm.py:940`),
-regardless of BAF clone. Measured on `port.sim.truth.calicost_instance`, whose
-BAF stage recovers the planted four clones exactly: 16 sub-clones of about 100
-spots, one of which reached 200 after the first sweep, so 1,509 of 1,600
-spots were moved into it and the run ended with one clone (ARI 0.000).
-
-`initialize_rdr_clone_refininement` here is upstream's, keeping the mask it
-returns; `mask_for` hands it to `port.patch.hmrf.clone_assignment` while the
-problem is still the one it was built for, which folds it into the field
-(less :data:`MASK_PENALTY`, so a sweep or merge crosses a BAF clone only on a
-read-depth gain larger than that) and passes it to the ICM, which applies it
-as `-inf`, and to the floor, whose reassignment reads it (`icm.py:939`). A problem of a different
-shape, or an assignment that already breaks the mask, gets none.
+Wraps `cnaster.spatial.initialize_rdr_clone_refininement` to keep the allowed-clone
+mask that `run_cnaster` drops; `mask_for` hands it to
+`port.patch.hmrf.clone_assignment`, which folds it into the field (less
+:data:`MASK_PENALTY`) and passes it to the ICM and the floor.
 """
 
 from __future__ import annotations
@@ -45,17 +28,7 @@ __all__ = [
 ]
 
 MASK_PENALTY = 100.0
-"""Nats a spot's field loses on a sub-clone of another BAF clone (#467).
-
-Finite, so a strong read-depth preference can still correct a spot the BAF
-stage misplaced; `-inf` made the BAF stage's boundary final. Measured with
-`--sal --refinement-mask --floor-merge` (clone ARI; `-inf` in brackets):
-`dev` 1.000 (0.868), CalicoST hard 0.982 (0.982), easy 0.986, r0 0.9979,
-#338's three-sample instance 1.000. At 10 hard falls to 0.554 with 3 clones
-for 4; at 1,000 `dev` is `-inf`'s 0.868. The `--sal` rows read the mask
-only through the field; `cnaster`'s ICM re-applies it as `-inf` from
-`onehot_allowed_clones`, so on the default arm this changes nothing.
-"""
+"""Nats a spot's field loses on a sub-clone of another BAF clone; finite, unlike `-inf` (#467)."""
 
 _KEPT: list[np.ndarray] = []
 
@@ -102,10 +75,7 @@ def mask_for(assignment: np.ndarray, n_clones: int) -> np.ndarray | None:
 def compact(assignment: np.ndarray) -> None:
     """Keep the mask's columns for the clones `assignment` still uses.
 
-    `cnaster.hmrf.run_core_inference` relabels the survivors of an iteration
-    by `np.unique(..., return_inverse=True)`, ascending (`hmrf.py:648`), so
-    the mask's surviving columns in the same order describe the next
-    iteration's problem.
+    Matches `run_core_inference`'s ascending `np.unique` relabelling (`hmrf.py:648`).
     """
     if _KEPT:
         survivors = np.unique(np.asarray(assignment, dtype=np.int64))

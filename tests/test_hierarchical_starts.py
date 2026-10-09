@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from port.extensions.copy_starts import SEED_JITTER, CopyCall
+from port.sandbox.extensions.copy_starts import hierarchical_states
 
 LEVELS = ((1.0, 0.5, 2000), (1.5, 1 / 3, 300), (2.5, 0.2, 30))
 """Planted `(mu, p, rows)`: neutral, a gain, and a rare high gain, 1.3% of rows (#823's regime)."""
 
 
 def _call(levels: tuple[tuple[float, float, int], ...], n_states: int, seed: int = 0):  # type: ignore[no-untyped-def]
-    from port.extensions.copy_starts import CopyCall
-
     rng = np.random.default_rng(seed)
     exposure = np.concatenate([np.full(n, 1000.0) for _, _, n in levels])
     trials = np.concatenate([np.full(n, 200.0) for _, _, n in levels])
@@ -31,7 +31,6 @@ def _call(levels: tuple[tuple[float, float, int], ...], n_states: int, seed: int
 @pytest.mark.parametrize("method", ["ward", "average", "complete"])
 def test_a_linkage_start_keeps_the_rare_level(method: str) -> None:
     """Each planted level, the 30-row one included, has a state within 0.05 in log mu and 0.03 in p."""
-    from port.sandbox.extensions.copy_starts import hierarchical_states
 
     log_mu, p = hierarchical_states(_call(LEVELS, 3), method, np.random.default_rng(1))
 
@@ -44,7 +43,6 @@ def test_a_linkage_start_keeps_the_rare_level(method: str) -> None:
 @pytest.mark.analytic
 def test_one_cluster_is_the_rows_pooled() -> None:
     """At one state the start is every row pooled: depth by exposure, B share by allele reads."""
-    from port.sandbox.extensions.copy_starts import hierarchical_states
 
     call = _call(LEVELS, 1)
     log_mu, p = hierarchical_states(call, "ward", np.random.default_rng(1))
@@ -58,8 +56,6 @@ def test_one_cluster_is_the_rows_pooled() -> None:
 @pytest.mark.analytic
 def test_a_short_cut_is_padded_to_the_states() -> None:
     """Asked for more states than distinct rows give, the start still returns `n_states`, the extras beside the largest."""
-    from port.extensions.copy_starts import SEED_JITTER
-    from port.sandbox.extensions.copy_starts import hierarchical_states
 
     log_mu, p = hierarchical_states(
         _call(((1.0, 0.5, 5),), 9), "average", np.random.default_rng(1)

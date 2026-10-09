@@ -158,7 +158,7 @@ def candidates(max_total_copy: int) -> np.ndarray:
 def _emission(
     log_rate: np.ndarray, p: np.ndarray, bulk: Pseudobulk, bins: np.ndarray
 ) -> np.ndarray:
-    """NB + BB log pmf per bin, in `port.extensions.jax_hmm.emission`'s terms.
+    """NB + BB log pmf per bin, in `port.qa.jax_hmm.emission`'s terms.
 
     `alpha = 0` is the Poisson and `tau = inf` the binomial, exactly. The
     negative binomial is in log space, as `copy_likelihood.pseudobulk_log_pmf` scores

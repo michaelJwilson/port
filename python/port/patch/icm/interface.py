@@ -1,39 +1,8 @@
-"""The label solver's interface, reduced to what it reads.
+"""Wraps `cnaster.icm.icm_sweep_deque` (the live, last definition) behind a reduced interface (#59 item 5).
 
-Issue #59 item 5. `cnaster.icm.icm_sweep_deque` takes fifteen parameters.
-Seven of them are not information the solver needs:
-
-| Parameter | Why it goes |
-| --- | --- |
-| `posterior` | Dead. Its only use in the live body is commented out, and the call site passes `None` -- to a **required positional**. |
-| `log_persample_weights`, `sample_ids` | A per-`(spot, clone)` constant added inside the inner loop. Folds into the field. |
-| `onehot_allowed_clones` | Sets a cost to `-inf`. Folds into the field, as `-inf`. |
-| `temp` | Used once, as `spatial_weight / temp`. Folds into the coupling. |
-| `adj_indptr`, `adj_indices`, `adj_weights` | One graph in three arrays, passed and re-passed as three. |
-
-What is left is the problem: a unary field, a weighted graph, a coupling, a
-starting labelling, and the solver's own stopping and exploration knobs.
-
-    icm_sweep(field, graph, assignment, spatial_weight, *, tolerance, epsilon, min_clone_spots)
-
-Eight parameters, of which four are the problem and four have defaults.
-
-**This is offered as a simplification, not a speedup.** `CLAUDE.md` splits
-the two, and the evidence here is the bitwise equivalence in
-`tests/test_icm_interface.py`. Measured: `docs/measurements.md`,
-`port.patch.icm.interface`.
-
-**Which `icm_sweep_deque`.** `cnaster.icm` defines that name four times, at
-lines 363, 513, 658 and 807; only the last survives the module body. The
-first takes a COO triple, the last takes CSR, and the commented-out block at
-`hmrf.py:294` still calls the COO form. This module wraps the live one, and
-`tests/test_icm_interface.py` pins which that is -- so a reordering of
-`icm.py` that changed the winner would fail here rather than silently change
-the solver.
-
-`#8`'s upstream correspondence reaches the same reduction from the other
-side: `log_persample_weights`, `onehot_allowed_clones` and `temp` fold into
-the field and the couplings there too.
+`posterior`, `log_persample_weights`, `sample_ids`, `onehot_allowed_clones`,
+`temp` and the three CSR arrays fold into the field, the coupling and a
+`CsrGraph`. A simplification, not a speedup; bitwise equal to the direct call.
 """
 
 from __future__ import annotations
@@ -49,13 +18,7 @@ __all__ = ["CsrGraph", "IcmResult", "fold_unary", "icm_sweep"]
 
 @dataclass(frozen=True)
 class CsrGraph:
-    """One spatial graph, passed as one argument.
-
-    `cnaster` carries the same graph as three arrays through every call in
-    the boundary, and as a COO triple beside them (issue #59 item 3). The
-    three are meaningless apart -- an `indices` without its `indptr` cannot
-    be read -- so they travel together.
-    """
+    """One spatial graph as CSR arrays, passed as one argument (#59 item 3)."""
 
     indptr: np.ndarray
     indices: np.ndarray
@@ -63,11 +26,7 @@ class CsrGraph:
 
     @classmethod
     def from_matrix(cls, adjacency_mat: object) -> CsrGraph:
-        """From the `scipy.sparse` CSR matrix the boundary already holds.
-
-        No conversion and no copy: `hmrf.py:309-311` passes these same three
-        attributes, so this is the call site's own expression named once.
-        """
+        """From a `scipy.sparse` CSR matrix, without copying."""
         return cls(
             indptr=adjacency_mat.indptr,  # type: ignore[attr-defined]
             indices=adjacency_mat.indices,  # type: ignore[attr-defined]
@@ -81,11 +40,7 @@ class CsrGraph:
 
 
 class IcmResult(NamedTuple):
-    """What the sweep returns, named.
-
-    `cnaster` returns a bare `(niter, cost)` tuple, and the call site unpacks
-    it positionally into `niter, new_cost`.
-    """
+    """The sweep's `(niter, cost)`, named, with its termination."""
 
     niter: int
     cost: float
@@ -99,43 +54,13 @@ def fold_unary(
     sample_ids: np.ndarray | None = None,
     onehot_allowed_clones: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Fold the solver's per-`(spot, clone)` constants into the field.
+    """Fold the per-`(spot, clone)` constants into a new `float64` field, bitwise as `cnaster` adds them.
 
-    Both terms are added to `single_llf[i, c]` inside the inner loop, once
-    per visit to spot `i`. They depend on `(i, c)` and nothing the sweep
-    changes, so adding them once to the field gives the solver the same
-    numbers with two fewer arguments and two fewer branches per visit.
-
-    Parameters
-    ----------
-    single_llf : np.ndarray
-        The field, shape `(n_spots, n_clones)`. Not modified.
-    log_persample_weights : np.ndarray or None
-        Shape `(n_clones, n_samples)`, indexed `[c, sample_ids[i]]`.
-        Requires `sample_ids`.
-    onehot_allowed_clones : np.ndarray or None
-        Boolean, shape `(n_spots, n_clones)`. Disallowed entries become
-        `-inf`.
-
-    Returns
-    -------
-    np.ndarray
-        A new `(n_spots, n_clones)` field, `float64`.
-
-    Notes
-    -----
-    **Bitwise, not approximately.** `cnaster` computes
-    `single_llf[i, c] + log_persample_weights[c, s] + w_edge[c] * spatial_weight`, left
-    to right. Folding the first two moves no arithmetic: the same two floats
-    are added first, and the edge term is added to the same intermediate. The
-    mask is exact for the same reason -- `-inf + finite` is `-inf`, so
-    masking before the edge term and after it agree.
-
-    Raises
-    ------
-    ValueError
-        If `log_persample_weights` is given without `sample_ids`, where the
-        rows could not be selected, or if a shape cannot index the field.
+    `single_llf` is `(n_spots, n_clones)`, not modified; `log_persample_weights`
+    is `(n_clones, n_samples)` indexed `[c, sample_ids[i]]` and needs
+    `sample_ids`; `onehot_allowed_clones` is boolean `(n_spots, n_clones)`,
+    disallowed entries become `-inf`. Raises `ValueError` on missing
+    `sample_ids` or mismatched shapes.
     """
     field = np.array(single_llf, dtype=np.float64, copy=True)
     n_spots, n_clones = field.shape
@@ -178,34 +103,11 @@ def icm_sweep(
     cost_zeropoint: float = 0.0,
     onehot_allowed_clones: np.ndarray | None = None,
 ) -> IcmResult:
-    """Run `cnaster`'s live sweep through the reduced interface.
+    """Run `cnaster`'s live sweep through the reduced interface, by delegation.
 
-    A delegation, not a reimplementation: the solver is `cnaster`'s, so the
-    comparison this patch has to survive is bitwise against calling it
-    directly. Rewriting the sweep would put a second implementation in the
-    way of that.
-
-    Parameters
-    ----------
-    field : np.ndarray
-        The unary cost per `(spot, clone)`, with the per-sample weights and
-        the allowed-clone mask already folded in by :func:`fold_unary`.
-    spatial_weight : float
-        The spatial coupling, `spatial_weight / temp` in `cnaster`'s terms.
-        One number because the solver uses one number.
-    assignment : np.ndarray
-        The starting labelling, **updated in place** -- `cnaster`'s
-        behaviour, kept rather than hidden, because the call site reads the
-        array afterwards rather than a return value.
-
-    Notes
-    -----
-    The sweep draws from the legacy global `numpy` RNG (`np.random.shuffle`
-    for the queue order, and `np.random.rand`/`choice` under `epsilon` and
-    `min_clone_spots`). That is `cnaster`'s, and it is neither seeded nor
-    threaded through a `Generator` -- so two runs of the same problem differ.
-    Stated rather than fixed: seeding it here would be a behaviour change
-    hiding inside an interface change.
+    `field` has the constants folded in (:func:`fold_unary`); `spatial_weight`
+    is `cnaster`'s `spatial_weight / temp`; `assignment` is updated in place.
+    The sweep draws from the unseeded legacy global `numpy` RNG, as `cnaster`'s does.
     """
     from cnaster.icm import icm_sweep_deque
 
@@ -217,9 +119,8 @@ def icm_sweep(
         new_assignment=assignment,
         spatial_weight=spatial_weight,
         posterior=None,
-        # NB `None` unless the refinement's mask applies (#348): the field
-        #    already carries it, and only the floor's reassignment needs it
-        #    passed, since it reads no field.
+        # NB `None` unless the refinement's mask applies (#348): only the floor's
+        #    reassignment reads it; the field already carries it.
         onehot_allowed_clones=onehot_allowed_clones,
         tol=tolerance,
         log_persample_weights=None,
@@ -230,8 +131,7 @@ def icm_sweep(
         epsilon=epsilon,
     )
 
-    # NB the queue empties or the sweep never returns: `icm_sweep_deque` has
-    #    no iteration cap, so every return is its criterion met.
+    # NB `icm_sweep_deque` has no iteration cap, so every return is convergence.
     return IcmResult(
         niter=int(niter),
         cost=float(cost),

@@ -1,22 +1,30 @@
-"""The genomic, spatial and combined figures, pixel for pixel, against a frozen copy (#342).
+"""The genomic, spatial and combined figures against frozen PNGs, pixel for pixel (#342).
 
-Frozen on #341's head, so a change to `port.extensions.combined_figure` that
-is meant to leave the figures alone -- a refactor -- is shown to, rather than
-argued to. Each figure is drawn on the 3 by 3 test instance at 100 dpi and
-compared with `tests/data/figures/`, bitwise. A change that is meant to move
-a figure re-freezes it in the same commit: `python -m tests.test_figure_snapshot`.
+Re-freeze with `python -m tests.test_figure_snapshot`.
 """
 
 from __future__ import annotations
 
+import io
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
+import matplotlib as mpl
+import matplotlib.image as mimage
 import numpy as np
 import pytest
+from port.extensions.combined_figure import (
+    combined_figure,
+    genomic_figure,
+    page_style,
+    spatial_figure,
+)
+from port.sim.inputs import written_config
 
 from tests import TESTS
+from tests.conftest import SHIPPED_EM_FTOL, cnaster_test_config
 from tests.figure_checks import recorded_combined_calls
 
 FROZEN = TESTS / "data" / "figures"
@@ -24,11 +32,7 @@ DPI = 100
 
 
 def _pixels(figure: Any) -> np.ndarray:
-    """`figure` as drawn at `DPI`, RGBA bytes."""
-    import io
-
-    import matplotlib.image as mimage
-    from port.extensions.combined_figure import page_style
+    """Return `figure` drawn at `DPI` as RGBA bytes."""
 
     buffer = io.BytesIO()
 
@@ -39,23 +43,14 @@ def _pixels(figure: Any) -> np.ndarray:
 
 
 def _drawn(tmp_path: Path) -> dict[str, np.ndarray]:
-    import matplotlib as mpl
-
     mpl.use("Agg")
-    # NB the state a run leaves: `cnaster.plotting` sets a serif face when
-    #    imported, and `cnaster`'s plots set seaborn's context and style; the figures
-    #    follow neither.
+    # NB a run's state: `cnaster.plotting` sets a serif face, its plots seaborn's style
     import cnaster.plotting  # noqa: F401
     import seaborn as sns  # type: ignore[import-untyped]
 
-    # NB as `cnaster.plot_validation_stats` sets it.
+    # NB as `cnaster.plot_validation_stats` sets it
     sns.set_context("paper", font_scale=0.9)
     sns.set_style("ticks")
-    from port.extensions.combined_figure import (
-        combined_figure,
-        genomic_figure,
-        spatial_figure,
-    )
 
     recorded, frame = recorded_combined_calls(tmp_path)
     return {
@@ -66,13 +61,10 @@ def _drawn(tmp_path: Path) -> dict[str, np.ndarray]:
 
 
 @pytest.mark.snapshot
-# NB too specific to run on every change (#403): it passed where it merged,
-#    and runs again where this module or the lock changes, and at a release.
+# NB too specific for every change (#403): reruns where this module or the lock changes
 @pytest.mark.deprecate
 def test_the_figures_are_the_frozen_ones(cnaster_config: None, tmp_path: Path) -> None:
-    """Both figures bitwise equal to `tests/data/figures/`: same size, every
-    channel of every pixel."""
-    import matplotlib.image as mimage
+    """Every figure equals `tests/data/figures/`, every channel of every pixel."""
 
     for name, drawn in _drawn(tmp_path).items():
         frozen = np.asarray(
@@ -86,18 +78,11 @@ def test_the_figures_are_the_frozen_ones(cnaster_config: None, tmp_path: Path) -
 
 def main() -> None:
     """Re-freeze: draw the figures and write them over `tests/data/figures/`."""
-    import tempfile
-
-    import matplotlib.image as mimage
-    from port.sim.inputs import written_config
-
-    from tests.conftest import SHIPPED_EM_FTOL, cnaster_test_config
-
     FROZEN.mkdir(parents=True, exist_ok=True)
 
     with (
         tempfile.TemporaryDirectory() as root,
-        # NB the `cnaster_config` fixture's config, as the test draws under.
+        # NB the `cnaster_config` fixture's config, as the test draws under
         written_config(cnaster_test_config(Path(root), SHIPPED_EM_FTOL, 100)),
     ):
         for name, pixels in _drawn(Path(root)).items():

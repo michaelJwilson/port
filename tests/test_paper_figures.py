@@ -7,8 +7,12 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 import pytest
+from port.studies import paper_figures as pf
+from port.studies import potts_plot
 from port.studies.paper_figures import KEY_STUDIES, OUT, QUESTIONS, Compared
 
 from tests import ROOT
@@ -16,8 +20,7 @@ from tests import ROOT
 
 @pytest.mark.infra
 def test_the_paper_readme_lists_exactly_the_committed_files() -> None:
-    """`docs/plots/paper/README.md`'s table names every tracked file under
-    `docs/plots/paper/` but itself, once, and `QUESTIONS` with `KEY_STUDIES` names the same."""
+    """The paper README lists every tracked file once, matching `QUESTIONS | KEY_STUDIES`."""
     tracked = subprocess.run(
         ["git", "ls-files", "--", OUT.relative_to(ROOT).as_posix()],
         cwd=ROOT,
@@ -36,12 +39,7 @@ def test_the_paper_readme_lists_exactly_the_committed_files() -> None:
 
 
 def _tiny() -> Compared:
-    """3 planted clones on a 4 x 6 hex lattice, and 6 bins on 2 chromosomes.
-
-    Clone 1 plants (2, 0) over bins 0-2, decoded (0, 2) on bins 0-1 (swapped)
-    and (1, 1) on bin 2 (wrong); clone 2 plants (2, 2) over bins 3-4, decoded
-    exactly; every other bin is (1, 1), decoded exactly.
-    """
+    """Return a tiny planted truth and fit: 3 clones on a 4 x 6 lattice, 6 bins."""
     rows, columns = np.indices((4, 6))
     coords = np.stack([rows.ravel(), 2 * columns.ravel() + rows.ravel() % 2], 1)
     planted = np.repeat([0, 1, 2], 8)
@@ -77,14 +75,9 @@ def _texts(figure: Any) -> list[str]:
 
 @pytest.mark.snapshot
 def test_the_compare_figures_draw_what_their_inputs_hold(tmp_path: Path) -> None:
-    """Figures 14-17 on a tiny truth and fit, no pipeline run: the matching in
-    14 and no title (T- #660: the ARI is the README's), the confusion's shares in 15, one mark per swapped or
-    wrong bin in 16, the per-class shares in 17, each written unstamped (#743)."""
-    import matplotlib as mpl
+    """Figures 14-17 draw the matching, shares and marks the tiny instance implies (T- #660, #743)."""
 
     mpl.use("Agg")
-    import matplotlib.pyplot as plt
-    from port.studies import paper_figures as pf
 
     c = _tiny()
 
@@ -127,9 +120,7 @@ def test_the_compare_figures_draw_what_their_inputs_hold(tmp_path: Path) -> None
 
 @pytest.mark.infra
 def test_the_solver_panel_draws_only_the_tables_solvers() -> None:
-    """T- #660: a stream holding a solver `potts_plot.TABLE` dropped draws
-    none of its runs; the kept solver's runs are all drawn."""
-    from port.studies import potts_plot
+    """T- #660: the solver panel draws only `potts_plot.TABLE`'s solvers."""
 
     rows = [
         {"problem": 0, "solver": solver, "seed": seed, "seconds": 1.0, "energy": 5.0,

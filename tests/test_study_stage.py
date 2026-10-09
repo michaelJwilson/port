@@ -1,4 +1,4 @@
-"""#730: the study harness's scoring and the starts it hands the run's Baum-Welch, each against an independent answer."""
+"""Study harness scoring and Baum-Welch starts, each against an independent answer (#730)."""
 
 from __future__ import annotations
 
@@ -7,8 +7,19 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import port.patch.hmrf.clone_assignment as assignment
 import pytest
+import scipy.sparse as sp
 import yaml
+from port.extensions.copy_starts import CopyCall
+from port.qa import stage
+from port.qa.stage import missed
+from port.studies.copy_state_stream import (
+    oracle_states,
+    scored,
+    seed_states,
+    truth_label,
+)
 
 from tests import ROOT, TESTS
 
@@ -16,7 +27,6 @@ from tests import ROOT, TESTS
 @pytest.mark.oracle
 def test_missed_is_the_fewest_misses_over_every_matching_of_states() -> None:
     """Against brute force over all permutations of 4 states."""
-    from port.studies.stage import missed
 
     rng = np.random.default_rng(1)
     truth = rng.integers(0, 4, 200)
@@ -32,14 +42,7 @@ def test_missed_is_the_fewest_misses_over_every_matching_of_states() -> None:
 @pytest.mark.bug
 @pytest.mark.parametrize("name", ["cnaster-gmm", "distinct", "calicost-gmm", "prior"])
 def test_every_start_returns_one_state_per_planted_state(name: str) -> None:
-    """On two clones stacked along the genome, `n_states` states with positive rates and p in (0, 1).
-
-    Clones handed to `cnaster`'s `gmm_init` as columns returned a state per
-    clone per state, and `prior` wrote its B coordinate over totals, a rate
-    above 1 on dev_tree_1s_hard.
-    """
-    from port.extensions.copy_starts import CopyCall
-    from port.studies.copy_state_stream import seed_states
+    """Two stacked clones: `n_states` states with positive rates and p in (0, 1)."""
 
     rng = np.random.default_rng(0)
     n = 300
@@ -68,18 +71,9 @@ def test_every_start_returns_one_state_per_planted_state(name: str) -> None:
 def test_the_stage_is_the_runs_baum_welch_at_the_planted_clones(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """On dev_tree_1s_hard r0 (`9ec90dc2`): the replayed call reproduces itself bitwise, and the planted rows line up.
+    """dev_tree_1s_hard r0: the replayed `--sal` Baum-Welch call reproduces itself bitwise (#730)."""
 
-    The call is `run_cnaster_port --sal`'s own, reached at the RDR + BAF stage
-    with the planted clones (#730). Realized at a12ec4d: 7,284 rows over 4
-    clones, 7 states, `t` 0.9999999, llf -73,328.035 twice. The planted
-    states, started from their pooled depth and B share, miss fewer rows than
-    the run's own initializer (85 against 5,258 of 7,332 on r3).
-    """
-    from port.studies import stage
-    from port.studies.copy_state_stream import oracle_states, scored, truth_label
-
-    # NB a manifest names what it extends relative to the repository, as the run reads it
+    # NB manifests extend relative to the repository root.
     monkeypatch.chdir(ROOT)
     manifest = Path("sim/manifests/dev_tree_1s_hard.toml")
     member = next(stage.members(manifest, tmp_path / "sim", n=1))
@@ -99,7 +93,7 @@ def test_the_stage_is_the_runs_baum_welch_at_the_planted_clones(
         assert found.X.shape[0] == found.planted.shape[0] == found.clone.size
         assert found.n_clones == 4
         assert found.arguments["t"] == pytest.approx(1.0 - 1e-7)
-        # NB the run's own configuration, which `cnaster`'s initializers read globally
+        # NB `cnaster`'s initializers read this configuration globally.
         assert yaml.safe_load(found.config)["hmm"]["t"] == pytest.approx(1.0 - 1e-7)
         return float(one.llf), float(two.llf), planted["missed"], own["missed"]
 
@@ -116,18 +110,7 @@ def test_the_stage_is_the_runs_baum_welch_at_the_planted_clones(
 def test_the_field_is_cnasters_at_the_planted_clones_less_the_clone_shift(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """On dev_tree_1s_hard r0 (`9ec90dc2`): `--sal`'s clone-assignment field against `cnaster`'s own on the same call.
-
-    Without the per-clone rate shift (#362, a stated departure) the installed
-    field (`port.patch.hmrf`'s fused, tabulated kernel) is `cnaster.hmrf.
-    pipeline_clone_assignment`'s, bitwise. With it, as the run solves, it
-    differs: realized at 3.7 nats at most, argmax unchanged on 95.2% of spots.
-    The `Field` handed to the study is the installed one, its planted labels
-    the run's assignment, its graph the run's adjacency (#735).
-    """
-    import port.patch.hmrf.clone_assignment as assignment
-    import scipy.sparse as sp
-    from port.studies import stage
+    """dev_tree_1s_hard r0: `--sal`'s field is `cnaster`'s bitwise, less the shift (#362, #735)."""
 
     monkeypatch.chdir(ROOT)
     member = next(

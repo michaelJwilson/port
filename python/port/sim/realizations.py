@@ -11,7 +11,7 @@ Each realization is run through `port.scripts.run_cnaster.main`, in process,
 with `port.patch.hmrf.run_core_inference` wrapped so that its inputs and its
 result are kept. The objective the fit maximized is then
 rebuilt from those inputs in `jax` and differentiated at the fit by
-`port.extensions.parameter_errors`: nothing is re-fitted.
+`port.qa.parameter_errors`: nothing is re-fitted.
 
 `run_audit --errors` (`port.qa.audit.audit_errors`) draws the figure, by
 default to `.cache/plots/realizations.png`, untracked. Moved from
@@ -28,8 +28,8 @@ from typing import Any, NamedTuple
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
-from port.extensions import copy_errors as _copy_errors
-from port.extensions.copy_errors import Captured
+from port.extensions.copy_likelihood import Captured, captured_fits
+from port.qa import errors as _errors
 from port.sim.run_config import run_written
 from port.sim.truth import (
     CoreInferenceTruth,
@@ -171,7 +171,7 @@ def run(truth: CoreInferenceTruth, root: Path) -> Captured:
     from the swap, which rebinds only names still bound to upstream, and the
     pin would never run.
     """
-    with _copy_errors.captured_fits() as kept:
+    with captured_fits() as kept:
         run_written(truth, root, port=True, flags=("--no-figure-swaps",), **RUN)
 
     if len(kept) != 1:
@@ -199,8 +199,8 @@ class Fit(NamedTuple):
     realization's data: the error bars the truth would carry."""
 
 
-_column = _copy_errors.flat_values
-pseudobulk = _copy_errors.pseudobulk
+_column = _errors.flat_values
+pseudobulk = _errors.pseudobulk
 
 
 def match_states(truth: CoreInferenceTruth, captured: Captured) -> np.ndarray:
@@ -259,7 +259,7 @@ def planted_minor(truth: CoreInferenceTruth) -> np.ndarray:
     return minor
 
 
-_covariance = _copy_errors.pinned_covariance
+_covariance = _errors.pinned_covariance
 
 
 def fitted(truth: CoreInferenceTruth, captured: Captured, *, errors: bool) -> Fit:
@@ -312,8 +312,8 @@ def fitted(truth: CoreInferenceTruth, captured: Captured, *, errors: bool) -> Fi
         return Fit(mu[order], minor[order], None, None)
 
     # NB the pinned coordinates and the shift's Jacobian are
-    #    `port.extensions.copy_errors`', which `--copy-errors` also uses (#353).
-    pinned = _copy_errors.pinned_errors(captured)
+    #    `port.qa.errors`' (#353).
+    pinned = _errors.pinned_errors(captured)
     covariance, decrement = pinned.covariance, pinned.decrement
 
     # NB the truth in the fit's labels: planted state `k` is fitted state
@@ -328,8 +328,8 @@ def fitted(truth: CoreInferenceTruth, captured: Captured, *, errors: bool) -> Fi
     free_truth = np.array([k for k in range(n_states) if k != order[0]])
 
     truth_covariance, _ = _covariance(
-        _copy_errors.pinned_objective(captured, free_truth),
-        _copy_errors.coordinates(planted_log_mu, planted_p, free_truth, alpha, tau),
+        _errors.pinned_objective(captured, free_truth),
+        _errors.coordinates(planted_log_mu, planted_p, free_truth, alpha, tau),
         free_truth,
         np.exp(planted_log_mu),
         planted_p,

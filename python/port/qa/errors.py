@@ -1,59 +1,32 @@
-"""Integer copies from the fit's error bars: every `(A, B)` they admit (#353).
+"""A fit's error bars in the pinned coordinates: the observed information of the objective the HMM maximized (#353).
 
-`port.extensions.integer_copy.decode_copy_state` is the paper's decoding: a
-state's `(mubar, p)` and its covariance give the **set** of integer pairs
-inside the credible region, not one winner. `port.extensions.parameter_errors`
-computes the covariance from the observed information of the objective the
-HMM maximized. Neither was reached by a run. This joins them, and
-`run_cnaster_port --copy-errors` calls it on the final fit.
+`parameter_errors` gives the covariance; this pins the scale and folds the
+allele fraction first, so `mubar = (A + B) / 2` holds:
 
-## The scale comes from the pin, and the neutral state is (1, 1)
+- **The scale comes from the pin.** With the per-clone `logmu_shift` folded in
+  (#276) the likelihood is flat along `mu -> c mu`; `pin_neutral` fixes `c` by
+  setting the normal clone's dominant balanced state to `mu = 1`, so the
+  neutral `log mu` is held at 0 and the rest differentiated through the shift.
+- **Allele fractions are folded:** phasing makes the label arbitrary, so `p` is
+  the minor fraction, and folding flips the sign of the `(mu, p)` covariance
+  where it applies.
 
-`mubar = (A + B) / 2` holds only on the de-biased scale. With the per-clone
-`logmu_shift` folded in (`port.patch.hmm_nophasing`, #276), the likelihood is
-flat along `mu -> c mu`, and `port.patch.hmrf.core_inference.pin_neutral`
-fixes `c` by setting the normal clone's dominant balanced state (#299's
-`neutral_state`) to `mu = 1`. So:
-
-- the covariance is taken **in the pinned coordinates**: the neutral `log mu`
-  is held at 0 and the rest differentiated, through the shift, whose
-  normalizer is a function of every rate (`parameter_errors`' Jacobian);
-- the neutral state's `mu` is 1 exactly and carries no error, so its
-  decoding conditions on `mubar = 1`: the pairs of total 2 its allele
-  fraction admits, `(1, 1)` or `(2, 0)`, by a one-dimensional test at the
-  same level.
-
-Without the shift the fit's scale is the baseline's, not the pin's, and the
-decode would compare `(A + B) / 2` against a rate with an unknown per-clone
-factor; `run_cnaster_port` refuses `--copy-errors` without it.
-
-## Allele fractions are folded
-
-Phasing makes the allele label arbitrary, so `p` is folded to the minor
-fraction and the lattice is the unphased one (`acn_lattice(phased=False)`,
-`A >= B`, `p = B / (A + B)`). Folding flips the sign of the `(mu, p)`
-covariance where it applies and leaves the variances alone.
+`port.sandbox.extensions.copy_errors` turns these into credible `(A, B)` sets.
 """
 
 from __future__ import annotations
 
-import contextlib
-from collections.abc import Iterator
-from pathlib import Path
 from typing import Any, NamedTuple
 
 import numpy as np
-import pandas as pd
+
+from port.extensions.copy_likelihood import Captured
 
 __all__ = [
-    "Captured",
     "PinnedErrors",
-    "captured_fits",
-    "copy_sets",
     "pinned_errors",
     "pinned_objective",
     "pseudobulk",
-    "write_copy_sets",
 ]
 
 JAX_TAU_LIMIT = 1e5
@@ -78,62 +51,6 @@ loses more than this covariance's curvature (T- #599); moved here from `dense_em
 
 EPS_P = 1e-6
 """How close to 0 or 1 an allele fraction is taken, for a finite logit."""
-
-
-class Captured(NamedTuple):
-    """What `run_core_inference` was given, and what it returned."""
-
-    single_X: np.ndarray
-    lengths: np.ndarray
-    single_base_nb_mean: np.ndarray
-    single_total_bb_RD: np.ndarray
-    res: Any
-
-
-@contextlib.contextmanager
-def captured_fits() -> Iterator[list[Captured]]:
-    """Every `params="smp"` fit `port`'s `run_core_inference` returns in the block.
-
-    Wraps `port.patch.hmrf.run_core_inference`, so it is entered **before**
-    `patched`, which then installs the wrapper. The BAF-only stage calls it
-    too, with `params="sp"`; the fit kept is the one that also fits `mu`. The
-    one capture shim (#517): the entry point's `--copy-errors`, the copy
-    decode and the tests' harnesses read it.
-    """
-    import port.patch.hmrf as patch
-
-    kept: list[Captured] = []
-    original = patch.run_core_inference
-
-    def keep(
-        single_X: Any,
-        lengths: Any,
-        base: Any,
-        total: Any,
-        *rest: Any,
-        **kw: Any,
-    ) -> Any:
-        result = original(single_X, lengths, base, total, *rest, **kw)
-
-        if kw.get("params") == "smp":
-            kept.append(
-                Captured(
-                    np.array(single_X, dtype=np.float64),
-                    np.asarray(lengths, dtype=np.int64),
-                    np.array(base, dtype=np.float64),
-                    np.array(total, dtype=np.float64),
-                    result,
-                )
-            )
-
-        return result
-
-    patch.run_core_inference = keep
-
-    try:
-        yield kept
-    finally:
-        patch.run_core_inference = original
 
 
 class PinnedErrors(NamedTuple):
@@ -224,7 +141,7 @@ def pinned_objective(
     import jax.numpy as jnp
     import jax.scipy.special as jsp
 
-    from port.extensions.jax_hmm import emission, marginal_negative_log_likelihood
+    from port.qa.jax_hmm import emission, marginal_negative_log_likelihood
 
     result = captured.res
     n_states = flat_values(result["new_log_mu"]).size
@@ -240,11 +157,11 @@ def pinned_objective(
     fixed = np.full(n_states, 0.5) if held is None else np.asarray(held)
 
     def objective(theta: Any) -> Any:
-        rates = jnp.zeros(n_states).at[free].set(theta[: free.size])  # noqa: PD008
+        rates = jnp.zeros(n_states).at[free].set(theta[: free.size])
         dispersions = jnp.full(n_states, jnp.exp(theta[-2]))
         shares_free = jax.nn.sigmoid(theta[free.size : free.size + estimated.size])
         held_shares = jnp.asarray(fixed)
-        probabilities = held_shares.at[estimated].set(shares_free)  # noqa: PD008
+        probabilities = held_shares.at[estimated].set(shares_free)
         concentrations = jnp.full(n_states, jnp.exp(theta[-1]))
 
         blocks = []
@@ -322,7 +239,7 @@ def pinned_covariance(
     import jax
     import jax.numpy as jnp
 
-    from port.extensions.parameter_errors import parameter_errors
+    from port.qa.parameter_errors import parameter_errors
 
     n_states = mu.size
     # NB the dispersions are held at `theta`'s: they are nuisance parameters
@@ -464,123 +381,3 @@ def pinned_errors(captured: Captured, purity: np.ndarray | None = None) -> Pinne
     )
 
     return PinnedErrors(mu, minor, flipped, covariance, int(neutral), decrement)
-
-
-def _neutral_set(minor: float, variance: float, level: float) -> Any:
-    """The neutral state: `mubar = 1` exactly, so the total is 2 and `p` decides."""
-    from scipy.stats import chi2
-
-    from port.extensions.integer_copy import IntegerCopyResult
-
-    pairs = ((1, 1), (2, 0))
-    implied = np.array([0.5, 0.0])
-    distances = (implied - minor) ** 2 / variance
-    order = np.argsort(distances, kind="stable")
-    threshold = float(chi2.ppf(level, 1))
-
-    return IntegerCopyResult(
-        best=pairs[int(order[0])],
-        consistent=tuple(pairs[int(i)] for i in order if distances[i] <= threshold),
-        distance=float(distances[order[0]]),
-        threshold=threshold,
-        level=level,
-    )
-
-
-def copy_sets(
-    errors: PinnedErrors,
-    *,
-    level: float = 0.95,
-    max_allele_copy: int | None = None,
-    max_total_copy: int | None = None,
-) -> list[Any]:
-    """Every `(A, B)` each state's error bars admit, at `level`.
-
-    The caps default to the configured ones (`int_copy_num.max_total_copy`,
-    read by `port.patch.integer_copy.configured_caps`, else `cnaster`'s 5 and
-    6), so the set is drawn from the lattice the run's own integer decoder
-    searches.
-    """
-    from port.extensions.integer_copy import acn_lattice, decode_copy_state
-    from port.patch.integer_copy import configured_caps
-
-    allele, total = configured_caps()
-    lattice = acn_lattice(
-        max_allele_copy=allele if max_allele_copy is None else max_allele_copy,
-        max_total_copy=total if max_total_copy is None else max_total_copy,
-        phased=False,
-    )
-
-    decoded = []
-
-    for state in range(errors.mu.size):
-        if state == errors.neutral:
-            decoded.append(
-                _neutral_set(
-                    float(errors.minor[state]),
-                    float(errors.covariance[state, 1, 1]),
-                    level,
-                )
-            )
-            continue
-
-        # NB a held parameter (`pinned_errors`) is known exactly; its variance
-        #    is floored so the region is defined and admits only its value.
-        covariance = errors.covariance[state] + np.eye(2) * VARIANCE_FLOOR
-        decoded.append(
-            decode_copy_state(
-                [errors.mu[state], errors.minor[state]],
-                covariance,
-                level=level,
-                lattice=lattice,
-            )
-        )
-
-    return decoded
-
-
-def copy_set_table(errors: PinnedErrors, decoded: list[Any]) -> pd.DataFrame:
-    """One row per `(state, A, B)` in a state's set; a state whose set is empty
-    has one row with `A` and `B` empty, so it is reported rather than dropped."""
-    rows = []
-
-    for state, result in enumerate(decoded):
-        base = {
-            "state": state,
-            "neutral": state == errors.neutral,
-            "mu": float(errors.mu[state]),
-            "p_minor": float(errors.minor[state]),
-            "sigma_mu": float(np.sqrt(errors.covariance[state, 0, 0])),
-            "sigma_p": float(np.sqrt(errors.covariance[state, 1, 1])),
-            "best_A": result.best[0],
-            "best_B": result.best[1],
-            "best_distance": result.distance,
-            "threshold": result.threshold,
-            "level": result.level,
-            "set_size": len(result.consistent),
-        }
-
-        if not result.consistent:
-            rows.append({**base, "A": pd.NA, "B": pd.NA})
-
-        for a, b in result.consistent:
-            rows.append({**base, "A": a, "B": b})
-
-    return pd.DataFrame(rows)
-
-
-def write_copy_sets(run: Path, captured: Captured, *, level: float = 0.95) -> Path:
-    """Write `cnv_copy_sets.tsv` into `run`, and return its path."""
-    errors = pinned_errors(captured)
-    table = copy_set_table(errors, copy_sets(errors, level=level))
-    path = Path(run) / "cnv_copy_sets.tsv"
-
-    with path.open("w") as handle:
-        handle.write(
-            f"# every (A, B) inside the {level:.2%} credible region of each "
-            f"fitted state (#353); state {errors.neutral} is pinned to mu = 1; "
-            f"Newton decrement {errors.decrement:.3e}\n"
-        )
-        table.to_csv(handle, sep="\t", index=False)
-
-    return path

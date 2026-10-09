@@ -24,7 +24,7 @@ four-job rule puts what has no `cnaster` counterpart under `extensions/`.
 upstream already carries. `sal.opt.fit.parameter_covariance`
 is that thing, and it is **not called**: it takes a `torch` objective and
 differentiates with `torch`, while this differentiates the `jax` objective
-`port.extensions.jax_hmm` supplies, and adapting one to the other would mean
+`port.qa.jax_hmm` supplies, and adapting one to the other would mean
 a second implementation of the objective -- the thing being avoided.
 
 What is taken is its *rule*, restated with attribution: refuse a point where
@@ -74,14 +74,14 @@ the debiased rates a scale uncertainty the debiasing exists to remove.
 
 ## jax, and one implementation of the objective
 
-The Hessian is `jax`'s, taken of `port.extensions.jax_hmm` -- **the same
+The Hessian is `jax`'s, taken of `port.qa.jax_hmm` -- **the same
 objective, differentiated, rather than a second one written to be
 differentiable**. That module is pinned against `cnaster`'s own kernels, so
 what is differentiated here is refereed there. `jax` is a dependency as of
 #287.
 
 History, and the `sandbox/` excursion: `docs/measurements.md`,
-`port.extensions.parameter_errors`.
+`port.qa.parameter_errors`.
 """
 
 from __future__ import annotations
@@ -90,7 +90,7 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
-from port.extensions import jax_setup  # noqa: F401  (float64, before any array)
+from port.qa import jax_setup  # noqa: F401  (float64, before any array)
 
 __all__ = [
     "ParameterErrors",
@@ -133,10 +133,10 @@ def observed_information(objective: Any, theta: Any) -> np.ndarray:
 
     `objective` takes one parameter vector and returns a scalar, and is
     traced by `jax`, so it must be written in `jax` operations --
-    `port.extensions.jax_hmm` is what supplies them, though any `jax`
+    `port.qa.jax_hmm` is what supplies them, though any `jax`
     objective works and this module does not require that one.
 
-    `float64` comes from `port.extensions.jax_setup`, imported at module
+    `float64` comes from `port.qa.jax_setup`, imported at module
     scope. Without it this returns a `float32` Hessian, which is good to
     about 5.8e-08 and decides identifiability on its smallest eigenvalue.
     """

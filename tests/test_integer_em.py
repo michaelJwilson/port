@@ -1,17 +1,18 @@
 """`lattice_decode` recovers planted pairs, a tumour clone's shift and fraction (#362).
 
-Two clones share four states' `(A, B)`: a normal clone and a tumour clone
-whose depth is scaled by `exp(-SHIFT)`, as the shifted model's `logmu_shift`
-scales it. The counts are drawn at depth, so the likelihood's argmax is the
-truth; the start is the continuous fit's rounding with a fifth of each path
-scrambled, which is what an E-step has to undo.
+A normal and a shifted tumour clone over four states, started from a scrambled path.
 """
 
 from __future__ import annotations
 
 import numpy as np
 import pytest
-from port.extensions.copy_likelihood import Pseudobulk, lattice_decode
+from port.extensions.copy_likelihood import (
+    Pseudobulk,
+    lattice_decode,
+    pair_rate_and_share,
+)
+from sal.opt.termination import Stop
 
 PAIRS = np.array([[1, 1], [2, 1], [3, 1], [2, 2]])
 SHIFT = 0.4
@@ -24,8 +25,7 @@ TAU = 2.0e2
 def _planted(
     seed: int, pairs: np.ndarray = PAIRS, purity: float = 1.0
 ) -> tuple[list[np.ndarray], list[Pseudobulk]]:
-    """A normal clone and a tumour clone of `purity`, both over `pairs`' states."""
-    from port.extensions.copy_likelihood import pair_rate_and_share
+    """Return paths and pseudobulks of a normal clone and a tumour clone of `purity`."""
 
     rng = np.random.default_rng(seed)
     runs = np.repeat(np.arange(8) % 4, N_OBS // 8)
@@ -74,12 +74,7 @@ PURITY = 0.8
 @pytest.mark.analytic
 @pytest.mark.parametrize("pair", [(1, 1), (2, 1), (3, 1), (2, 2), (4, 1)])
 def test_half_purity_mimics_every_pair_with_both_alleles(pair: tuple[int, int]) -> None:
-    """At `rho = 1/2`, `(2A - 1, 2B - 1)` has `(A, B)`'s depth and allele share.
-
-    So the fraction is not identifiable from states that all carry both
-    alleles; LOH, whose mimic would need `-1` copies, is what pins it.
-    """
-    from port.extensions.copy_likelihood import pair_rate_and_share
+    """At `rho = 1/2`, `(2A - 1, 2B - 1)` has `(A, B)`'s rate and share, to 1e-12."""
 
     pure = pair_rate_and_share(np.array([pair]), 1.0)
     mimic = pair_rate_and_share(np.array([[2 * pair[0] - 1, 2 * pair[1] - 1]]), 0.5)
@@ -90,7 +85,7 @@ def test_half_purity_mimics_every_pair_with_both_alleles(pair: tuple[int, int]) 
 @pytest.mark.end2end
 @pytest.mark.parametrize("seed", [0, 1])
 def test_the_lattice_viterbi_em_recovers_every_bins_pair(seed: int) -> None:
-    """One state per pair, fractions held at 1: each bin's pair and the shift."""
+    """Each bin's planted pair is recovered, and the shift to 0.02."""
     paths, bulks = _planted(seed)
     fitted = lattice_decode(
         [(z, b, 0.0) for z, b in zip(paths, bulks, strict=True)],
@@ -108,7 +103,7 @@ def test_the_lattice_viterbi_em_recovers_every_bins_pair(seed: int) -> None:
 @pytest.mark.end2end
 @pytest.mark.parametrize("seed", [0, 1])
 def test_the_viterbi_em_recovers_a_planted_tumour_fraction(seed: int) -> None:
-    """With LOH planted, `rho = 0.8` to 0.03, and every bin's pair."""
+    """With LOH planted, `rho = 0.8` is recovered to 0.03, and every bin's pair."""
     paths, bulks = _planted(seed, LOH_PAIRS, PURITY)
     fitted = lattice_decode(
         [(z, b, 0.0) for z, b in zip(paths, bulks, strict=True)],
@@ -126,8 +121,7 @@ def test_the_viterbi_em_recovers_a_planted_tumour_fraction(seed: int) -> None:
 @pytest.mark.infra
 @pytest.mark.parametrize("seed", [0, 1])
 def test_the_decode_reports_why_it_stopped(seed: int) -> None:
-    """Converged at a fixed point; one Viterbi pass without EM is its budget (T- #617)."""
-    from sal.opt.termination import Stop
+    """EM converges at a fixed point; without EM one pass stops on budget (T- #617)."""
 
     paths, bulks = _planted(seed)
     clones = [(z, b, 0.0) for z, b in zip(paths, bulks, strict=True)]

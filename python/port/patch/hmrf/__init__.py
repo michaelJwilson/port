@@ -1,14 +1,7 @@
-"""Five patches to one `cnaster` module, so the package carries its name (#250).
+"""Patches to `cnaster.hmrf`, re-exported under its name (#250).
 
-`cnaster.hmrf` is one file doing five separable jobs, and `port` replaced
-them one ticket at a time: the spot-clone field (#59), the fused two-pass
-build, the per-iteration invariants, the COO round trip, and the clone
-assignment itself (#206). Splitting them is right; naming the split after the
-tickets was not, because a reader holding `cnaster/hmrf.py` open had no way
-to find them.
-
-The submodules keep the split; this re-exports them so a swap row can name
-`port.patch.hmrf` and a reader can open `cnaster.hmrf` and find it.
+Submodules: spot-clone field (#59), fused two-pass build, per-iteration
+invariants, COO adjacency, and clone assignment (#206).
 """
 
 from __future__ import annotations

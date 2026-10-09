@@ -1,35 +1,7 @@
 """`cnamaste.h5`: a run's one output `port` reads, written stage by stage (T- #817).
 
-A run writes `cnamaste.h5` and `CalicoST`'s own files, nothing else; QA, the
-audits, the studies and the figures read `cnamaste.h5` alone. A simulated
-sample's truth is `truth.h5`, the same groups where the quantity exists.
-
-**The format is this module.** `GROUPS` and `TRUTH_GROUPS` declare every
-group: its datasets, each one's axes and type, and the attributes it must
-carry. `write` refuses what they do not declare, `read` returns what they
-do, and `render` is `docs/cnamaste-h5.md`'s table, which a guard holds to it.
-
-**Staged.** `create` writes the root; each stage then calls `write` once for
-its group, which sets `complete` last and appends the group to the root's
-`stages`. A reader sees a group only once it is complete, so a run that stops
-early leaves every finished stage readable. A stage rewritten replaces its
-group whole.
-
-**Storage.** Every dataset is chunked, byte-shuffled and deflated at level 4;
-values are stored as computed, never rounded.
-
-**Axes.** Every dataset carries `dims`. `GLOBAL` axes (`n_spots`, `n_genes`,
-`channel`, `xy`) take one size across the file, the first group to write one
-fixing it; the rest (`n_obs`, `n_clones`, ...) are consistent within a group.
-Spots are in `/inputs/barcodes`' order everywhere, genes in
-`/segments/genes`'.
-
-**Segments.** `/segments/levels/<name>` holds one level of the run's
-hierarchy (`port.extensions.segments.Lineage`): a label per gene, `-1` where
-dropped, and the segment ids, appended as the run records each. A stage's
-`level` attribute names the level its `n_obs` axis is on. What a level
-derives -- contig, start, length, `lengths` -- is not stored (#438).
-"""
+`GROUPS`/`TRUTH_GROUPS` declare each group; `write` refuses the undeclared, `read` returns
+only complete groups. Spots follow `/inputs/barcodes`, genes `/segments/genes` (#438)."""
 
 from __future__ import annotations
 
@@ -77,10 +49,7 @@ LEVELS = {
     "bins-floored": "min_segment_normal_umi",
     "bins.2": "normal_candidates",
 }
-"""Each segment level's name in the file: the step that makes it. `assign_initial_blocks` to
-`quality.phasing_min_snp_umis`; `create_bin_ranges` to `quality.secondary_min_umi`; `normal_baf_bin_filter`;
-the floor of #551 (`min_segment_normal_umi`); `create_bin_ranges` again on the normal candidates. The run's
-lineage keeps `port.extensions.segments`' names."""
+"""Lineage level name -> its name in the file."""
 
 
 def level_name(name: str) -> str:
@@ -89,10 +58,8 @@ def level_name(name: str) -> str:
 
 
 ROOT_ATTRS = ("schema", "commit", "port", "cnaster", "sal", "sample_hash")
-"""What `create` requires of `cnamaste.h5`; `stages` is the writer's."""
 
 TRUTH_ROOT_ATTRS = ("schema", "sample_hash")
-"""What `create` requires of `truth.h5`: the hash a scorer joins the two files on."""
 
 DTYPES = ("int64", "int16", "float64", "numeric", "bool", "str", "csr")
 """`numeric` keeps an integer or float array's own type, int64 or float64, where a page's input may be either."""
@@ -102,8 +69,6 @@ ANY = ("...",)
 
 
 class Dataset(NamedTuple):
-    """One dataset: its name, its axes, its type and what it holds."""
-
     name: str
     dims: tuple[str, ...]
     dtype: str
@@ -137,8 +102,6 @@ _FIT = (
 """A fit as `cnaster` returns it, one column per clone."""
 
 _FIT_ATTRS = ("level", "counts", "pred_layout", "mu_shape")
-"""The fit's level, the `/counts` its clones sum, and how `cnaster` shaped `pred_cnv` (`stacked` or
-`columns`) and `new_log_mu`: what a page reads it back as."""
 
 _STAGE = (
     _d("clone_index", ("n_spots",), "int64", "the stage's initial clones, where not `/initial_clones`", optional=True),
@@ -520,7 +483,6 @@ def _attr_declared(name: str, declared: tuple[str, ...]) -> bool:
 
 
 _ACTIVE: list[Path] = []
-"""The file `stage` writes to: `writing`'s, innermost last."""
 
 
 @contextmanager
@@ -534,12 +496,11 @@ def writing(path: Path) -> Iterator[Path]:
 
 
 def active() -> Path | None:
-    """The file `stage` writes to, or `None` outside `writing`."""
     return _ACTIVE[-1] if _ACTIVE else None
 
 
 def stage(group: str, arrays: Mapping[str, Any], **attrs: Any) -> None:
-    """`write` into the open file; nothing outside `writing`, so a stage's hook costs nothing without one."""
+    """`write` into the open file; a no-op outside `writing`."""
     if _ACTIVE:
         write(_ACTIVE[-1], group, arrays, **attrs)
 
@@ -562,7 +523,6 @@ def create(path: Path, *, schema: str = SCHEMA, **attrs: Any) -> None:
 
 
 def _attr(value: Any) -> Any:
-    """An attribute value h5py stores as given: a scalar, a string, or a 1-d list of either."""
     import h5py
 
     if isinstance(value, Mapping):
@@ -580,12 +540,7 @@ def _attr(value: Any) -> Any:
 
 
 def write(path: Path, group: str, arrays: Mapping[str, Any], **attrs: Any) -> None:
-    """`group` into the file at `path`, whole: checked against the schema, then marked complete.
-
-    Every declared dataset not `optional` is required, and nothing undeclared
-    is accepted; each array's type and axes are checked, `GLOBAL` axes
-    against the sizes the file already holds.
-    """
+    """`group` into the file at `path`, whole, checked against the schema, then marked complete; ValueError on mismatch."""
     import h5py
 
     with h5py.File(path, "a") as handle:
@@ -684,7 +639,6 @@ def _put(node: Any, spec: Dataset, value: Any) -> None:
         sub.attrs["dims"] = list(spec.dims)
         return
     data = value.astype(h5py.string_dtype()) if spec.dtype == "str" else value
-    # NB byte-shuffled and deflated at level 4: integer counts shrink 5-10x; chunking needs a nonzero size
     deflate = (
         {"chunks": True, "shuffle": True, "compression": "gzip", "compression_opts": 4}
         if value.size
@@ -767,7 +721,6 @@ def _plain(value: Any) -> Any:
 
 
 def levels(path: Path) -> dict[str, tuple[dict[str, Any], dict[str, Any]]]:
-    """The segment levels, in the order the run recorded them."""
     found = {
         s.removeprefix("segments/levels/"): read(path, s)
         for s in stages(path)

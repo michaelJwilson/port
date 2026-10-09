@@ -6,7 +6,7 @@ port captured or drew. It referees nothing about `cnaster`, so its `sal`
 imports are not the oracle surface `tests/test_coverage_scope.py` counts,
 which scans the suite's modules and not the package. Each module states what
 it measured and the document its numbers are in; `run_study --<study>` runs
-the ones with a `main` (`port.scripts.run_study.STUDIES`), and `stream`
+the ones with a `main` (`port.qa.scripts.run_study.STUDIES`), and `stream`
 holds the harness the two solver streams share. Moved from `tests/studies/`
 (T- #673 G5).
 """

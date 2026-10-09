@@ -4,13 +4,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import matplotlib as mpl
+import matplotlib.font_manager as fm
+import matplotlib.pyplot as plt
 import pytest
+import seaborn as sns  # type: ignore[import-untyped]
+from port.extensions import figure_style
+from port.extensions.combined_figure import page_style
+from port.extensions.figure_style import DEFAULT, figure_font, page_size, stated
 
 
 @pytest.mark.infra
 def test_the_shipped_default_is_the_stated_face() -> None:
     """`DEFAULT`, used where no `pyproject.toml` is found, equals `[tool.port.figures]`."""
-    from port.extensions.figure_style import DEFAULT, stated
 
     assert stated() == DEFAULT
 
@@ -18,8 +24,6 @@ def test_the_shipped_default_is_the_stated_face() -> None:
 @pytest.mark.infra
 def test_the_stated_face_is_found_without_fallback() -> None:
     """matplotlib resolves the face to its own file, not to its fallback face."""
-    import matplotlib.font_manager as fm
-    from port.extensions.figure_style import stated
 
     face = stated()["font"]
     path = fm.findfont(fm.FontProperties(family=face), fallback_to_default=False)
@@ -32,7 +36,6 @@ def test_a_face_matplotlib_cannot_find_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A misspelt face raises, naming it, rather than drawing in DejaVu."""
-    from port.extensions import figure_style
 
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text(
@@ -46,15 +49,9 @@ def test_a_face_matplotlib_cannot_find_is_refused(
 
 @pytest.mark.infra
 def test_the_run_and_the_combined_figure_draw_in_the_stated_face() -> None:
-    """Text drawn under `figure_font` and under `page_style` resolves to the stated
-    face, after `cnaster.plotting` and seaborn have set their own."""
-    import matplotlib as mpl
+    """Text under `figure_font` and `page_style` resolves to the stated face."""
 
     mpl.use("Agg")
-    import matplotlib.pyplot as plt
-    import seaborn as sns  # type: ignore[import-untyped]
-    from port.extensions.combined_figure import page_style
-    from port.extensions.figure_style import figure_font, stated
 
     face = stated()["font"]
 
@@ -74,12 +71,7 @@ def test_the_run_and_the_combined_figure_draw_in_the_stated_face() -> None:
 
 @pytest.mark.analytic
 def test_each_page_share_is_its_fraction_of_the_text_block_less_its_caption() -> None:
-    """`page_size` against the paper's text block by hand, letter less 1.01 in
-    margins and `llncs`'s 58 pt head and foot, 468.31 by 590.99 TeX points as
-    `pdflatex` reports it: "full" is the block less 1.0 in, the shares 1/3, 1/2
-    and 3/4 of it, and `columns` figures on a row split its width (T- #733,
-    T- #740, T- #791)."""
-    from port.extensions.figure_style import page_size
+    """`page_size` against the `llncs` text block computed by hand (#733, #740, #791)."""
 
     width, room = 468.31 / 72.27, 590.99 / 72.27 - 1.0
 
@@ -95,7 +87,6 @@ def test_each_page_share_is_its_fraction_of_the_text_block_less_its_caption() ->
 @pytest.mark.infra
 def test_a_share_or_a_row_page_size_cannot_draw_is_refused() -> None:
     """An unnamed share and a row of no figures raise, naming the value."""
-    from port.extensions.figure_style import page_size
 
     with pytest.raises(ValueError, match="'quarter'"):
         page_size("quarter")  # type: ignore[arg-type]

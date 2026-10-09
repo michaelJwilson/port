@@ -1,28 +1,9 @@
 """`cnaster`'s coded NB/BB emission, scored by sal's coded log-emission (#425, sal #1340).
 
-`_nb_logpmf_1d` and `_bb_logpmf_1d` score one state over a vector of counts,
-`lgamma` per score. `sal.emissions.coded.log_emission(family, Dense(...))`
-scores every state of the family at once in Rust, from tables over the
-distinct counts only (port T- #719: 154,549 rows to 7,109), each completed
-in the family's own order (sal #1334, #1336). The same edge behaviour as
-`cnaster`'s:
-
-- a zero exposure or trial count scores 0, which sal reads as unobserved;
-- `alpha` floored at 1e-10 for the negative binomial, and the beta-binomial's
-  `a`, `b` floored at `DISPERSION_FLOOR` (`port.patch.emission`);
-- a non-positive rate `mu` scores 0 everywhere, as `exposure * mu <= 0` does.
-
-The tables are sal's `scaled_rising_table`, the one evaluation every site
-scores (T- #776). A state at `tau = inf` is the binomial at `p`, which sal's
-rate-concentration family scores (sal #1340); the rest are sal's `(a, b)`
-family at port's floors.
-
-To a tolerance, not bitwise, so it is `--sal`'s rather than a `SWAPS` row;
-#244 is why a tolerance is measured end to end before it is anything else.
-Selected by the `hmm_nophasing` row's `emission_kernels="sal"` option, not a
-name rebind: `cnaster`'s compiled kernels call `_nb_logpmf_1d` as a global.
-:func:`coded_emission` is upstream's coded method with every state scored in
-one call per spot, which is where the speed is.
+All states at once in Rust over distinct counts (T- #776), with `cnaster`'s
+edge behaviour: zero exposure scores 0, dispersions floored, a rate `mu <= 0`
+scores 0, `tau = inf` is the binomial. To a tolerance, not bitwise, so selected
+by `hmm_nophasing`'s `emission_kernels="sal"` rather than a `SWAPS` row.
 """
 
 from __future__ import annotations
@@ -42,19 +23,14 @@ def nb_states(
     mu: np.ndarray,
     dispersions: np.ndarray,
 ) -> np.ndarray:
-    """`(K, n)`: every state's `_nb_logpmf_1d` in one call; a rate <= 0 scores 0.
-
-    `sal.emissions.coded.log_emission` on sal's negative binomial at
-    `r = nb_size(alpha)` (`inf`, the Poisson, at `alpha <= 0`).
-    """
+    """`(K, n)`: every state's `_nb_logpmf_1d` in one call at `r = nb_size(alpha)`; a rate <= 0 scores 0."""
     from sal.emissions.coded import Dense, log_emission
     from sal.emissions.counts import NegativeBinomialEmission
 
     mu = np.asarray(mu, dtype=np.float64).reshape(-1)
     covariate = np.asarray(exposure, dtype=np.float64).reshape(-1)
     if not covariate.any():
-        # NB sal's coded route raises where no observation is observed
-        #    (`count_log_factor` reshapes an empty table); each scores 0.
+        # NB sal raises where no observation is observed; each scores 0.
         return np.zeros((mu.size, covariate.size))
     dead = mu <= 0.0
     family = NegativeBinomialEmission(
@@ -75,12 +51,7 @@ def bb_states(
     p_binom: np.ndarray,
     taus: np.ndarray,
 ) -> np.ndarray:
-    """`(K, n)`: every state's `_bb_logpmf_1d` in one call.
-
-    `sal.emissions.coded.log_emission` on sal's beta-binomial at
-    `a = max(p tau, floor)`, `b = max((1 - p) tau, floor)`; a state at
-    `tau = inf` on sal's rate-concentration family, the binomial at `p`.
-    """
+    """`(K, n)`: every state's `_bb_logpmf_1d` in one call; `a`, `b` floored, `tau = inf` the binomial at `p`."""
     from sal.emissions.coded import Dense, log_emission
     from sal.emissions.counts import (
         BetaBinomialEmission,
@@ -95,8 +66,7 @@ def bb_states(
     observations = Dense(np.asarray(obs), covariate)
     limit = np.isinf(tau)
     out = np.empty((p.size, observations.counts.size))
-    # NB sal reads each observation's trial count from the covariate; the
-    #    family's per-state `trials` is a placeholder it requires.
+    # NB sal reads trials from the covariate; the family's `trials` is a placeholder.
     if not limit.all():
         finite = ~limit
         a = np.maximum(p[finite] * tau[finite], DISPERSION_FLOOR)
@@ -124,11 +94,7 @@ def coded_emission(
     *,
     clone_stack: bool = True,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """`hmm_nophasing.compute_emission_probability_nb_betabinom_coded`, unshifted.
-
-    Upstream's loop over spots, decode and stack, with each spot's states
-    scored together: one NB and one BB family of `n_states` per spot.
-    """
+    """`hmm_nophasing.compute_emission_probability_nb_betabinom_coded`, unshifted, all states per spot in one call."""
     n_spots = nbEncoder.n_spots
 
     if bbEncoder.n_spots != n_spots:  # invariant

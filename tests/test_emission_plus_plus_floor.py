@@ -1,17 +1,8 @@
-"""#562: `sal`'s emission++ divergences floored at 0 around port's mixture start.
+"""`sal`'s emission++ divergences around port's mixture start (#562, sal #1136, T- #632).
 
-`run_cnaster_port --sal --hmm-start emission++...` seeds through
-`sal.opt.emission_mixture.seed_scores` (public since sal #1236), whose negative-binomial Bregman
-divergence is non-negative in exact arithmetic and about `-1.6e-15` in
-float64 for a row a hair from a seed's mean. D-squared sampling handed those
-to `rng.choice`, which refused them. Port floored them at 0 around
-`sal_mixture.gmm_init` until sal #1136 floored them in the draw (T- #632).
-
-The rows are the rate-space pairs `sal_mixture.instance_of` builds, seeded
-through the same `CountPairSeeding` seam: 200 at `(2.0, 0.3)`; 200 whose
-total is `2.0` to 1e-12 and whose B rate, 0.76034, puts their beta-binomial
-deviance from a `(2.0, 0.3)` seed at its clamp of 0; and 5 far rows, so the
-draw has positive mass to normalize.
+Rows from `sal_mixture.instance_of`: 200 at `(2.0, 0.3)`, 200 at deviance 0 from that
+seed,
+and 5 far rows.
 """
 
 from __future__ import annotations
@@ -20,6 +11,7 @@ from typing import Any
 
 import numpy as np
 import pytest
+from sal.opt.emission_mixture import CountPairSeeding, plus_plus_start, seed_scores
 
 from tests.exact_densities import nb_divergence
 
@@ -40,16 +32,12 @@ def _rows() -> np.ndarray:
 
 
 def _seam() -> Any:
-    from sal.opt.emission_mixture import CountPairSeeding
-
     return CountPairSeeding(
         dispersion=SIZE, concentration=1_000.0, joint=False, trials=50.0
     )
 
 
 def _refused(seed: int) -> bool:
-    from sal.opt.emission_mixture import plus_plus_start
-
     try:
         plus_plus_start(_rows(), 3, _seam(), np.random.default_rng(seed))
     except ValueError as error:
@@ -61,27 +49,13 @@ def _refused(seed: int) -> bool:
 def test_sals_emission_plus_plus_no_longer_refuses_a_round_off_negative_divergence() -> (
     None
 ):
-    """0 of 20 generators raise "Probabilities are not non-negative" through sal's own seam.
-
-    11 of 20 did at sal `3ad4b04`; sal #1136 (`aa699a59`) floors round-off
-    negatives in the D-squared draw. T- #632 PR B retires the workaround.
-    """
+    """0 of 20 generators raise "Probabilities are not non-negative" through sal's own seam (sal #1136)."""
     assert sum(_refused(seed) for seed in range(20)) == 0
 
 
 @pytest.mark.oracle
 def test_sals_scores_are_the_exact_divergence() -> None:
-    """From a `(2.0, 0.3)` seed, each near row's score is the 50-digit divergence, to 2e-14 absolute.
-
-    The exact negative-binomial divergence there is below 1e-24, and sal's
-    negative-binomial part of each score lies within 1.6e-15 of it. At sal
-    `3ad4b04` the beta-binomial deviance was clamped to 0 and 102 of the 200
-    near rows scored as low as `-1.6e-15`. Since sal #1136 the deviance at
-    concentration 1000 takes the Stirling-difference path above shape 100 and
-    reads `+1.43e-14` where it is 0, so no near row is negative and the near
-    scores are 1.28e-14 to 1.59e-14.
-    """
-    from sal.opt.emission_mixture import seed_scores
+    """From a `(2.0, 0.3)` seed each near row's score is the 50-digit divergence, to 2e-14 absolute."""
 
     rows = _rows()
     candidates = np.arange(rows.shape[0], dtype=np.float64)

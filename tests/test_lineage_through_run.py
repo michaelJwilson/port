@@ -1,43 +1,30 @@
-"""The segment lineage through a whole `run_cnaster_port` run (#438).
-
-One run of the entry point on the end-to-end instance, recording every
-segmentation the patched stages make and every phase-switch kernel the run
-asks for. Checked against the run itself: each kernel is computed on the
-level it belongs to, is independence at every contig boundary, and is
-Haldane's over its own contig's map everywhere else; the levels nest as the
-pipeline builds them; and the table the run writes is the lineage.
-"""
+"""Segment lineage through one `run_cnaster_port` run, checked against the run itself (#438)."""
 
 from __future__ import annotations
 
 import warnings
 from typing import Any
 
+import matplotlib as mpl
 import numpy as np
 import pytest
+from port.extensions import cnamaste
+from port.extensions.segments import recording
+from port.patch import recomb
+from port.scripts.run_cnaster import main
+from port.sim.run_config import isolated_run, write_for_run
+
+from tests.fixtures import end_to_end_truth
 
 
 @pytest.fixture(scope="module")
 def run(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
     """The run, with its lineage and every kernel it computed."""
-    import matplotlib as mpl
-    from port.extensions.segments import recording
-    from port.patch import recomb
-    from port.scripts.run_cnaster import main
-    from port.sim.inputs import write_tmp_inputs
-    from port.sim.run_config import isolated_run, write_run_cnaster_config
-    from port.sim.truth import core_inference_truth
-    from port.sim.unsegment import unsegment
 
     mpl.use("Agg")
     root = tmp_path_factory.mktemp("lineage")
-    truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(25, 40), n_obs=40, n_segments=3, seed=11
-    )
-    written = write_tmp_inputs(
-        truth, unsegment(truth, flip_every=0, unassigned_genes=0), root
-    )
-    config = write_run_cnaster_config(written, truth, max_iter_outer=1, max_iter=3)
+    truth = end_to_end_truth()
+    written, config = write_for_run(truth, root, max_iter_outer=1, max_iter=3)
 
     kernels: list[tuple[str, int, np.ndarray]] = []
     original = recomb.get_sitewise_transmat
@@ -72,7 +59,7 @@ def run(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
 def test_every_kernel_is_independence_at_every_contig_boundary(
     run: dict[str, Any],
 ) -> None:
-    """Four kernels, each one entry per segment of its level, `log 1/2` at each contig end."""
+    """Each kernel has one entry per segment, `log 1/2` at each contig end."""
     lineage = run["lineage"]
     kernels = run["kernels"]
 
@@ -93,11 +80,7 @@ def test_every_kernel_is_independence_at_every_contig_boundary(
 @pytest.mark.merge
 @pytest.mark.xdist_group("pipeline")
 def test_the_levels_nest_as_the_pipeline_builds_them(run: dict[str, Any]) -> None:
-    """Blocks refine bins; filtering keeps a subset; the merge coarsens what survived.
-
-    And `lengths` of every level sums to its segment count with no zero -- the
-    grid the HMM restarts on.
-    """
+    """Blocks refine bins, filtering subsets, the merge coarsens; `lengths` sum to segment counts."""
     levels = run["lineage"].levels
     names = list(levels)
 
@@ -120,7 +103,6 @@ def test_the_levels_nest_as_the_pipeline_builds_them(run: dict[str, Any]) -> Non
 @pytest.mark.xdist_group("pipeline")
 def test_the_run_writes_its_lineage(run: dict[str, Any]) -> None:
     """`cnamaste.h5`'s `/segments` is the recorded lineage: its genes and every level, in order, bitwise (T- #817)."""
-    from port.extensions import cnamaste
 
     lineage = run["lineage"]
     path = run["file"]

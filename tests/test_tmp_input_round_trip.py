@@ -1,11 +1,7 @@
-"""A binned fixture, written as files and loaded back (#68).
+"""A binned fixture written as files and loaded back through `cnaster.io.load_input_data`
+(#68).
 
-`python/port/sim/unsegment.py` builds a pre-image at the gene and block level;
-`python/port/sim/inputs.py` writes it as the files `run_cnaster` is pointed at. This
-closes the loop over `cnaster.io.load_input_data` -- the real entry point,
-not one function of it -- and then over the binning, so the planted truth
-makes the whole trip from a temporary directory back to the bins it started
-at.
+Referee: the planted fixture, recovered after binning.
 """
 
 from pathlib import Path
@@ -13,6 +9,7 @@ from typing import Any
 
 import numpy as np
 import pytest
+from cnaster.omics import summarize_counts_for_bins
 from port.sim.inputs import load_written, write_tmp_inputs
 from port.sim.truth import core_inference_truth
 from port.sim.unsegment import unsegment
@@ -29,12 +26,7 @@ def _written(tmp_path: Path, n_obs: int = 20) -> tuple[Any, Any, Any]:
 @pytest.mark.snapshot
 @pytest.mark.preprocessing
 def test_the_allele_matrices_come_back_bitwise(tmp_path: Path) -> None:
-    """Both haplotypes, through `.npz` and `load_input_data`, unchanged.
-
-    The A count is written as `total - B`, so a loader that swapped the two
-    files would return the complement rather than an error -- which is why
-    both are asserted and not just their sum.
-    """
+    """Both haplotype matrices come back bitwise through `.npz` and `load_input_data`."""
     _, _, written = _written(tmp_path)
     loaded = load_written(written)
 
@@ -47,14 +39,7 @@ def test_the_allele_matrices_come_back_bitwise(tmp_path: Path) -> None:
 def test_the_expression_comes_back_on_the_genes_the_loader_keeps(
     tmp_path: Path,
 ) -> None:
-    """Exact on every retained gene, and what it drops carried no counts.
-
-    `load_input_data` filters genes below `min_percent_expressed_spots`, which
-    at this size removes the all-zero columns the partition produces when a
-    bin's count is smaller than the genes it is split across. So the claim is
-    not that the matrix survives whole -- it does not -- but that nothing with
-    a count in it is lost, which is the property a round trip needs.
-    """
+    """Expression is exact on every retained gene, and dropped genes carried no counts."""
     _, pre_image, written = _written(tmp_path)
     loaded = load_written(written)
 
@@ -74,12 +59,7 @@ def test_the_expression_comes_back_on_the_genes_the_loader_keeps(
 @pytest.mark.snapshot
 @pytest.mark.preprocessing
 def test_the_spots_come_back_in_the_order_they_were_written(tmp_path: Path) -> None:
-    """Barcodes and coordinates line up with the lattice they were planted on.
-
-    The spot axis is what every later array is indexed by, so a permutation
-    here would silently relabel the clone assignment and every recovery claim
-    above it.
-    """
+    """Barcodes and coordinates come back in the planted lattice order."""
     truth, _, written = _written(tmp_path)
     loaded = load_written(written)
 
@@ -95,24 +75,14 @@ def test_the_spots_come_back_in_the_order_they_were_written(tmp_path: Path) -> N
 @pytest.mark.preprocessing
 @pytest.mark.critical
 def test_the_loaded_files_bin_back_to_the_planted_fixture(tmp_path: Path) -> None:
-    """The whole trip: bins to files, files to arrays, arrays to bins.
-
-    The allele channel is carried through `load_input_data`'s own output
-    rather than through the pre-image, so what is binned is what the loader
-    returned and not what was written -- and it is taken from the **A** file,
-    which is the one `cnaster` reads into the channel it scores as B. The expression channel is binned from
-    the loader's `adata` for the same reason.
-    """
-    from cnaster.omics import summarize_counts_for_bins
+    """Files loaded and binned again equal the planted fixture."""
 
     truth, pre_image, written = _written(tmp_path)
     loaded = load_written(written)
 
     n_blocks = pre_image.block_single_X.shape[0]
     block_X = np.zeros((n_blocks, 2, truth.n_spots), dtype=np.int64)
-    # `cell_snp_Aallele` is what `summarize_counts_for_blocks` reads into
-    # channel 1 (`omics.py:468`), so the file named A carries the haplotype
-    # the model scores as B.
+    # `cell_snp_Aallele` fills channel 1 (`omics.py:468`), so the A file is the model's B.
     block_X[:, 1, :] = loaded.cell_snp_Aallele.T
     block_total = (loaded.cell_snp_Aallele + loaded.cell_snp_Ballele).T
 

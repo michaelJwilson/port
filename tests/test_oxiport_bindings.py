@@ -1,9 +1,4 @@
-"""Integration test for the compiled Rust extension.
-
-Requires the package to be built and installed (`uv sync`), unlike a pure
-Python test: it imports `port.oxiport`, which only exists once maturin has
-compiled the crate.
-"""
+"""The compiled `port.oxiport` extension against the arithmetic it claims; needs `uv sync`."""
 
 import pytest
 from port import double

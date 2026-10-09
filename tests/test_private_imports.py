@@ -1,11 +1,4 @@
-"""No `port` module imports another's private name (#763).
-
-A leading underscore says a name is its module's own: free to change with no
-caller to tell. An import of one from another module is a caller the module
-cannot see, so the name either becomes public, named for what it computes,
-or the caller goes through a public seam. `sandbox/` is held to it too: its
-imports of live code are what keeps a set-aside module runnable.
-"""
+"""No `port` module imports another's private name, `sandbox/` included (#763)."""
 
 from __future__ import annotations
 
@@ -22,8 +15,7 @@ ADMITTED: dict[tuple[str, str], str] = {
         "_nb_logpmf_1d",
     ): "cnaster's own name, which the row replaces",
 }
-"""Private names imported across modules, each with why: a row keeps the
-`cnaster` name it rebinds (`docs/port-forward.md`). A list that only shrinks."""
+"""Admitted cross-module private imports, each with why (`docs/port-forward.md`); only shrinks."""
 
 
 def _private_imports() -> set[tuple[str, str, str]]:

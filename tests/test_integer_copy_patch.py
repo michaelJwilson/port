@@ -1,37 +1,36 @@
-"""Integer copies by the HMM's likelihood, the one decode `port` supports (#362).
+"""Integer copies by the HMM likelihood (`port.patch.integer_copy`), against planted pairs (#362).
 
-`port.patch.integer_copy` replaces both of `cnaster`'s decoders with
-`decode_clone`: the pseudobulk NB/BB likelihood with the pinned `mu`, the
-clone's shift, its path and the fitted dispersions held, under the cap
-`int_copy_num.max_total_copy` states (#313). What is pinned:
-
-- the planted pairs, totals of 10 to 12 included, are recovered exactly from
-  a pseudobulk at their expected counts (`end2end`);
-- the normal state is `(1, 1)` whatever its counts say (`analytic`);
-- installed, `cnaster`'s names reach it once, not recursively (`patch`), and
-  a clone the capture cannot identify is an error (`infra`);
-- `cnaster`'s own MILP cannot return a total above 6 (`bug`).
-
-**The genome is mostly normal**, as a tumor's is: 91 of 100 bins at `(1, 1)`.
-The MILP bounds the weighted mean total copy by `max_medploidy + 0.5`, so a
-genome whose states are equally occupied cannot carry a total of 10 however
-high the cap, and a test built that way measures the ploidy bound instead.
-
-The hill climber is compared bitwise only. Called as `run_cnaster` calls it
-(`max_medploidy=2`) it decodes `(3, 1)` as `(1, 0)` whatever the cap, a
-`cnaster` defect the cap does not touch.
+Also pins `cnaster`'s MILP total cap of 6 (`bug`) and the cap configuration (#313).
 """
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
+import cnaster.integer_copy
+import cnaster.integer_copy as upstream
 import numpy as np
+import port.extensions.copy_likelihood as module
 import pytest
-from port.extensions.copy_likelihood import Pseudobulk
-from port.extensions.integer_copy import acn_observables
+from cnaster.integer_copy import hill_climbing_integer_copynumber_fixdiploid_milp
+from port.extensions.config_audit import audit
+from port.extensions.copy_likelihood import Pseudobulk, candidates, captured_fit
+from port.extensions.integer_copy import acn_lattice, acn_observables
+from port.patch import integer_copy
+from port.patch.integer_copy import (
+    MAX_ALLELE_COPY,
+    MAX_TOTAL_COPY,
+    PairsByBin,
+    configured_caps,
+    decode_clone,
+    stated_total,
+)
+from port.pipeline import COPY_SWAPS, patched
+from port.sandbox.extensions.shared_decode import shared_decode
+from port.sim.inputs import written_config
 
 BASE = ((1, 1), (2, 1), (3, 1), (2, 2))
 """`tests/test_integer_copy_stage.py`'s four states."""
@@ -42,8 +41,7 @@ HIGH = ((2, 8), (1, 9), (6, 6), (5, 7), (4, 8))
 N_OBS = 100
 
 MILP_ARGUMENTS = {"nonbalance_bafdist": 1.0, "nondiploid_rdrdist": 10.0}
-"""What `run_cnaster` passes, from `python/port/sim/run_config.py`'s `int_copy_num`;
-`max_medploidy` is left at its default of 4, as `run_cnaster` leaves it."""
+"""`run_cnaster`'s MILP arguments from `int_copy_num`; `max_medploidy` left at 4."""
 
 
 def _inputs(extra: tuple[int, int]) -> tuple[np.ndarray, ...]:
@@ -61,10 +59,22 @@ def _inputs(extra: tuple[int, int]) -> tuple[np.ndarray, ...]:
     )
 
 
+def _recorded_caps(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, int | None]]:
+    """Replace `decode_clone` with a stub recording each call's `(total, allele)` caps."""
+    received: list[tuple[int, int | None]] = []
+
+    def decode(*arguments: Any, **options: Any) -> tuple[np.ndarray, float, int]:
+        received.append((arguments[2], options["max_allele_copy"]))
+        return np.ones((1, 2), dtype=np.int64), 0.0, 2
+
+    monkeypatch.setattr(integer_copy, "decode_clone", decode)
+
+    return received
+
+
 @contextmanager
 def _config(**caps: int) -> Iterator[None]:
     """`cnaster`'s global configuration with an `int_copy_num` section, restored after."""
-    from port.sim.inputs import written_config
 
     with written_config({"int_copy_num": dict(caps)}):
         yield
@@ -79,12 +89,7 @@ def _milp(decoder: Any, extra: tuple[int, int]) -> tuple[list[tuple[int, int]], 
 @pytest.mark.bug
 @pytest.mark.parametrize("extra", HIGH, ids=str)
 def test_cnasters_caps_cannot_decode_a_total_above_six(extra: tuple[int, int]) -> None:
-    """Returned as a total of 6 or less, at a non-zero objective.
-
-    Written to fail if `cnaster` raises its defaults, at which point the patch
-    has a smaller job.
-    """
-    from cnaster.integer_copy import hill_climbing_integer_copynumber_fixdiploid_milp
+    """`cnaster`'s MILP returns a total of at most 6, at non-zero loss."""
 
     decoded, loss = _milp(hill_climbing_integer_copynumber_fixdiploid_milp, extra)
 
@@ -94,7 +99,7 @@ def test_cnasters_caps_cannot_decode_a_total_above_six(extra: tuple[int, int]) -
 
 
 DEPTH = 1.0e5
-"""Expected counts per bin: deep enough that the likelihood's argmax is the planted pair."""
+"""Expected counts per bin: deep enough for the argmax to be the planted pair."""
 
 
 def _bulk(extra: tuple[int, int]) -> tuple[Pseudobulk, np.ndarray]:
@@ -122,7 +127,6 @@ def test_the_likelihood_decodes_the_planted_pairs_under_a_cap_of_twelve(
     extra: tuple[int, int],
 ) -> None:
     """Every planted pair exactly, at a stated cap of 12 and the shift held at 0."""
-    from port.extensions.copy_likelihood import shared_decode
 
     bulk, path = _bulk(extra)
     decoded = shared_decode(
@@ -137,8 +141,7 @@ def test_the_likelihood_decodes_the_planted_pairs_under_a_cap_of_twelve(
 
 @pytest.mark.analytic
 def test_the_normal_state_is_one_one_by_definition() -> None:
-    """Named normal, a state decodes `(1, 1)` though its counts say `(2, 1)`."""
-    from port.extensions.copy_likelihood import shared_decode
+    """A state named normal decodes `(1, 1)` though its counts say `(2, 1)`."""
 
     bulk, path = _bulk(HIGH[0])
     decoded = shared_decode(
@@ -155,7 +158,6 @@ def test_the_normal_state_is_one_one_by_definition() -> None:
 @contextmanager
 def _captured(bulk: Pseudobulk, path: np.ndarray) -> Iterator[None]:
     """`copy_likelihood.captured_clones` answering with one clone, restored after."""
-    import port.extensions.copy_likelihood as module
 
     original = module.captured_clones
     clones = [(path, bulk, 0.0)]
@@ -169,13 +171,7 @@ def _captured(bulk: Pseudobulk, path: np.ndarray) -> Iterator[None]:
 
 @pytest.mark.patch
 def test_installed_the_swap_decodes_by_likelihood_once() -> None:
-    """Under `patched(COPY_SWAPS)` `cnaster`'s MILP name returns the planted pairs.
-
-    The swap rebinds the name in `cnaster.integer_copy` too, so a replacement
-    that looked a decoder up there at call time would call itself.
-    """
-    import cnaster.integer_copy as upstream
-    from port.pipeline import COPY_SWAPS, patched
+    """Under `patched(COPY_SWAPS)` `cnaster`'s MILP name returns the planted pairs, once."""
 
     bulk, path = _bulk(HIGH[0])
 
@@ -191,21 +187,18 @@ def test_installed_the_swap_decodes_by_likelihood_once() -> None:
 @pytest.mark.infra
 def test_a_clone_the_capture_cannot_identify_is_an_error() -> None:
     """No captured fit: `decode_clone` raises rather than decoding another way."""
-    from port.extensions.copy_likelihood import captured_fit
-    from port.patch.integer_copy import decode_clone
 
     assert captured_fit() is None
 
     log_mu, base, p_binom, path = _inputs(HIGH[0])
 
     with pytest.raises(RuntimeError, match="capture"):
-        decode_clone(log_mu, p_binom, path, 12)
+        decode_clone(log_mu, path, 12)
 
 
 @pytest.mark.infra
 def test_one_key_sets_both_caps() -> None:
     """`max_total_copy` alone; `cnaster`'s `(5, 6)` where it is not stated."""
-    from port.patch.integer_copy import configured_caps
 
     with _config():
         assert configured_caps() == (5, 6)
@@ -219,12 +212,7 @@ def test_one_key_sets_both_caps() -> None:
     ("value", "total"), [(None, None), ("none", None), (12, 12), ("12", 12), (2, 2)]
 )
 def test_a_stated_cap_is_read_as_the_audit_reads_it(value: Any, total: Any) -> None:
-    """`"none"` states no cap for the decode and the audit alike (#466).
-
-    The audit ran `int("none")` and ended the run before it started.
-    """
-    from port.extensions.config_audit import audit
-    from port.patch.integer_copy import stated_total
+    """`"none"` states no cap for decode and audit alike (#466)."""
 
     findings = audit({"int_copy_num": {"max_total_copy": value}}, check_paths=False)
 
@@ -235,9 +223,7 @@ def test_a_stated_cap_is_read_as_the_audit_reads_it(value: Any, total: Any) -> N
 @pytest.mark.infra
 @pytest.mark.parametrize("value", [0, 1, 12.7, True, "twelve"], ids=str)
 def test_a_cap_below_the_diploid_or_fractional_is_refused(value: Any) -> None:
-    """At a cap of 1 the MILP returns `(0, 0)` at infinite loss; 0 raised (#466)."""
-    from port.extensions.config_audit import audit
-    from port.patch.integer_copy import stated_total
+    """A cap below 2 or non-integer is refused by decode and audit (#466)."""
 
     with pytest.raises(ValueError, match="integer >= 2"):
         stated_total(value)
@@ -251,13 +237,7 @@ def test_a_cap_below_the_diploid_or_fractional_is_refused(value: Any) -> None:
 
 @pytest.mark.analytic
 def test_pairs_by_bin_answer_the_path_per_bin_and_anything_else_per_state() -> None:
-    """The indexings `run_cnaster.py` makes of a decoder's result (#371).
-
-    `copies[path, 0]` and `copies[path][bin_ids, 0]` are per bin -- the
-    segment and gene tables -- and `copies[:, 0]` per state, the state table.
-    Fails if a per-state summary leaks into a per-bin file, or the reverse.
-    """
-    from port.patch.integer_copy import PairsByBin
+    """`PairsByBin` answers path indexing per bin and anything else per state (#371)."""
 
     path = np.array([0, 0, 1, 1, 1, 0])
     bins = np.array([[1, 1], [1, 1], [1, 2], [1, 3], [1, 2], [1, 1]])
@@ -274,10 +254,7 @@ def test_pairs_by_bin_answer_the_path_per_bin_and_anything_else_per_state() -> N
 
 
 def _lattice_size(allele: int, total: int) -> int:
-    """Pairs with `0 < A + B <= total` and `A, B <= allele`, by closed form.
-
-    At total `n` the major allele runs over `[max(0, n - allele), min(allele, n)]`.
-    """
+    """Count pairs with `0 < A + B <= total` and `A, B <= allele`, in closed form."""
     return sum(
         max(0, min(allele, n) - max(0, n - allele) + 1) for n in range(1, total + 1)
     )
@@ -286,13 +263,7 @@ def _lattice_size(allele: int, total: int) -> int:
 @pytest.mark.analytic
 @pytest.mark.parametrize("allele", [1, 3, 4, 5, 6, 12, None])
 def test_the_lattice_is_every_pair_within_both_caps(allele: int | None) -> None:
-    """`candidates(6, allele)`: the closed-form count, `(6, 0)` iff `allele >= 6`.
-
-    25 pairs at `cnaster`'s `(5, 6)`, 27 at `(6, 6)` (T- #617); `None` is the
-    total alone, the same lattice as `allele = 6`, element for element.
-    """
-    from port.extensions.copy_likelihood import candidates
-    from port.extensions.integer_copy import acn_lattice
+    """`candidates(6, allele)` matches the closed-form count and `acn_lattice` (T- #617)."""
 
     lattice = candidates(6, allele)
     bound = 6 if allele is None else allele
@@ -313,24 +284,10 @@ def test_the_lattice_is_every_pair_within_both_caps(allele: int | None) -> None:
 def test_the_drop_ins_decode_under_the_named_allele_cap(
     monkeypatch: pytest.MonkeyPatch, unconfigured: int, stated: int | None
 ) -> None:
-    """Both rows pass the allele cap to the decode rather than discarding it.
-
-    Holds for either unconfigured default (T- #617): without the key the cap
-    is `UNCONFIGURED_MAX_ALLELE_COPY` and `(6, 0)` is decodable iff it is 6; a
-    stated cap of 6 or more sets both caps and admits `(6, 0)` either way.
-    `configured_caps`, which `copy_errors` reads, keeps `cnaster`'s `(5, 6)`.
-    """
-    from port.extensions.copy_likelihood import candidates
-    from port.patch import integer_copy
+    """Both rows pass the configured allele cap to the decode (T- #617)."""
 
     monkeypatch.setattr(integer_copy, "UNCONFIGURED_MAX_ALLELE_COPY", unconfigured)
-    received: list[tuple[int, int | None]] = []
-
-    def decode(*arguments: Any, **options: Any) -> tuple[np.ndarray, float, int]:
-        received.append((arguments[3], options["max_allele_copy"]))
-        return np.ones((1, 2), dtype=np.int64), 0.0, 2
-
-    monkeypatch.setattr(integer_copy, "decode_clone", decode)
+    received = _recorded_caps(monkeypatch)
     caps = {} if stated is None else {"max_total_copy": stated}
 
     with _config(**caps):
@@ -355,18 +312,9 @@ def test_the_drop_ins_decode_under_the_named_allele_cap(
 def test_a_cap_passed_at_cnasters_default_is_kept(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A caller's explicit `max_allele_copy=5, max_total_copy=6`, `cnaster`'s
-    defaults, decodes under `(5, 6)` with 12 configured (#749 WP0). Before,
-    a value equal to the default read as not passed and became `(12, 12)`."""
-    from port.patch import integer_copy
+    """An explicit `(5, 6)` is kept with 12 configured, not read as unset (#749 WP0)."""
 
-    received: list[tuple[int, int | None]] = []
-
-    def decode(*arguments: Any, **options: Any) -> tuple[np.ndarray, float, int]:
-        received.append((arguments[3], options["max_allele_copy"]))
-        return np.ones((1, 2), dtype=np.int64), 0.0, 2
-
-    monkeypatch.setattr(integer_copy, "decode_clone", decode)
+    received = _recorded_caps(monkeypatch)
 
     with _config(max_total_copy=12):
         integer_copy.hill_climbing_integer_copynumber_oneclone(
@@ -382,10 +330,6 @@ def test_a_cap_passed_at_cnasters_default_is_kept(
 @pytest.mark.patch
 def test_cnasters_allele_cap_is_the_one_port_names() -> None:
     """`MAX_ALLELE_COPY` is `cnaster`'s signature default in both decoders, 5."""
-    import inspect
-
-    import cnaster.integer_copy
-    from port.patch.integer_copy import MAX_ALLELE_COPY, MAX_TOTAL_COPY
 
     for name in (
         "hill_climbing_integer_copynumber_oneclone",

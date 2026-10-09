@@ -1,38 +1,9 @@
-"""`cnaster.plot_genomic.plot_clones_genomic`, rewritten plainly (#299).
+"""Replaces `cnaster.plot_genomic.plot_clones_genomic`, split into its parts (#299).
 
-One clone per row pair: read-depth ratio above, B-allele fraction below,
-each bin coloured by its state, and a black line at the level the fit
-assigns each run of bins. What upstream does in one 330-line body is split
-into the four things the figure asserts, each a function that can be asked
-for on its own:
-
-- `clone_groups`: which spots make each clone;
-- `bin_colours`: one colour per bin, from integer copies or decoded states;
-- `fitted_levels`: the RDR and BAF each run of bins is drawn at;
-- `plot_clones_genomic`: the layout, which only draws what those return.
-
-**The one change of output: the RDR line is drawn where the points are.**
-The points are `X / base_nb_mean`, and `cnaster` builds the baseline as
-`lambda_g T_n` from each spot's own total (`normal_spot.py:162`), so clone
-`c`'s bins read `mu_k / Z_c` with `Z_c = sum_g lambda_g mu_{s_c(g)}`. With
-the shift on (#293) the fitted `mu` is pinned rather than divided by `Z_c`,
-and upstream's line at `exp(log_mu)` sat high by `Z_c` in every clone with
-gains -- 1.52 to 2.50 on the dev instance. Here the line is at
-`exp(log_mu - log Z_c)` when the shift is on, and at `exp(log_mu)`, as
-upstream, when it is off.
-
-**Colour, by `colour_by`.** `"integer"` colours each bin by its decoded
-`(A, B)`: states the HMM oversampled -- two fitted states at one integer
-pair -- share a colour, deduplicated as the copy numbers are. `"states"`
-colours by the HMM state, one per fitted state, the legend giving each
-state's continuous `2 mu` and `p`, so oversampling is visible rather than
-merged. Unset, as upstream: integer copies when `df_cnv` is given, states
-otherwise. `preferred_colour_by` is the mode a call that names none takes,
-where it can; `run_cnaster_port --genomic-colours` binds it at install.
-
-The layout helpers -- gridspec, axis furniture, chromosome boundaries, clone
-annotation -- are `cnaster`'s, imported rather than copied, so the page is
-upstream's page.
+`clone_groups`, `bin_colours`, `fitted_levels` and the layout; helpers are
+`cnaster`'s, imported. Departure: with the shift on (#293), the RDR line is at
+`exp(log_mu - log Z_c)`, where the points are, not upstream's `exp(log_mu)`.
+`colour_by` picks integer `(A, B)` or HMM-state colours.
 """
 
 from __future__ import annotations
@@ -89,10 +60,7 @@ UPSTREAM_WIDTH = 20.0
 def clone_groups(
     res_combine: Any, clone_index: list[np.ndarray] | None
 ) -> tuple[list[str], list[np.ndarray]]:
-    """The clone labels, and the spots in each, in plotting order.
-
-    From the fit's assignment when there is one, else from `clone_index`.
-    """
+    """The clone labels and their spots, in plotting order: from the fit, else `clone_index`."""
     if res_combine is None:
         if clone_index is None:
             msg = "clone_index is required when there is no res_combine"
@@ -109,13 +77,7 @@ def clone_groups(
 
 
 def fitted_clone_path(res_combine: Any, clone: int, n_obs: int) -> np.ndarray:
-    """Clone `clone`'s decoded states in a fit, `(n_obs,)`, modulo the state count.
-
-    `pred_cnv` comes either with one column per clone (`run_core_inference`
-    deconcatenates) or with the clones concatenated along the genome; a
-    column is one clone's path, sliced by
-    `port.patch._clone_paths.clone_path` as the concatenation is.
-    """
+    """Clone `clone`'s decoded states, `(n_obs,)`, modulo the state count; either `pred_cnv` layout."""
     from port.patch._clone_paths import clone_path
 
     pred = np.asarray(res_combine["pred_cnv"], dtype=np.int64)
@@ -140,11 +102,9 @@ def bin_colours(
 ) -> tuple[Any, list[tuple[Any, str]]]:
     """One colour per bin, and the legend entries `(colour, text)`.
 
-    Integer copies when `df_cnv` is given, coloured by `cnaster`'s palette
-    with normal `(1, 1)` faded; else the decoded state, one seaborn colour
-    each; else a single colour and no legend. `colour_by` overrides the
-    first choice: `"states"` colours by state with `df_cnv` given, labelled
-    `2 mu` and `p`, and `"integer"` refuses a call without `df_cnv`.
+    Integer copies (`cnaster`'s palette) when `df_cnv` is given, else the
+    decoded state, else one colour. `colour_by="states"` forces states
+    (legend `2 mu`, `p`); `"integer"` raises ValueError without `df_cnv`.
     """
     if colour_by not in (None, *COLOUR_MODES):
         msg = f"colour_by is one of {COLOUR_MODES} or None, got {colour_by!r}"
@@ -228,10 +188,8 @@ def fitted_levels(
 ) -> Levels:
     """Each run of one state along clone `clone`, at its fitted RDR and BAF.
 
-    RDR is `exp(log_mu)` unshifted and `exp(log_mu - log Z_c)` shifted, with
-    `Z_c = sum_g lambda_g mu_{s_c(g)}` over this clone's path and `lambda`
-    the baseline summed over spots and normalized, as `hmrf.py:476` builds
-    it. BAF is the fitted `p`, drawn with its mirror `1 - p`.
+    RDR is `exp(log_mu)`, or `exp(log_mu - log Z_c)` when `shifted`, with
+    `Z_c = sum_g lambda_g mu_{s_c(g)}` (`hmrf.py:476`). BAF is `p` (and `1 - p`).
     """
     from port.patch._clone_paths import state_vector
 
@@ -304,17 +262,11 @@ def _points(
 
 
 CLONE_GAP = 0.45
-"""The gap row between clones, as a fraction of a track: it holds the next
-clone's statistics line, with white space above and below it (#339)."""
+"""The gap row between clones, as a fraction of a track (#339)."""
 
 
 def clone_axes(figure: Any, n_pairs: int, per_clone: int) -> list[Any]:
-    """`_create_clone_gridspec`'s axes, on a figure the caller owns.
-
-    The same rows -- `per_clone` tracks per clone, a `CLONE_GAP` gap
-    between clones, no vertical space -- without the 20 in page or the
-    title, which belong to whoever composes the figure.
-    """
+    """`_create_clone_gridspec`'s axes on a caller-owned figure, without page size or title."""
     ratios: list[float] = []
 
     for pair in range(n_pairs):
@@ -359,27 +311,10 @@ def plot_clones_genomic(
 ) -> Any:
     """Per clone, RDR and BAF along the genome, with the fitted levels.
 
-    `cnaster`'s signature and page. The RDR level is shifted by the clone's
-    `log Z_c` when the fit was (`logmu_shift`), so the
-    line sits on the bins it describes.
-
-    `figure`, a `Figure` or `SubFigure`, is drawn into rather than a new
-    20 in page, which is how `port.extensions.combined_figure` sets it in a
-    column (#309). The layout is then the caller's, so no `tight_layout`.
-
-    `colour_by` is `"integer"`, `"states"` or, unset, `preferred_colour_by`;
-    the preference applies only where it can, so a call without `df_cnv`
-    preferring `"integer"` colours by state as upstream does.
-
-    `logmu_shift` draws each clone's RDR line at `mu / Z_c`, where its points
-    are, for a fit the shift was applied to (#299); `run_cnaster_port` binds
-    it with `SHIFT_SWAPS` (#517).
-
-    `axis`, a `port.extensions.genomic_axis.GenomicAxis` on these bins or a
-    `Ticks` made on `df_cnv`'s, draws the points, levels and chromosome
-    boundaries on its coordinate and ticks every 10 Mb (T- #683); `None`, or
-    `Ticks` without `df_cnv`, which carries the bins' base pairs, is
-    `cnaster`'s axis.
+    `cnaster`'s signature and page, plus: `figure` (draw into a `Figure`/
+    `SubFigure`, no `tight_layout`; #309); `colour_by`, defaulting to
+    `preferred_colour_by` where possible; `logmu_shift` (RDR line at
+    `mu / Z_c`; #299, #517); `axis`, a `GenomicAxis`/`Ticks` coordinate (T- #683).
     """
 
     if df_cnv is not None and res_combine is None:
@@ -428,12 +363,7 @@ def plot_clones_genomic(
 
 
 class Pooled(NamedTuple):
-    """What the genomic page reads of the spots: each clone's pooled counts, its size and the baseline profile.
-
-    `profile` is `single_base_nb_mean` summed over spots, all `fitted_levels`
-    reads of it (`clone_log_normalizers`), so a page drawn from a `Pooled`
-    is the page drawn from the spots (T- #817).
-    """
+    """Each clone's pooled counts, size and the baseline `profile` (summed over spots) (T- #817)."""
 
     labels: list[str]
     sizes: np.ndarray

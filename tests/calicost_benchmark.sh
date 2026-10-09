@@ -45,7 +45,7 @@ if [[ "$drawn" != "$HASH" ]]; then
 fi
 
 for attempt in $(seq 1 "$TRIES"); do
-    line=$(python -m port.scripts.run_benchmark --final "$SAMPLE" calicost --timeout 0 --n-clones 5 \
+    line=$(python -m port.qa.scripts.run_benchmark --final "$SAMPLE" calicost --timeout 0 --n-clones 5 \
         --root "$ROOT/calicost" | grep '^BENCH ')
     echo "${line#BENCH }" | python -c "import json,sys; r=json.load(sys.stdin); r['attempt']=$attempt; print(json.dumps(r))" >>"$BENCH"
     if echo "$line" | grep -q '"finished": true'; then
@@ -54,7 +54,7 @@ for attempt in $(seq 1 "$TRIES"); do
     echo "CalicoST attempt $attempt stopped; resuming from its checkpoints" >&2
 done
 
-python -m port.scripts.run_benchmark --final "$SAMPLE" port --repeats "$REPEATS" | grep '^BENCH ' \
+python -m port.qa.scripts.run_benchmark --final "$SAMPLE" port --repeats "$REPEATS" | grep '^BENCH ' \
     | sed 's/^BENCH //' >>"$BENCH"
 
 python - "$BENCH" <<'EOF'

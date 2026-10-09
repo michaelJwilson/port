@@ -1,10 +1,23 @@
-"""`port.studies.benchmark_table`: the paper's CalicoST against port table on `3381575a`."""
+"""`port.studies.benchmark_table` against the paper's CalicoST and port rows on `3381575a`."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
+from port.extensions.repository import ROOT
+from port.qa import ledger
+from port.studies.benchmark_table import (
+    SHORT,
+    calicost_row,
+    cnaster_row,
+    drawn,
+    render,
+    render_supported,
+    sal_pin,
+    short,
+    swept,
+)
 
 CALICOST = {"ari": 0.8538, "ari_integer": 0.8538, "state_ari": 0.0889, "copy_ari_pf": 0.9075,
             "exact_altered_minor": 0.7095, "wall": 20243.0, "cores": 3}  # fmt: skip
@@ -12,13 +25,12 @@ CALICOST = {"ari": 0.8538, "ari_integer": 0.8538, "state_ari": 0.0889, "copy_ari
 
 PORT = {"ari": 0.8612, "ari_integer": 1.0, "state_ari": 0.0682, "copy_ari_pf": 0.9829,
         "exact_altered_minor": 0.9348, "wall": 153.6, "cores": 4}  # fmt: skip
-"""The committed port archive (`tests/data/benchmarks/dev_tree_r0/port.tar.xz`, 95940e5) scored phase-free."""
+"""The committed port archive (`dev_tree_r0/port.tar.xz`, 95940e5), phase-free."""
 
 
 @pytest.mark.snapshot
 def test_the_table_reproduces_the_papers_rows() -> None:
     """The two archives' rows, phase-free: three decimals half up, minutes to one, the fixture's hash in its own column."""
-    from port.studies.benchmark_table import render
 
     tex = render(
         CALICOST, PORT, fixture="3381575a", commit="abc1234", sal="5d59752c", repeats=3
@@ -41,7 +53,6 @@ def test_the_table_reproduces_the_papers_rows() -> None:
 @pytest.mark.snapshot
 def test_the_cnaster_row_sits_between_and_names_its_pin() -> None:
     """`--cnaster` (T- #833): a `\\cnaster{}` row between CalicoST and port, its commit and cores in the note."""
-    from port.studies.benchmark_table import render
 
     cnaster = PORT | {"wall": 600.0, "cores": 4, "commit": "4adad4d829ac"}
     without = render(
@@ -67,8 +78,6 @@ def test_the_cnaster_row_sits_between_and_names_its_pin() -> None:
 @pytest.mark.snapshot
 def test_the_sal_pin_is_the_lockfiles() -> None:
     """`sal_pin` reads the 8-hex commit `uv.lock` pins `snakes_and_ladders` to."""
-    from port.extensions.repository import ROOT
-    from port.studies.benchmark_table import sal_pin
 
     pinned = sal_pin()
     assert len(pinned) == 8
@@ -78,8 +87,7 @@ def test_the_sal_pin_is_the_lockfiles() -> None:
 @pytest.mark.snapshot
 @pytest.mark.release
 def test_calicosts_committed_outputs_score_as_532(tmp_path: Path) -> None:
-    """CalicoST's archive scored against a fresh draw of `3381575a`: #532's row, phase-free, to 4 decimals."""
-    from port.studies.benchmark_table import calicost_row, drawn
+    """CalicoST's archive scores #532's row against a fresh `3381575a` draw, to 4 decimals."""
 
     row = calicost_row(drawn(tmp_path))
     assert {k: row[k] for k in CALICOST} == CALICOST
@@ -94,7 +102,6 @@ CNASTER = {"ari": 0.9599, "ari_integer": 0.9599, "state_ari": 0.0871, "copy_ari_
 @pytest.mark.release
 def test_cnasters_committed_outputs_score_as_its_run(tmp_path: Path) -> None:
     """cnaster's archive scored against a fresh draw of `3381575a`: the run's own `SIM` row, to 4 decimals."""
-    from port.studies.benchmark_table import cnaster_row, drawn
 
     row = cnaster_row(drawn(tmp_path))
     assert {k: row[k] for k in CNASTER} == CNASTER
@@ -104,8 +111,6 @@ def test_cnasters_committed_outputs_score_as_its_run(tmp_path: Path) -> None:
 @pytest.mark.snapshot
 def test_the_supported_table_is_the_ledgers_last_sweep() -> None:
     """`--supported` renders the latest benchmark sweep from the ledger: a row per run, its `short` name and its hash."""
-    from port.qa import ledger
-    from port.studies.benchmark_table import render_supported, short, swept
 
     commit, rows = swept()
     tex = render_supported(rows, commit=commit, sal="5d59752c")
@@ -129,7 +134,6 @@ def test_the_supported_table_is_the_ledgers_last_sweep() -> None:
 @pytest.mark.snapshot
 def test_both_tables_set_the_name_column_alike() -> None:
     """Both headers reserve `SHORT` `\\texttt` characters for the name, and every supported fixture's `short` name fits them."""
-    from port.studies.benchmark_table import SHORT, render, render_supported, short
 
     benchmark = render(CALICOST, PORT, fixture="3381575a", commit="abc1234", sal="5d59752c", repeats=3)  # fmt: skip
     supported = render_supported([("dev_tree_1s_dense_r0", "33e3471e", PORT)], commit="abc1234", sal="5d59752c")  # fmt: skip

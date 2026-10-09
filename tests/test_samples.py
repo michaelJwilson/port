@@ -1,19 +1,6 @@
-"""A run's samples by name: `port.extensions.samples` and its drop-in (#418).
+"""A run's samples by name, `port.extensions.samples` and its drop-in, against `cnaster` (#418).
 
-`cnaster.io.get_sample_list` builds `(sample_list, sample_ids)` from runs of
-equal adjacent `obs["sample"]`; `port.patch.io.get_sample_list` builds them
-by name, in first-seen order. The referees:
-
-- `bug`: `cnaster`'s pair on interleaved rows, which leaves code 0 empty;
-- `patch`: on sorted contiguous rows the drop-in is `cnaster`'s, bitwise,
-  and so is the multi-slice adjacency built from it;
-- `analytic`: the invariants of the type on sorted, unsorted and interleaved
-  rows, whatever order the rows come in;
-- `infra`: the type and port's `run_core_inference` refuse a pair whose
-  `np.unique` re-map is not the identity, and the outputs carry the
-  recording;
-- `end2end` (`release`): `dev_tree` r0 with its sample sheet sorted and
-  reversed writes the same clones, and the same sample per barcode.
+`cnaster.io.get_sample_list` codes runs of equal adjacent rows; port codes by name.
 """
 
 from __future__ import annotations
@@ -21,9 +8,19 @@ from __future__ import annotations
 from pathlib import Path
 
 import anndata
+import matplotlib as mpl
 import numpy as np
 import pandas as pd
 import pytest
+from cnaster.io import get_sample_list
+from cnaster.io import get_sample_list as upstream
+from cnaster.spatial import construct_multislice_lattice_adjacency
+from port.extensions import cnamaste
+from port.extensions.samples import Samples, samples_of
+from port.patch.hmrf.core_inference import identity_remap, run_core_inference
+from port.patch.io import get_sample_list as patched
+from port.qa.audit import audit_sample
+from port.sim.fixtures import load_simulated, r0
 
 ORDERS = {
     "sorted": ["A"] * 4 + ["B"] * 3 + ["C"] * 2,
@@ -49,12 +46,7 @@ def _grid(rows: int, columns: int, offset: float = 0.0) -> np.ndarray:
 
 @pytest.mark.bug
 def test_cnaster_leaves_a_slice_empty_on_interleaved_rows() -> None:
-    """`A, B, A`: `[A, B, A]`, every `A` spot coded 2, code 0 with no spot.
-
-    `cnaster`'s assert (`sample_ids >= 0`) passes. Flips when `cnaster`
-    keys `get_sample_list` by name.
-    """
-    from cnaster.io import get_sample_list
+    """`cnaster` on `A, B, A` codes every `A` as 2 and leaves code 0 empty."""
 
     sample_list, sample_ids = get_sample_list(_adata(["A", "B", "A"]))
 
@@ -66,11 +58,7 @@ def test_cnaster_leaves_a_slice_empty_on_interleaved_rows() -> None:
 @pytest.mark.patch
 @pytest.mark.parametrize("rows", [["A"] * 30 + ["B"] * 20, ["B"] * 20 + ["A"] * 30])
 def test_contiguous_rows_are_cnasters_bitwise(rows: list[str]) -> None:
-    """The pair, and the multi-slice adjacency built from it, as `cnaster`'s,
-    whether the slices arrive sorted or not."""
-    from cnaster.io import get_sample_list as upstream
-    from cnaster.spatial import construct_multislice_lattice_adjacency
-    from port.patch.io import get_sample_list as patched
+    """On contiguous rows the pair and multi-slice adjacency equal `cnaster`'s, bitwise."""
 
     adata = _adata(rows)
     theirs = upstream(adata)
@@ -97,12 +85,7 @@ def test_contiguous_rows_are_cnasters_bitwise(rows: list[str]) -> None:
 @pytest.mark.analytic
 @pytest.mark.parametrize("order", sorted(ORDERS))
 def test_every_spot_is_coded_by_its_own_name_in_any_order(order: str) -> None:
-    """Names distinct, in first-seen order; `names[ids[i]]` is row `i`'s sample; no
-    spot lost; the `np.unique` re-map is the identity; the same per-row
-    sample under a permutation of the rows."""
-    from port.extensions.samples import samples_of
-    from port.patch.hmrf.core_inference import identity_remap
-    from port.patch.io import get_sample_list
+    """Codes follow names in first-seen order, `np.unique`-stable, under any row order."""
 
     rows = ORDERS[order]
     samples = samples_of(_adata(rows))
@@ -114,7 +97,7 @@ def test_every_spot_is_coded_by_its_own_name_in_any_order(order: str) -> None:
     assert np.array_equal(np.unique(samples.ids), np.arange(len(names)))
     identity_remap(samples.ids, list(samples.names))
 
-    sample_list, sample_ids = get_sample_list(_adata(rows))
+    sample_list, sample_ids = patched(_adata(rows))
     assert sample_list == list(samples.names)
     assert np.array_equal(sample_ids, samples.ids)
 
@@ -133,11 +116,7 @@ def test_every_spot_is_coded_by_its_own_name_in_any_order(order: str) -> None:
 
 @pytest.mark.infra
 def test_a_pair_the_unique_remap_would_renumber_is_refused() -> None:
-    """`cnaster`'s `A, B, A` pair (codes `{1, 2}`, three names) and a short
-    `sample_list` are refused, by the guard and by port's `run_core_inference`
-    before upstream runs; `Samples` refuses repeated names and an empty code."""
-    from port.extensions.samples import Samples
-    from port.patch.hmrf.core_inference import identity_remap, run_core_inference
+    """Pairs `np.unique` would renumber, and invalid `Samples`, are refused."""
 
     with pytest.raises(ValueError, match="renumber"):
         identity_remap(np.array([2, 1, 2]), ["A", "B", "A"])
@@ -182,10 +161,6 @@ def test_a_reversed_sample_sheet_writes_the_same_clones_and_samples(
     reversed sheet is how unsorted rows reach `get_sample_list` from files;
     interleaved rows cannot (the `analytic` test covers them).
     """
-    import matplotlib as mpl
-    from port.extensions import cnamaste
-    from port.qa.audit import audit_sample
-    from port.sim.fixtures import load_simulated, r0
 
     mpl.use("Agg")
     r0()

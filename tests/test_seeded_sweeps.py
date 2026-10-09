@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from tests import ROOT
+from tests.conftest import TEST_SEED
 
 SWEEP = """
 import json, numpy as np, scipy.sparse as sp
@@ -30,7 +31,7 @@ print(json.dumps(labels.tolist()))
 
 
 def _labels(threads: int, burn: int) -> list[int]:
-    """The sweep's labels in a fresh process at `threads`, after `burn` draws before the seed."""
+    """Return the sweep's labels in a fresh process at `threads`, after `burn` prior draws."""
     code = f"import numpy as np\nnp.random.random({burn})\n" + SWEEP
     env = {**os.environ, "NUMBA_NUM_THREADS": str(threads)}
     out = subprocess.run(
@@ -47,12 +48,7 @@ def _labels(threads: int, burn: int) -> list[int]:
 @pytest.mark.analytic
 @pytest.mark.merge
 def test_the_sweep_is_the_same_at_any_thread_count_and_history() -> None:
-    """Seeded, the `epsilon = 0.3` sweep's labels match at 1 and 4 threads and after other draws.
-
-    Referee: the same sweep in another process. `epsilon` moves a spot to a
-    random clone with probability 0.3, so an unseeded stream would change
-    the labels.
-    """
+    """Seeded, `epsilon = 0.3` labels match across processes at 1 and 4 threads and after draws."""
     reference = _labels(1, 0)
 
     assert _labels(4, 0) == reference
@@ -63,9 +59,8 @@ def test_the_sweep_is_the_same_at_any_thread_count_and_history() -> None:
 @pytest.mark.analytic
 def test_every_test_starts_from_the_same_numpy_stream() -> None:
     """The autouse fixture has seeded NumPy's global generator to `TEST_SEED`."""
-    from tests.conftest import TEST_SEED
 
     expected = np.random.RandomState(TEST_SEED).random(3)
 
-    # NB the legacy global generator is the one `cnaster` draws from.
+    # NB the legacy global generator is the one `cnaster` draws from
     np.testing.assert_array_equal(np.random.random(3), expected)  # noqa: NPY002

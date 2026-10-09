@@ -1,12 +1,17 @@
-"""T- #814: the two solver streams draw and run each realization once, and read what they share bitwise."""
+"""The two solver streams draw and run each realization once and share it bitwise (#814)."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+import port.sim.draw as d
 import pytest
+from port.qa import stage as at
+from port.sim.fixtures import realization_hash
+from port.studies import copy_state_stream, potts_stream
 
 from tests import ROOT
 
@@ -28,15 +33,7 @@ def _arrays(problem: Any) -> dict[str, Any]:
 def test_the_streams_share_one_draw_and_one_run_per_realization(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """On dev_tree_1s_hard r0, r1: the copy-state stream's run keeps the field, and the Potts stream reads it.
-
-    Against each stream alone: the copy-state rows and every array of the
-    Potts problems bitwise, the realizations' hashes unchanged, and in the
-    shared root no realization redrawn and no run of the Potts stream.
-    """
-    import port.sim.draw as d
-    from port.studies import copy_state_stream, potts_stream
-    from port.studies import stage as at
+    """On dev_tree_1s_hard r0, r1 the shared cache matches each stream alone, bitwise."""
 
     monkeypatch.chdir(ROOT)
 
@@ -81,12 +78,9 @@ def test_realize_draws_only_what_is_wanted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`realize(wanted={2})` yields realization 2 alone, its hash the full stream's."""
-    import port.sim.draw as d
-    from port.sim.fixtures import realization_hash
 
     monkeypatch.chdir(ROOT)
     manifest = d.read_manifest(MANIFEST)
-    from dataclasses import replace
 
     manifest = replace(
         manifest,

@@ -1,29 +1,20 @@
-"""The realization figure's pieces, each against what it claims (#291).
-
-The figure itself is drawn by `run_audit --errors`, which runs
-`run_cnaster_port` once per realization and is minutes long. What is checked
-here is what the figure rests on and can be checked in seconds: that a
-contour is where it says, that a realization changes the counts and nothing
-else, and that states are matched by the path rather than by their values.
-"""
+"""Pieces of the realization figure, each against what it claims (#291)."""
 
 from __future__ import annotations
 
 from types import SimpleNamespace
 
+import matplotlib as mpl
 import numpy as np
 import pytest
+from port.qa.realization_plot import contour, plot_realizations
+from port.sim.realizations import match_states, realize
+from port.sim.truth import core_inference_truth
 
 
 @pytest.mark.analytic
 def test_every_contour_point_is_at_its_mahalanobis_radius() -> None:
-    """`(x - m)' S^-1 (x - m) = r^2` on every point, for a correlated `S`.
-
-    Realized **5.1e-14** relative against a stated 1e-12: the construction is
-    exact, and the tolerance is `float64` rounding through a Cholesky factor
-    and an inverse of a matrix conditioned at about 200.
-    """
-    from port.extensions.realization_plot import contour
+    """Every contour point is at its Mahalanobis radius within 1e-12 relative."""
 
     mean = np.array([1.2, 0.3])
     covariance = np.array([[4e-4, -1.5e-5], [-1.5e-5, 2e-6]])
@@ -38,18 +29,7 @@ def test_every_contour_point_is_at_its_mahalanobis_radius() -> None:
 
 @pytest.mark.analytic
 def test_a_realization_redraws_the_counts_and_nothing_else() -> None:
-    """Same genome, new counts, and counts that follow the planted means.
-
-    The genome -- path, labels, exposure, trials -- is identical, and the
-    counts differ, so the scatter across realizations is sampling variation
-    alone. The mean count per bin over 30 realizations is checked against
-    `exposure * mu` of the planted state, the negative binomial's mean, in
-    standard errors of the Monte Carlo mean. Stated: a mean `|z|` below 1
-    (0.80 for a standard normal) and a largest below 4.5 over 600 bin-spot
-    cells (exceeded with probability 0.004). Realized 0.76 and 2.88.
-    """
-    from port.sim.realizations import realize
-    from port.sim.truth import core_inference_truth
+    """Realizations redraw only counts, at planted NB means (mean |z| < 1, max < 4.5)."""
 
     truth = core_inference_truth(
         n_clones=2, n_states=3, lattice=(4, 5), n_obs=30, n_segments=2, seed=3
@@ -74,15 +54,7 @@ def test_a_realization_redraws_the_counts_and_nothing_else() -> None:
 
 @pytest.mark.analytic
 def test_states_are_matched_by_responsibility_not_by_index() -> None:
-    """A fit that relabels its states is matched back by its posterior.
-
-    The responsibilities are the planted occupancy, relabelled and softened
-    to 0.8 on the occupied state, so no fitted state is an exact indicator
-    and the match has to be the closest rather than an equal one. Reading
-    by index would return the identity; the relabelling is what comes back.
-    """
-    from port.sim.realizations import match_states
-    from port.sim.truth import core_inference_truth
+    """Relabelled, softened responsibilities are matched back to the planted states."""
 
     truth = core_inference_truth(
         n_clones=2, n_states=3, lattice=(4, 5), n_obs=30, n_segments=2, seed=3
@@ -103,13 +75,9 @@ def test_states_are_matched_by_responsibility_not_by_index() -> None:
 
 @pytest.mark.smoke
 def test_the_figure_has_one_panel_per_state_and_every_series() -> None:
-    """Three panels, and each holds both contours, the errorbar, the others
-    and the truth. Checked against itself, hence `smoke`."""
-    import matplotlib as mpl
+    """Three panels, each with both contours, the errorbar, the others and the truth (`smoke`)."""
 
     mpl.use("Agg")
-
-    from port.extensions.realization_plot import plot_realizations
 
     covariance = np.tile(np.array([[1e-4, 0.0], [0.0, 1e-6]]), (3, 1, 1))
     figure = plot_realizations(
@@ -130,17 +98,9 @@ def test_the_figure_has_one_panel_per_state_and_every_series() -> None:
 
 @pytest.mark.smoke
 def test_the_truth_can_carry_the_errors_instead() -> None:
-    """With `planted_covariance`, the contours sit on the truth.
-
-    The realization is a point with no bars, and a state whose `mu` variance
-    is zero -- the pinned one -- is titled as pinned and drawn without an
-    ellipse. Checked against itself, hence `smoke`.
-    """
-    import matplotlib as mpl
+    """With `planted_covariance` contours sit on the truth; pinned states have none (`smoke`)."""
 
     mpl.use("Agg")
-
-    from port.extensions.realization_plot import plot_realizations
 
     covariance = np.tile(np.array([[1e-4, 0.0], [0.0, 1e-6]]), (3, 1, 1))
     covariance[0, 0, 0] = 0.0

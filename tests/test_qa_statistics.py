@@ -1,8 +1,6 @@
 """`port.qa.statistics` against values a known sample fixes (T- #673 G1).
 
-Each referee is a property of the statistic, not of the code: the order
-statistics of `0..100`, the nominal coverage of a 95% interval, and a peak
-resident set no smaller than what the block allocated and touched.
+Referees: order statistics of `0..100`, 95% interval coverage, and a touched allocation.
 """
 
 from __future__ import annotations
@@ -22,6 +20,7 @@ from port.qa.statistics import (
     ranks,
     resample_weights,
 )
+from scipy.stats import chisquare
 
 
 @pytest.mark.analytic
@@ -43,12 +42,7 @@ def test_ranks_count_from_the_lowest_and_ties_share_the_lower() -> None:
 
 @pytest.mark.oracle
 def test_the_chi_square_pvalue_is_scipys_over_the_kept_bins() -> None:
-    """Statistic and p-value equal `scipy.stats.chisquare` over the bins at 5 or more, to 1e-12.
-
-    The fourth bin expects 2 and is dropped, so a version that kept it would
-    read a statistic 50 higher (`(12 - 2)**2 / 2`) on one more degree of freedom.
-    """
-    from scipy.stats import chisquare
+    """Statistic and p-value equal `scipy.stats.chisquare` over bins expecting 5 or more, to 1e-12."""
 
     observed = np.array([18.0, 31.0, 51.0, 12.0])
     expected = np.array([20.0, 30.0, 50.0, 2.0])
@@ -62,13 +56,7 @@ def test_the_chi_square_pvalue_is_scipys_over_the_kept_bins() -> None:
 
 @pytest.mark.analytic
 def test_the_bootstrap_interval_covers_the_mean_at_its_nominal_rate() -> None:
-    """A 95% percentile interval for a normal mean covers it at 0.95, within 0.035.
-
-    400 samples of 200 standard normals, one member each, 1,000 resamples per
-    sample. 0.035 is 3 binomial standard errors at 400 trials (0.011 each);
-    the percentile interval's shortfall at n = 200, about 0.003, sits inside
-    it. The seeded draw reads 0.940.
-    """
+    """A 95% percentile interval covers a normal mean at 0.95 within 0.035 (3 binomial SE at 400 trials)."""
     rng = np.random.default_rng(673)
     n_members, trials = 200, 400
     covered = 0

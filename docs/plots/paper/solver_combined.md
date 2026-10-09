@@ -1,7 +1,7 @@
 # solver_combined.png
 
 Drawn at code `49b337e` from two records on `sim/manifests/study15.toml`, each problem built by
-`run_cnaster_port --sal` at the planted clones (`port.studies.stage`, #730, #742):
+`run_cnaster_port --sal` at the planted clones (`port.qa.stage`, #730, #742):
 
 | Panel | Record | Data hash | Problems | Starts | Samplers |
 | --- | --- | --- | --- | --- | --- |

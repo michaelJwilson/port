@@ -11,7 +11,7 @@ Three append-only, tab-separated files, each with a header line:
   metric means. Changing what a metric measures appends a definition, never
   edits one, and values under different definitions are not compared.
 
-`run_ledger` (`port.scripts.run_ledger`) records, renders and queries it;
+`run_ledger` (`port.qa.scripts.run_ledger`) records, renders and queries it;
 this module is its table API, moved from `tests.metrics` (T- #673 G2). A
 run is recorded against `provenance.head`, so the files live in the
 checkout `port.extensions.repository.ROOT` names. `.gitattributes` merges them as `union`,

@@ -1,13 +1,6 @@
-"""`HMMInit` reports the spread, and survives a backend that raises.
+"""`HMMInit` reports the spread and records a raising backend as a failure (#229, #230).
 
-**#229.** The harness exists because `cnaster`'s initializers are stochastic
-and nothing measures their variance. These are `infra`: they say the harness
-reports what it claims to, not anything about `cnaster`.
-
-The failure case is the one worth pinning. #230 compares backends on how
-*often* they recover every state, so a run that raises has to survive as a
-recorded failure rather than aborting the sweep -- otherwise the metric that
-matters cannot be computed at all.
+`infra`: checks the harness, not `cnaster`.
 """
 
 from __future__ import annotations
@@ -36,10 +29,9 @@ def test_it_records_every_run_of_every_backend() -> None:
 
 @pytest.mark.infra
 def test_best_reads_the_referee_score_not_the_backends_own() -> None:
-    """A backend cannot win by reporting a bigger number in its own units."""
+    """`best` ranks by the referee score, not a backend's own units."""
 
-    # NB named rather than lambdas because the harness passes `seed` as a
-    #    keyword, so the parameter cannot be renamed away to quiet the linter.
+    # NB named functions: the harness passes `seed` as a keyword.
     def smaller(seed: int) -> float:
         del seed
 
@@ -63,7 +55,7 @@ def test_best_reads_the_referee_score_not_the_backends_own() -> None:
 
 @pytest.mark.infra
 def test_a_backend_that_raises_is_recorded_rather_than_fatal() -> None:
-    """#230 compares recovery rates, so a failure is data."""
+    """A raising backend is recorded as a failure, not fatal (#230)."""
 
     def explodes(seed: int) -> float:
         if seed == 1:
@@ -88,7 +80,7 @@ def test_a_backend_that_raises_is_recorded_rather_than_fatal() -> None:
 
 @pytest.mark.infra
 def test_str_reports_a_spread_and_says_the_best_is_biased() -> None:
-    """A single run's number is what CLAUDE.md forbids for a stochastic method."""
+    """`str` reports a spread and flags the best as biased."""
     harness = HMMInit(
         backends={"varied": lambda seed: float(seed)}, scorer=float, n_runs=4
     )

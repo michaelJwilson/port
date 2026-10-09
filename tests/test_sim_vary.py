@@ -1,10 +1,7 @@
-"""#800: `[sample] vary` declares what a realization redraws.
+"""`[sample] vary` declares what a realization redraws (#800).
 
-Under `"counts"`, the default, every realization shares the manifest's
-truth and redraws its counts and phase. Under `"truth"`, each realization
-after the first also draws its own tree, clone sizes and layout, from its
-own stream; the barcodes are shared, and realization 0 is the `"counts"`
-realization 0 bit for bit, so `r0_hash` is the same in both modes.
+`"counts"` shares the truth; `"truth"` redraws tree, sizes and layout after r0, which
+equals `"counts"`' r0 bit for bit.
 """
 
 from __future__ import annotations
@@ -54,8 +51,7 @@ def test_counts_is_the_default_and_shares_one_truth() -> None:
 
 @pytest.mark.infra
 def test_truth_redraws_the_tree_and_layout_after_realization_0() -> None:
-    """`"truth"`: r0 is `"counts"`' r0 bit for bit; r1 and r2 differ in tree and labels from r0 and
-    from each other; every realization keeps the same barcodes and sample ids."""
+    """`"truth"`: r0 equals `"counts"`' bitwise; r1, r2 differ in tree and labels; barcodes are shared."""
     counts, truth = _realized("counts"), _realized("truth")
 
     assert _same(counts[0], truth[0])

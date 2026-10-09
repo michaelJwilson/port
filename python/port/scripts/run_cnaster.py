@@ -1,28 +1,4 @@
-"""`run_cnaster`, with `port`'s replacements installed.
-
-`run_cnaster_port config.yaml` runs `cnaster`'s own pipeline, unmodified,
-with the names in `port.pipeline.SWAPS` rebound to `port`'s measured
-replacements. `--no-patch` runs the same call with nothing rebound, so the
-two arms of a comparison are one flag apart rather than two scripts.
-
-**It is not a fork of the pipeline.** Nothing here reimplements a stage or
-changes an order; the entry point called is `cnaster.scripts.run_cnaster`,
-and if `cnaster` lands a patch upstream the row leaves `SWAPS` and this
-script keeps working.
-
-**`--figure-swaps` is on by default, so a default run does not reproduce
-`cnaster` byte for byte.** It is the largest measured win here -- 47 per
-cent of a run, and 8,287 MB of figure rendering down to 1,036 MB (#195) --
-and a figure written at a different dpi is a different file by design.
-`--no-figure-swaps` alone does not give a bitwise arm: the shift and copy-cap
-tables are on by default too and change the fit (#466). `--no-patch` does.
-
-That property still holds of `port.pipeline.SWAPS`, which is unchanged and
-still what `install()` defaults to; only this entry point's default moved.
-So what `tests/test_patched_entry_point.py` asserts is what it always
-asserted -- every row of `SWAPS` reproducing `cnaster` -- and the table that
-does not make that claim is still the separate one.
-"""
+"""`run_cnaster` with `port.pipeline.SWAPS` installed; only `--no-patch`, which installs nothing, is bitwise `cnaster` (#195, #466)."""
 
 from __future__ import annotations
 
@@ -51,21 +27,14 @@ from port.pipeline import (
 )
 
 GENOMIC_FIGURE = "port.patch.plot_genomic:plot_clones_genomic"
-"""The `FIGURE_SWAPS` row the shift installs with or without the figure swaps."""
 
 
 def _installs(selected: tuple[Any, ...], replacement: str) -> bool:
-    """Whether a row of `selected` installs `replacement`."""
     return any(swap.replacement == replacement for swap in selected)
 
 
 def _timed(selected: tuple[Any, ...]) -> tuple[Any, ...]:
-    """`SWAPS`, `FIGURE_SWAPS` and every other selected row, once per binding.
-
-    A row that replaces a class is left out: the timer wraps a binding in a
-    function, and a class `cnaster` subclasses or reads attributes from
-    cannot be one.
-    """
+    """`SWAPS`, `FIGURE_SWAPS` and the selected rows, once per binding; classes excluded."""
     import importlib
     import inspect
 
@@ -81,7 +50,6 @@ def _timed(selected: tuple[Any, ...]) -> tuple[Any, ...]:
 
 
 def _layout(text: str) -> tuple[int, int]:
-    """`"3,1"` as `(3, 1)`, both positive."""
     try:
         rows, columns = (int(part) for part in text.split(","))
     except ValueError as error:
@@ -162,12 +130,6 @@ def _parser() -> argparse.ArgumentParser:
         help="the read-depth HMM's copy-state start, a sal mixture start or lattice (#489, #547); none, kmeans++x5+em with --sal",
     )
     parser.add_argument(
-        "--baf-start",
-        default=None,
-        metavar="START",
-        help="the BAF-only HMM's copy-state start, a sal mixture start or lattice (#540); none keeps distinct's",
-    )
-    parser.add_argument(
         "--distinct-init",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -215,22 +177,6 @@ def _parser() -> argparse.ArgumentParser:
         help="snakes_and_ladders' labelling (#312) and the HMM start kmeans++x5+em (#489)",
     )
     parser.add_argument(
-        "--copy-errors",
-        action="store_true",
-        help="write cnv_copy_sets.tsv, each state's 95 per cent credible (A, B) (#353); needs the shift",
-    )
-    parser.add_argument(
-        "--copy-decode",
-        choices=("lattice", "shared"),
-        default="lattice",
-        help="lattice, per clone (#370), or shared, one pair per state (#327)",
-    )
-    parser.add_argument(
-        "--no-parsimony-decode",
-        action="store_true",
-        help="a flat prior for the lattice decode, not -0.5 |A + B - 2| per bin (T- #471)",
-    )
-    parser.add_argument(
         "--warm-up",
         action="store_true",
         help="compile every kernel before the clock starts (#211)",
@@ -254,46 +200,24 @@ def _parser() -> argparse.ArgumentParser:
 
 
 class Settings(NamedTuple):
-    """What each tri-state flag resolves to, read once from the arguments (#517).
-
-    `None` from the parser means "not asked", which is what lets
-    `--no-patch --figure-swaps` compose: the default follows the arm, and an
-    explicit flag overrides it either way.
-    """
+    """Each tri-state flag resolved (#517); `None` from the parser means not asked."""
 
     figures: bool
-    """`FIGURE_SWAPS`: on, off with `--no-patch` -- a baseline arm draws `cnaster`'s."""
     shift: bool
-    """`SHIFT_SWAPS`: on, off with `--no-patch` -- a baseline fits `cnaster`'s model."""
     rust: bool
-    """The Rust lattices: bitwise, so on, and off with `--no-patch`."""
     sal_emission: bool
-    """sal's coded emission: on where the shift is, whose row reads it."""
     copy_cap: bool
-    """`COPY_SWAPS`: on, off with `--no-patch` -- a baseline decodes under `cnaster`'s caps."""
     refinement_mask: bool
-    """`REFINEMENT_SWAPS` (`DEFAULTS`): on, off with `--no-patch` unless `--sal` (#467)."""
     floor: bool
-    """The floor merge (`DEFAULTS`): on, off with `--no-patch` unless `--sal` (#467)."""
     min_segment_normal_umi: bool
     """The read-depth segment floor: on with `--sal` alone (#551, T- #617; not in `DEFAULTS`)."""
     distinct: bool
-    """The distinct initializer: on where the shift is, off with `--no-patch`."""
     hmm_start: str
-    """The read-depth HMM's copy-state start: `none`, `kmeans++x5+em` with `--sal` (#489)."""
-    baf_start: str
-    """The BAF-only stage's start: `none`, `distinct`'s kept (#540)."""
-    parsimony: float
-    """The lattice decode's prior weight: `PARSIMONY`, `0`, flat, with `--no-parsimony-decode`."""
 
 
 def _settings(arguments: argparse.Namespace) -> Settings:
-    """Each flag as asked, or its default for this arm."""
-
     def asked(value: Any, default: Any) -> Any:
         return default if value is None else value
-
-    from port.extensions.copy_likelihood import PARSIMONY
 
     patch = not arguments.no_patch
     shift = bool(asked(arguments.shift, patch))
@@ -306,31 +230,22 @@ def _settings(arguments: argparse.Namespace) -> Settings:
         copy_cap=bool(asked(arguments.copy_cap, patch)),
         refinement_mask=bool(asked(arguments.refinement_mask, patch or arguments.sal)),
         floor=bool(asked(arguments.floor_merge, patch or arguments.sal)),
-        # NB `--sal`'s alone: on the default arm it decodes the critical
-        #    copy instance's planted (1, 2) as (1, 3) (PR- #645, T- #617).
+        # NB `--sal`'s alone: the default arm decodes a planted (1, 2) as (1, 3) (#645, #617).
         min_segment_normal_umi=bool(
             asked(arguments.min_segment_normal_umi, patch and arguments.sal)
         ),
         distinct=bool(asked(arguments.distinct_init, shift and patch)),
-        # NB read by the shift's `run_core_inference` alone, so `--sal`'s
-        #    start is its default only where that row is installed (T- #617).
         hmm_start=str(
             asked(
                 arguments.hmm_start,
                 "kmeans++x5+em" if arguments.sal and shift else "none",
             )
         ),
-        baf_start=str(asked(arguments.baf_start, "none")),
-        parsimony=0.0 if arguments.no_parsimony_decode else PARSIMONY,
     )
 
 
 def _refusals(arguments: argparse.Namespace, settings: Settings) -> list[str]:
-    """Every flag asked for where nothing would read it, as argument errors.
-
-    Refused rather than ignored (#466), and before the configuration is
-    read: an argument error, not a file error.
-    """
+    """Flags asked for where nothing would read them, as argument errors (#466)."""
     refused = [
         f"{flag} needs the figure swaps"
         for flag, asked in (
@@ -341,40 +256,22 @@ def _refusals(arguments: argparse.Namespace, settings: Settings) -> list[str]:
         if asked and not settings.figures
     ]
 
-    # NB the decode compares `(A + B) / 2` against the pinned rates; an
-    #    unshifted fit's rates carry the baseline's per-clone scale (#353).
-    if arguments.copy_errors and not settings.shift:
-        refused.append("--copy-errors needs the shift; drop --no-shift")
-    # NB the copy rows decode the fit the shift's `run_core_inference` row
-    #    captures; without it the decode stopped hours in, with no captured
-    #    fit (#576). Refused here, naming the way out.
-    elif settings.copy_cap and not settings.shift:
+    # NB without the shift's captured fit the copy decode fails hours in (#576).
+    if settings.copy_cap and not settings.shift:
         refused.append(
             "--no-shift leaves the copy decode no captured fit; add --no-copy-cap"
         )
 
-    # NB the prior is the lattice decode's alone; `shared` and `cnaster`'s
-    #    decoders take none.
-    if arguments.no_parsimony_decode and not (
-        settings.copy_cap and arguments.copy_decode == "lattice"
-    ):
-        refused.append("--no-parsimony-decode needs the lattice copy decode")
-
-    # NB read by the `SHIFT_SWAPS` rows alone -- port's `hmm_nophasing` class
-    #    and `run_core_inference`.
     refused += [
         f"{flag} is read by the shift rows; --no-shift"
         for flag, asked in (
             ("--sal-emission", arguments.sal_emission),
             ("--distinct-init", arguments.distinct_init),
-            ("--baf-start", arguments.baf_start),
             ("--hmm-start", arguments.hmm_start),
         )
         if asked and not settings.shift
     ]
 
-    # NB read by port's `pipeline_clone_assignment` alone, which `--no-patch`
-    #    leaves out unless `--sal` installs it.
     if (settings.refinement_mask or settings.floor) and (
         arguments.no_patch and not arguments.sal
     ):
@@ -383,8 +280,6 @@ def _refusals(arguments: argparse.Namespace, settings: Settings) -> list[str]:
             "pipeline_clone_assignment, which --no-patch leaves out"
         )
 
-    # NB bound into port's `create_bin_ranges`, a `SWAPS` row `--no-patch`
-    #    leaves out with or without `--sal`.
     if settings.min_segment_normal_umi and arguments.no_patch:
         refused.append(
             "--min-segment-normal-umi needs port's create_bin_ranges, "
@@ -398,10 +293,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run the pipeline, patched unless `--no-patch` is given."""
     arguments = _parser().parse_args(argv)
 
-    # NB imported before the swaps are applied, so that the rebinding finds
-    #    the entry point's own `from cnaster.omics import ...` bindings. The
-    #    import is here rather than at module scope because `--list` and
-    #    `--help` should not pay for it.
+    # NB imported before the swaps so rebinding finds its bindings; local to skip it on `--list`.
     import cnaster.scripts.run_cnaster as pipeline
 
     if arguments.list:
@@ -460,10 +352,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     for refusal in _refusals(arguments, settings):
         _parser().error(refusal)
 
-    # NB the clone assignment applies the shift through `port`'s
-    #    `pipeline_clone_assignment`, which is in `SWAPS`, so
-    #    `--no-patch --shift` fits shifted and assigns clones unshifted; it
-    #    is allowed, and said.
     shift = settings.shift
 
     import yaml
@@ -485,30 +373,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     opened: Any = None
     with ExitStack() as stack:
-        # NB `--figure-swaps` is additive rather than a third mode, and it composes
-        #    with `--no-patch`: what a reader needs to know about a run is
-        #    which of the two tables produced it, not which flag was typed.
-        #
-        #    It is **on by default** and the two tables stay separate, which
-        #    is the whole point: `SWAPS` is still the set that reproduces
-        #    `cnaster` bitwise, so the tests that assert that property keep
-        #    asserting it, while a user who just runs the entry point gets
-        #    the 47 per cent. Turning it on by merging the tables would have
-        #    bought the same speed and cost the claim.
-        # NB `--no-patch` means nothing rebound, so it turns the figure
-        #    default off with it. Without this the baseline arm still
-        #    installs `write_fig` and stops being a baseline -- measured, and
-        #    not subtly: the unpatched arm ran 188.88 s at 11.35 GB before
-        #    the default moved and 142.36 s at 3.67 GB after, which reads as
-        #    the patch doing less good rather than the baseline getting the
-        #    win for free.
-        #
-        #    `default=None` is what makes that possible: it separates "not
-        #    asked" from "asked for off", so `--no-patch --figure-swaps` still
-        #    composes and still measures the figure swap on its own.
         figures = settings.figures
-        # NB bitwise, so on by default like `SWAPS`, and off with it: a
-        #    baseline arm is `cnaster`'s compiled code as well as its names.
         rust = settings.rust
 
         if rust:
@@ -516,26 +381,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
             stack.enter_context(rust_lattices())
 
-        # NB before the swaps, so `patched` installs the capturing wrapper and
-        #    the fit kept is the pinned one.
-        from port.extensions.copy_errors import captured_fits
-
-        kept = stack.enter_context(captured_fits()) if arguments.copy_errors else None
-
         selected = SWAPS if not arguments.no_patch else ()
 
-        # NB `--sal` selects the clone labelling through `port`'s
-        #    `pipeline_clone_assignment`, a `SWAPS` row; under `--no-patch`
-        #    that one row is installed alone, so the flag still means what it
-        #    says and the rest of the baseline stays `cnaster`'s.
-        # NB the sal emission and the distinct initializer are read by the
-        #    `SHIFT_SWAPS` rows alone -- port's `hmm_nophasing` class and
-        #    `run_core_inference` -- so without the shift they are off, and
-        #    asking for either is refused rather than ignored (#466).
         sal_emission_on = settings.sal_emission
-        # NB the coded emission from sal's tables (#425), an option of the
-        #    `hmm_nophasing` row, bound once the shift's table is selected.
-        #    That row is in `SHIFT_SWAPS`, so `--no-patch --shift` reads it.
         model: dict[str, Any] = {"emission_kernels": "sal"} if sal_emission_on else {}
 
         if arguments.sal and arguments.no_patch:
@@ -565,20 +413,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "port.patch.plot_genomic:plot_clones_genomic",
                 preferred_colour_by=arguments.genomic_colours,
             )
-        # NB on unless refused, and off with `--no-patch` like the figures: a
-        #    baseline arm decodes under `cnaster`'s caps.
         copy_cap = settings.copy_cap
         if copy_cap:
-            # NB refused here rather than at the decode, hours into the run.
             for finding in findings:
                 if finding.kind == "invalid" and finding.key.startswith("int_copy"):
                     _parser().error(f"--copy-cap: {finding.detail}")
 
             selected = selected + COPY_SWAPS
-        # NB on by default together (`DEFAULTS`, T- #617 rule 8): each alone
-        #    over-splits #338's three-sample instance (6 fitted clones against
-        #    2 planted), and with --sal both recover CalicoST hard at 0.982
-        #    against 0.303 (#467).
+        # NB on together (#617): each alone over-splits #338's instance (#467).
         refinement_mask, floor = settings.refinement_mask, settings.floor
         if refinement_mask:
             selected = selected + REFINEMENT_SWAPS
@@ -588,8 +430,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "port.patch.hmrf:pipeline_clone_assignment",
                 floor_merge=True,
             )
-        # NB options of `port`'s `run_core_inference`, bound once the shift's
-        #    table, which holds it, is selected (#517).
         inference: dict[str, Any] = {}
         distinct = settings.distinct
         if distinct:
@@ -599,34 +439,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             from port.patch.hmm_initialize.sal_mixture import checked
 
             inference["hmm_start"] = checked(hmm_start)
-        if settings.baf_start != "none":
-            from port.patch.hmm_initialize.sal_mixture import checked
 
-            inference["baf_start"] = checked(settings.baf_start)
-
-        # NB the copy rows decode by the HMM's likelihood only (#362), which
-        #    reads each clone's counts from the fit this captures; entered
-        #    before `patched`, so the shift's row installs the capturing
-        #    `run_core_inference`.
+        # NB the copy rows decode the fit this captures (#362); entered before `patched`.
         if copy_cap:
             from port.extensions.copy_likelihood import capture
 
             stack.enter_context(capture())
-
-            for swap in COPY_SWAPS:
-                selected = with_options(
-                    selected,
-                    swap.replacement,
-                    decoder=arguments.copy_decode,
-                    parsimony=settings.parsimony,
-                )
         if shift:
             selected = selected + SHIFT_SWAPS + LOG_SPACE_SWAPS
 
-            # NB the emission kernels where `cnaster`'s are wrong (#560,
-            #    #561), on the arm that already departs from its fit; the
-            #    field compiles its kernels in, so it takes them as an option.
-            #    `--no-patch --shift` without `--sal` leaves its row out.
+            # NB the log-space kernels (#560, #561); absent under `--no-patch --shift` without `--sal`.
             if _installs(selected, "port.patch.hmrf:pipeline_clone_assignment"):
                 selected = with_options(
                     selected,
@@ -634,11 +456,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     log_space=True,
                 )
 
-            # NB the genomic figure draws each clone's line at `mu / Z_c` when
-            #    the fit it plots was shifted (#299). Without the figure
-            #    swaps `cnaster`'s figure draws the line at `mu` and the
-            #    points at `mu / Z_c`, so the shift brings this one row
-            #    (T- #617).
+            # NB the shifted line at `mu / Z_c` (#299); without figure swaps, this row alone (#617).
             if not figures:
                 selected = selected + tuple(
                     swap for swap in FIGURE_SWAPS if swap.replacement == GENOMIC_FIGURE
@@ -658,8 +476,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if settings.min_segment_normal_umi:
             from port.patch.omics.blocks import MIN_SEGMENT_NORMAL_UMI
 
-            # NB the read-depth segment floor (#551) the lattice start was
-            #    tuned at (#547); a configuration's `quality` keys still win.
+            # NB the segment floor (#551, #547); a configuration's `quality` keys win.
             selected = with_options(
                 selected,
                 "port.patch.omics:create_bin_ranges",
@@ -683,13 +500,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
 
         if arguments.no_plots:
-            # NB after every other table, so it rebinds whichever `write_fig`
-            #    the figure swaps put in place.
+            # NB last, so it rebinds whichever `write_fig` is in place.
             selected = selected + PLOT_OFF_SWAPS
 
-        # NB the run's last genomic, spatial and profile calls, kept for the
-        #    pages drawn after it (T- #817); entered before the swaps install,
-        #    which resolve the recording wrappers as the replacements.
+        # NB recorded for the pages (T- #817); entered before the swaps install.
         pages = None
         if figures and not arguments.no_plots and not arguments.no_patch:
             from port.extensions.combined_figure import recording as page_calls
@@ -703,18 +517,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"{len(sites)} bindings"
                 + (", figures included" if figures else "")
                 + (", copy caps from the config" if copy_cap else "")
-                + (
-                    f", parsimony {settings.parsimony}"
-                    if arguments.no_parsimony_decode
-                    else ""
-                )
                 + (", refinement mask" if refinement_mask else "")
                 + (f", HMM start {hmm_start}" if hmm_start != "none" else "")
-                + (
-                    f", BAF start {settings.baf_start}"
-                    if settings.baf_start != "none"
-                    else ""
-                )
                 + (", floor merged smallest first" if floor else "")
                 + (", distinct initial states" if distinct else "")
                 + (", shift included" if shift else "")
@@ -740,34 +544,23 @@ def main(argv: Sequence[str] | None = None) -> int:
                 file=sys.stderr,
             )
 
-        # NB after the swaps and before the timer, so what is compiled is
-        #    what the run will call and none of it lands in the measurement.
+        # NB after the swaps and before the timer, so compilation is not measured.
         if arguments.warm_up:
             warmed = warm()
             print(f"run_cnaster_port: {warmed.report()}", file=sys.stderr)
 
-        # NB after the swaps, so the wrapper times whichever implementation
-        #    the run is about to use.
-        # NB the figure swap is timed whether or not it is installed, so the
-        #    two arms print the same rows and `write_fig` can be compared
-        #    against itself rather than inferred from the whole-run delta.
-        #    Every other selected row is timed too (T- #617): the shift, copy
-        #    and refinement tables were not.
+        # NB timer wraps the installed implementation; figure swap timed on both arms (#617).
         spent = (
             stack.enter_context(instrumented(_timed(selected)))
             if arguments.time_stages
             else None
         )
 
-        # NB every segmentation the patched stages make, as labellings of the
-        #    same genes (#438), each staged into `cnamaste.h5` as it is recorded;
-        #    empty under `--no-patch`, which records nothing.
+        # NB each segmentation as labellings of the same genes (#438), staged into `cnamaste.h5`.
         from port.extensions.segments import recording
 
         stack.enter_context(recording())
 
-        # NB the run's one file, which each stage and page adds to as the run
-        #    reaches it (T- #817); off with `--no-patch`, as the outputs are.
         if not (arguments.no_outputs or arguments.no_patch):
             opened = _open_cnamaste(arguments.config, vars(arguments))
             if opened is not None:
@@ -785,8 +578,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                     )
                 )
 
-        # NB the wall clock the run's files are dated by, so outputs go to
-        #    the directories this run wrote and not an earlier one's (T- #617).
         since = time.time()
         started = time.perf_counter()
         pipeline.run_cnaster(arguments.config)
@@ -795,8 +586,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if spent is not None:
         _report(spent, wall, patched=not arguments.no_patch)
 
-    # NB after the run and outside its timer, and off with `--no-patch`: a
-    #    baseline arm writes what `cnaster` writes and nothing beside it.
+    # NB outside the timer; off with `--no-patch`, so a baseline writes only what `cnaster` does.
     if pages is not None:
         _write_pages(
             arguments.config, pages, since=since, png_copy=arguments.png_copies
@@ -807,8 +597,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         from port.extensions.run_record import release
 
         release()
-    if kept is not None:
-        _write_copy_sets(arguments.config, kept, since=since)
 
     print(f"run_cnaster_port: {wall:.2f}s", file=sys.stderr)
     return 0
@@ -817,12 +605,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 def _write_pages(
     config: str, pages: Any, *, since: float | None, png_copy: bool
 ) -> None:
-    """`genomic.pdf`, `spatial.pdf` and `combined.pdf` into each run directory's `plots/`, beside `cnaster`'s (T- #817).
-
-    Drawn from the run's own last plotting calls (`combined_figure.recording`)
-    and the slide it read (`combined_figure.run_slide`), as the run's other
-    pages are drawn from its arrays.
-    """
+    """`genomic.pdf`, `spatial.pdf` and `combined.pdf` into each run directory's `plots/` (T- #817)."""
     from port.extensions.combined_figure import run_slide, write_pages
     from port.extensions.outputs import config_keys, run_directories
 
@@ -876,11 +659,7 @@ def _open_cnamaste(config: str, flags: dict[str, Any]) -> Any:
 def _write_outputs(
     config: str, *, since: float | None = None, cnamaste_file: Any = None
 ) -> None:
-    """The integer stages into the run's `cnamaste.h5`, for each run directory the run wrote (T- #817).
-
-    Port writes no table beside `cnaster`'s: what it wrote here before is in
-    the file. `since` excludes the directories an earlier run left (T- #617).
-    """
+    """The integer stages into `cnamaste.h5` for each run directory written after `since` (T- #817, T- #617)."""
     from port.extensions.outputs import config_keys, run_directories
     from port.extensions.run_record import integer_groups
 
@@ -897,64 +676,7 @@ def _write_outputs(
         )
 
 
-def _write_copy_sets(
-    config: str, kept: list[Any], *, since: float | None = None
-) -> None:
-    """Write the credible sets beside the final fit this run wrote.
-
-    The fit is the one of the configured `hmm.n_states` written at or after
-    `since`, not the newest under `output_dir`, which may be another
-    configuration's (T- #617). With none, nothing is written, and it says so,
-    as for a fit `pinned_errors` refuses (#705).
-    """
-    from pathlib import Path
-
-    import yaml
-
-    from port.extensions.copy_errors import write_copy_sets
-
-    if not kept:
-        print("run_cnaster_port: --copy-errors kept no fit", file=sys.stderr)
-        return
-
-    stated = yaml.safe_load(Path(config).read_text())
-    output = Path(stated["paths"]["output_dir"])
-    n_states = (stated.get("hmm") or {}).get("n_states")
-    pattern = (
-        "rdrbaf_final_nstates*_smp.npz"
-        if n_states is None
-        else f"rdrbaf_final_nstates{int(n_states)}_smp.npz"
-    )
-    fits = [
-        fit
-        for fit in output.rglob(pattern)
-        if since is None or fit.stat().st_mtime >= since
-    ]
-
-    if len(fits) != 1:
-        print(
-            f"run_cnaster_port: --copy-errors found {len(fits)} fits this run "
-            f"wrote under {output}; cnv_copy_sets.tsv not written",
-            file=sys.stderr,
-        )
-        return
-
-    # NB a refused fit (T- #599's large tau) leaves no sets and says so; the
-    #    run it follows completed, and its outputs stand (#705).
-    try:
-        path = write_copy_sets(fits[0].parent, kept[-1])
-    except ValueError as refused:
-        print(
-            f"run_cnaster_port: {refused}; cnv_copy_sets.tsv not written",
-            file=sys.stderr,
-        )
-        return
-
-    print(f"run_cnaster_port: wrote {path}", file=sys.stderr)
-
-
 def _report(spent: dict[str, Spent], wall: float, *, patched: bool) -> None:
-    """What the swapped names cost, against the run that contained them."""
     arm = "patched" if patched else "baseline"
     width = max(len(name) for name in spent)
     total = sum(entry.seconds for entry in spent.values())
@@ -966,9 +688,7 @@ def _report(spent: dict[str, Spent], wall: float, *, patched: bool) -> None:
         file=sys.stderr,
     )
 
-    # NB the last two columns are #204: a compiled kernel's first call is
-    #    compilation, and summed into the total it reads as a kernel that is
-    #    eighty times slower than it is.
+    # NB a compiled kernel's first call is compilation, so reported apart (#204).
     for name, entry in sorted(spent.items(), key=lambda item: -item[1].seconds):
         share = 100.0 * entry.seconds / wall
         per_warm = entry.warm / entry.warm_calls if entry.warm_calls else float("nan")

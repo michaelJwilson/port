@@ -74,11 +74,11 @@ def merged(records: list[dict[str, Any]]) -> dict[str, Any]:
 def stamp(fig: Any, record: dict[str, Any]) -> str:
     """The figure's reference, drawn on it: a hash of the record it plots and the code's commit.
 
-    `data` is `port.studies.records.digest` of the record; `code` is
+    `data` is `port.qa.records.digest` of the record; `code` is
     `provenance.commit`. Two figures with one stamp were drawn from one record
     by one commit.
     """
-    from port.studies import records
+    from port.qa import records
 
     text = provenance.stamp(records.digest(record))
     fig.text(
@@ -211,7 +211,7 @@ def gap_page(
 
 def merged_records(paths: Sequence[str | Path]) -> tuple[dict[str, Any], Path]:
     """`STREAM.record [EARLIER.record ...]` merged, and the stream's path the figure goes beside."""
-    from port.studies import records
+    from port.qa import records
 
     found = [Path(p) for p in paths]
     return merged([records.read(p) for p in found]), found[0]

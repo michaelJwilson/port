@@ -1,14 +1,7 @@
 """Several samples of one genome with shared clones, through `run_cnaster_port` (#328).
 
-`tests.multisample` concatenates realizations of one planted genome, so the
-clones are shared by construction and the referee is the planted labelling:
-
-- the entry point runs as is on three samples, and recovers the planted
-  clones in every sample and pooled (`end2end`);
-- the fixture: one genome, redrawn counts, each spot's `sample_label`, and
-  the samples side by side on the grid with a gap (`analytic`);
-- the cross-sample adjacency placeholder has no edge inside a sample, and
-  `sample_layout` draws one panel per sample in the run's colours (`infra`).
+Referee: the planted labelling (`end2end`); fixture geometry (`analytic`); adjacency
+placeholder and `sample_layout` (`infra`).
 """
 
 from __future__ import annotations
@@ -17,11 +10,21 @@ import warnings
 from pathlib import Path
 from typing import Any
 
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+from port.extensions.multisample import cross_sample_adjacency, sample_panels
+from port.patch.plotting.spatial import plot_clones_spatial
+from port.scripts.run_cnaster import main
+from port.sim.inputs import write_tmp_inputs
+from port.sim.run_config import isolated_run, write_run_cnaster_config
+from port.sim.truth import core_inference_truth
+from port.sim.unsegment import unsegment
 
 from tests.fixtures import partition_ari
+from tests.multisample import multi_sample_truth
 
 N_SAMPLES = 3
 
@@ -34,19 +37,14 @@ INSTANCE: dict[str, Any] = {
     "n_segments": 3,
     "seed": 11,
 }
-"""`tests/test_run_cnaster_port_end_to_end.py`'s instance, which one sample
-recovers at ARI 1.000, so what three change is what is measured."""
+"""The end-to-end test's instance, which one sample recovers at ARI 1.000."""
 
 
 def _base() -> Any:
-    from port.sim.truth import core_inference_truth
-
     return core_inference_truth(**INSTANCE)
 
 
 def _multi() -> Any:
-    from tests.multisample import multi_sample_truth
-
     return multi_sample_truth(_base(), N_SAMPLES)
 
 
@@ -57,13 +55,7 @@ def _multi() -> Any:
 def test_the_entry_point_recovers_the_shared_clones_in_every_sample(
     tmp_path: Path,
 ) -> None:
-    """One clone labelling across three samples: every clone in every sample,
-    at most 2 spots per sample misplaced."""
-    import matplotlib as mpl
-    from port.scripts.run_cnaster import main
-    from port.sim.inputs import write_tmp_inputs
-    from port.sim.run_config import isolated_run, write_run_cnaster_config
-    from port.sim.unsegment import unsegment
+    """One clone labelling across three samples: every clone in every sample, at most 2 spots misplaced each."""
 
     mpl.use("Agg")
     multi = _multi()
@@ -82,8 +74,7 @@ def test_the_entry_point_recovers_the_shared_clones_in_every_sample(
         assert main([str(config), "--sample-layout", "3,1", "--no-plots"]) == 0
 
     output = written.root / "output"
-    # NB the claim is the labelling, so nothing is rendered (#403); the
-    #    panels are `test_sample_layout_draws_a_panel_per_sample_in_the_runs_colours`'s.
+    # NB the claim is the labelling, so nothing is rendered (#403).
     assert not list(output.rglob("*.pdf")), "--no-plots wrote a figure"
     labels = pd.read_csv(next(output.rglob("clone_labels.tsv")), sep="\t", comment="#")
     spots = labels["barcode"].str.slice(2, 7).astype(int).to_numpy()
@@ -92,12 +83,8 @@ def test_the_entry_point_recovers_the_shared_clones_in_every_sample(
 
     assert (fitted >= 0).all(), "every spot of every sample is labelled"
 
-    # NB each fitted clone read as the planted clone most of its spots carry,
-    #    pooled, so a clone is shared only if it maps to one planted clone in
-    #    every sample. Measured here: 0 of 3,000 misplaced, ARI 1.000 pooled
-    #    and per sample. Two per sample is the stated tolerance, as in
-    #    `tests/test_run_cnaster_port_end_to_end.py`: the ICM's ties fall on
-    #    platform floating-point order.
+    # NB each fitted clone read as the planted clone most of its pooled spots carry;
+    # the tolerance of 2 covers ICM ties on platform floating-point order.
     majority = {
         clone: np.bincount(truth.labels[fitted == clone]).argmax()
         for clone in np.unique(fitted)
@@ -157,7 +144,6 @@ def test_the_grid_labels_each_sample_and_leaves_the_gaps_empty() -> None:
 @pytest.mark.infra
 def test_the_cross_sample_placeholder_has_no_edge_inside_a_sample() -> None:
     """Empty today; the invariant an implementation keeps is no within-sample entry."""
-    from port.extensions.multisample import cross_sample_adjacency
 
     multi = _multi()
     adjacency = cross_sample_adjacency(multi.sample_label)
@@ -170,8 +156,6 @@ def test_the_cross_sample_placeholder_has_no_edge_inside_a_sample() -> None:
 
 @pytest.mark.infra
 def test_a_layout_places_the_samples_row_by_row_and_refuses_too_few_panels() -> None:
-    from port.extensions.multisample import sample_panels
-
     labels = np.repeat([0, 1, 2], 4)
     panels = sample_panels(labels, (3, 1))
 
@@ -184,13 +168,9 @@ def test_a_layout_places_the_samples_row_by_row_and_refuses_too_few_panels() -> 
 
 @pytest.mark.infra
 def test_sample_layout_draws_a_panel_per_sample_in_the_runs_colours() -> None:
-    """Three panels, each in its own coordinates; a clone absent from one sample
-    keeps its colour in the others; unset, one axis as upstream."""
-    import matplotlib as mpl
+    """Three panels, each in its own coordinates; a clone absent from one sample keeps its colour in the others; unset, one axis as upstream."""
 
     mpl.use("Agg")
-    import matplotlib.pyplot as plt
-    from port.patch.plotting.spatial import plot_clones_spatial
 
     rng = np.random.default_rng(0)
     coords = np.array([(r, c) for r in range(6) for c in range(6)] * 3, dtype=float)

@@ -1,21 +1,11 @@
-"""What the stride is worth, measured rather than assumed.
+"""Strided against contiguous input to `cnaster`'s `_nb_logpmf_1d`, at gate and stress sizes (#234).
 
-**#234 PR 1.** The ticket proposes the contiguous layout "assuming this is
-faster". `CLAUDE.md` puts a 2x bar on a speedup claim and requires it at a
-stress size, so this is where the assumption is answered with a number
-instead of carried.
-
-The honest prior is that it lands **under** the bar: halving wasted cache
-line fill helps a bandwidth-bound kernel, and `cnaster`'s `_nb_logpmf_1d`
-calls `lgamma` per element, which is arithmetic-bound. Below 2x the layout
-stands on its evidence of equivalence as a simplification, which
-`tests/test_clone_stack.py` supplies.
-
-`backend` marker: this measures a memory layout, not a scientific claim.
-`release` on the stress case, which is over the per-pull-request budget.
+Equivalence is bitwise; the stress ratio is reported against the 2x bar (`release`).
 """
 
 from __future__ import annotations
+
+import time
 
 import numpy as np
 import pytest
@@ -26,7 +16,7 @@ STRESS = (20_000, 8)
 
 
 def _arms(n_obs: int, n_clones: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """One clone's channel, strided and contiguous, over the same numbers."""
+    """Return one clone's channel, strided and contiguous, and the exposure."""
     rng = np.random.default_rng(41)
     rows = n_obs * n_clones
 
@@ -46,8 +36,7 @@ def _arms(n_obs: int, n_clones: int) -> tuple[np.ndarray, np.ndarray, np.ndarray
 
 
 def _ratio(n_obs: int, n_clones: int, benchmark_rounds: int = 25) -> float:
-    """Strided time over contiguous time, warmed so numba is not measured."""
-    import time
+    """Return strided time over contiguous time, best of rounds, warmed past numba compile."""
 
     strided, contiguous, exposure = _arms(n_obs, n_clones)
     out = np.zeros(n_obs)
@@ -70,7 +59,7 @@ def _ratio(n_obs: int, n_clones: int, benchmark_rounds: int = 25) -> float:
 
 @pytest.mark.backend
 def test_the_two_layouts_compute_the_same_numbers() -> None:
-    """Before any ratio: the arms must be the same calculation."""
+    """Both layouts give the same numbers, bitwise."""
     strided, contiguous, exposure = _arms(*GATE)
 
     from_strided = np.zeros(GATE[0])
@@ -86,12 +75,7 @@ def test_the_two_layouts_compute_the_same_numbers() -> None:
 
 @pytest.mark.backend
 def test_the_gate_ratio_is_reported_and_decides_nothing() -> None:
-    """`CLAUDE.md`: a ratio read at a gate size decides nothing.
-
-    Recorded so the stress figure has something to be compared against, and
-    asserted only loosely -- a gate-sized ratio swinging either way is noise,
-    not a result.
-    """
+    """The gate ratio lies in (0.2, 5.0); it decides nothing."""
     ratio = _ratio(*GATE)
 
     assert 0.2 < ratio < 5.0, f"gate ratio {ratio:.3f} is outside sane bounds"
@@ -100,14 +84,7 @@ def test_the_gate_ratio_is_reported_and_decides_nothing() -> None:
 @pytest.mark.backend
 @pytest.mark.release
 def test_the_stress_ratio_answers_the_tickets_assumption() -> None:
-    """#234's "assuming this is faster", at a stress size.
-
-    **This test does not require a speedup.** It requires the number to be
-    known: below 2x the contiguous layout is a simplification and the ticket
-    says so, above it the port is earned. What it refuses is a *regression* --
-    a contiguous walk slower than a strided one would mean the arms are not
-    what they claim.
-    """
+    """The stress ratio exceeds 0.9 and is printed against the 2x bar (#234)."""
     ratio = _ratio(*STRESS)
 
     assert ratio > 0.9, (

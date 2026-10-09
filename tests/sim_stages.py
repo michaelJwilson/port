@@ -1,40 +1,26 @@
 """A simulated sample at a named stage of `run_cnaster_port`, run once and cached (#467).
 
-`tests.sim_audit` runs a sample end to end and scores what it wrote. A test of
-one stage needs that stage's inputs and output, and re-running the pipeline
-per test costs minutes. `stages(sample, ...)` runs the pipeline once per
-sample and configuration, records every call the driver
-(`cnaster.scripts.run_cnaster`) makes to the names in `CAPTURED`, with its
-arguments and result, and caches the record on disk. A test then reads the
-stage it is about, or replays that one call with a changed argument.
-
-The names are wrapped **after** `run_cnaster_port` installs its swaps, around
-whatever each is bound to when the driver calls it, so the record is of the
-run a user gets, `--sal` and the shift included.
-
-**The key** is the sample's content, the flags and overrides, and the code
-that can move a stage: `python/port`, the lockfiles, `src/` and these three
-harness modules. A change elsewhere in `tests/` leaves the cache valid.
-
-Samples: `r0` is `dev_tree`'s realization 0 at the frozen exponential-length
-generation (`sim/manifests/baseline/dev_tree.toml`, #619), drawn on demand and
-refused if its content hash is not `R0_HASH` (`port.sim.fixtures`); `easy` and `hard` are CalicoST's committed
-samples (`port.sim.fixtures`).
+Records the driver's calls to `CAPTURED` after the swaps install, keyed on the sample's
+content, flags and the code that can move a stage. `r0` is `dev_tree` realization 0
+(#619).
 """
 
 from __future__ import annotations
 
 import gzip
 import hashlib
+import importlib
 import pickle
 import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from port.sim.fixtures import R0_HASH, r0, realization_hash
+import pandas as pd
+from port.qa.audit import audit_sample
+from port.sim.fixtures import R0_HASH, SAMPLES, load_simulated, r0, realization_hash
 
 from tests import ROOT
 
@@ -48,9 +34,7 @@ CAPTURED: tuple[str, ...] = (
     "hill_climbing_integer_copynumber_oneclone",
     "hill_climbing_integer_copynumber_fixdiploid_milp",
 )
-"""The driver's stage calls a record keeps. `load_input_data` is left out:
-its AnnData is most of a record's size and a test of the input path reads the
-sample's own files."""
+"""The driver's stage calls a record keeps; `load_input_data` is left out for size."""
 
 DRIVER = "cnaster.scripts.run_cnaster"
 ENTRY = "run_cnaster"
@@ -90,8 +74,7 @@ class Stages:
         return [call for call in self.calls if call.name == name]
 
     def one(self, name: str, index: int = 0) -> Call:
-        """The `index`-th call to `name`; `run_core_inference`'s 0 is the
-        BAF-only stage and 1 the RDR+BAF stage."""
+        """The `index`-th call to `name`; `run_core_inference`'s 0 is BAF-only, 1 is RDR+BAF."""
         calls = self.all(name)
 
         if index >= len(calls):
@@ -103,7 +86,6 @@ class Stages:
 
 def _sample(name: str) -> tuple[Any, str]:
     """The `SimulatedSample`, and the content key it is cached under."""
-    from port.sim.fixtures import SAMPLES, load_simulated
 
     if name == "r0":
         r0()
@@ -142,7 +124,6 @@ def code_hash() -> str:
 @contextmanager
 def capturing(calls: list[Call], names: tuple[str, ...] = CAPTURED) -> Iterator[None]:
     """Record the driver's calls to `names`, around whatever each is bound to."""
-    import importlib
 
     driver = importlib.import_module(DRIVER)
     undo: list[tuple[str, Any]] = []
@@ -171,11 +152,6 @@ def _record(
     name: str, flags: tuple[str, ...], oracle: bool, overrides: dict[str, Any]
 ) -> Stages:
     """Run the sample once, with the driver's stage calls recorded."""
-    import importlib
-    from dataclasses import asdict
-
-    import pandas as pd
-    from port.qa.audit import audit_sample
 
     driver = importlib.import_module(DRIVER)
 
@@ -183,8 +159,7 @@ def _record(
     stages = Stages(name, flags, oracle)
     original = getattr(driver, ENTRY)
 
-    # NB `run_cnaster_port` looks `run_cnaster` up on the driver module after
-    #    entering every swap, so wrapping it here records the swapped run.
+    # NB `run_cnaster_port` looks `run_cnaster` up after its swaps, so this records the swapped run.
     def run(*args: Any, **kwargs: Any) -> Any:
         with capturing(stages.calls):
             return original(*args, **kwargs)

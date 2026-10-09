@@ -1,31 +1,8 @@
-"""`cnaster.io.load_input_data`, with the passes it does not need removed.
+"""Replaces `cnaster.io.load_input_data` with fewer passes over the counts (#167).
 
-**Proposed for `cnaster`, written here.** #167: the loader densifies a sparse
-matrix to take a row sum, builds three full copies of the count matrix to cast
-it, recomputes the same reductions four times, copies the whole `AnnData` once
-per filter, and walks the range filter in Python. `port` cannot land the change
-(`CLAUDE.md`, **Working against a repository you do not own**), so it is
-written here as a patch with its referee beside it.
-
-**What it is not.** Not a reimplementation, with one exception: every file
-this reads is read by `cnaster`'s own helper, imported rather than copied, so
-the patch is the orchestration and nothing else. The exception is
-`_spaceranger_counts`, which reads the counts file itself under
-`sparse_counts` because the cost it removes is inside `get_spaceranger_counts`
-(#186) and orchestrating around it is not available. What it changes is which
-intermediate arrays exist, never which spots, genes or SNPs survive.
-
-The default return is **bitwise** what `cnaster` returns, field for field,
-which `tests/test_load_input_data_patch.py` pins.
-
-`sparse_counts=True` is the other half, and it is a type contract rather than
-an optimization of the same one: the two allele matrices, the count layer and
-`exp_counts` all come back sparse. That removes the loader's three
-materializations -- the `pandas` sparse frame, the dense `int` cast, the dense
-allele return -- which are 62% of its time and the whole of the difference in
-its peak. It is measured in `tests/test_loader_materialization_bench.py` and
-pinned in `tests/test_loader_materialization.py`, and it stays a flag because
-adopting it is a `cnaster`-side decision about what every consumer indexes.
+Reads through `cnaster`'s own helpers except `_spaceranger_counts` (#186).
+Default return is bitwise `cnaster`'s; `sparse_counts=True` returns the allele
+matrices, count layer and `exp_counts` sparse.
 """
 
 from __future__ import annotations
@@ -75,22 +52,11 @@ ProcessedData = namedtuple(
         "across_slice_adjacency_mat",
     ],
 )
-"""`cnaster`'s own return shape, declared here because it declares it inline.
-
-Field for field the same, so a caller cannot tell the two apart by name. The
-patch test compares by field rather than by type, since two `namedtuple`s of
-the same shape are not the same class.
-"""
+"""`cnaster`'s inline return shape, field for field."""
 
 
 def _spot_umis(counts: Any) -> np.ndarray:
-    """Per-spot totals, whether the counts are dense or sparse.
-
-    One helper rather than four call sites: `np.sum(matrix, axis=1)` on a
-    `scipy` sparse matrix returns an `np.matrix` of shape `(n, 1)`, and the
-    comparison that follows it then broadcasts into a matrix rather than a
-    mask. Flattening here is what lets the caller be written once.
-    """
+    """Per-spot totals as a flat array, whether the counts are dense or sparse."""
     if sp.issparse(counts):
         return np.asarray(counts.sum(axis=1)).ravel()
 
@@ -98,17 +64,7 @@ def _spot_umis(counts: Any) -> np.ndarray:
 
 
 def _genes_expressed_in(counts: Any) -> np.ndarray:
-    """How many spots express each gene.
-
-    `cnaster` writes `np.sum(adata.X > 0, axis=0)`, which materializes a second
-    matrix of the same shape to count its non-zeros. `getnnz` counts the
-    structural non-zeros already stored, so it allocates one vector.
-
-    The two agree only where no stored entry is zero. A matrix read from
-    `spaceranger` carries none -- `sc.read_10x_h5` stores what was counted --
-    but a filtered view can, so the explicit count is kept as the fallback
-    rather than assumed away.
-    """
+    """How many spots express each gene; `getnnz` unless a stored entry is zero."""
     if sp.issparse(counts):
         stored = counts.data
         if stored.size and not stored.all():
@@ -120,19 +76,7 @@ def _genes_expressed_in(counts: Any) -> np.ndarray:
 
 
 def _load_allele_matrices(snp_dir: str) -> tuple[Any, Any]:
-    """The A and B allele matrices, inflated on two threads.
-
-    `sp.load_npz` is `zlib` inflate and little else: the pair is 20 MB on disk
-    and 240 MB inflated, and at 2,500 spots it is 390 ms of the loader with
-    the decompressor holding 238 of them. `zlib` releases the GIL, so the two
-    files overlap on two threads for the cost of a pool.
-
-    One thread per file rather than per member: the members of one file are a
-    120 MB `data` against a 40 MB `indices` and three arrays under a kilobyte,
-    so splitting inside a file schedules four idle workers behind one long
-    one. The floor either way is the longest single member, since a `deflate`
-    stream cannot be split.
-    """
+    """The A and B allele matrices, as CSR, inflated on two threads."""
     from concurrent.futures import ThreadPoolExecutor
 
     paths = [f"{snp_dir}/cell_snp_{allele}allele.npz" for allele in ("A", "B")]
@@ -144,14 +88,7 @@ def _load_allele_matrices(snp_dir: str) -> tuple[Any, Any]:
 
 
 def _without_nan(values: np.ndarray) -> np.ndarray:
-    """`values` with any `NaN` replaced by zero, copying only if there is one.
-
-    `np.nan_to_num` copies unconditionally and tests for the infinities too,
-    which is 239 ms of the loader on an input that carries neither. The test
-    is one pass over the values and the copy is skipped on the common case;
-    the branch is kept rather than assumed away because `cnaster` logs the
-    `NaN` fraction, so a file that carries them is a file it expects.
-    """
+    """`values` with any `NaN` replaced by zero, copying only if there is one."""
     nan = np.isnan(values)
 
     if not nan.any():
@@ -165,26 +102,10 @@ def _without_nan(values: np.ndarray) -> np.ndarray:
 def _spaceranger_counts(
     spaceranger_dir: str, config: Any, *, sparse_counts: bool
 ) -> Any:
-    """The transcript counts, with the integer cast done where they are stored.
+    """The `spaceranger` counts with the `count` layer cast to integer.
 
-    `cnaster` writes the count layer with `adatatmp.X.toarray()`, tests it with
-    `np.isnan`, and casts it with `astype(int)` -- three dense `(spots, genes)`
-    arrays to cast values that `spaceranger` stored sparsely. At 2,500 spots
-    and 5,983 genes that is 617 ms, 408 of it in the cast alone.
-
-    The values are the same either way: a structural zero is not `NaN` and
-    truncates to zero, so casting `.data` and casting the dense array agree
-    entry for entry. What differs is that one of them allocates the shape and
-    the other the stored values.
-
-    With `sparse_counts` off the layer is `cnaster`'s dense one, built as
-    `get_spaceranger_counts` builds it, except that a dense `X` is taken as
-    it is rather than raising on `.toarray()` (#88).
-
-    This is the one place the patch reads a file `cnaster`'s helper would have
-    read, rather than calling that helper -- the cost is inside it, so
-    orchestrating around it is not available. The two branches, the `.h5` and
-    the `.h5ad`, are the branches `get_spaceranger_counts` takes, in its order.
+    `sparse_counts` casts the stored values only; otherwise the layer is
+    `get_spaceranger_counts`'s dense one, accepting a dense `X` (#88).
     """
     import scanpy as sc
 
@@ -201,9 +122,8 @@ def _spaceranger_counts(
     counts = adatatmp.X
 
     if not sparse_counts:
-        # NB `get_spaceranger_counts`'s steps, in its order, but densifying
-        #    only a sparse matrix: its unguarded `.toarray()` raises on a
-        #    dense `.h5ad`, which `anndata` writes by default (#88).
+        # NB densify only a sparse matrix: upstream's `.toarray()` raises on a
+        #    dense `.h5ad` (#88).
         dense = counts.toarray() if sp.issparse(counts) else np.array(counts)
         is_nan = np.isnan(dense)
 
@@ -237,26 +157,13 @@ def _gene_umis(counts: Any) -> np.ndarray:
 
 
 def _scaled_columns(counts: Any, factors: np.ndarray) -> Any:
-    """Each column scaled by its factor, in place, keeping the integer dtype.
+    """Each column scaled by its factor, truncated to the integer dtype.
 
-    The dense form assigns a float product back into an `int64` array, which
-    truncates toward zero. The sparse form assigns into `.data`, which is the
-    same array dtype and so truncates the same way -- the equality is the
-    reason the two can share one caller.
-
-    **The result is what the caller assigns** (#466, #496). The loader's
-    `adata` is a view by then, and anndata copies a view on its first write:
-    writing into `counts` in place scales the copy, and assigning `counts`
-    back then restores the unscaled view, so the local outlier filter and the
-    downsampling were silently dropped on a dense layer. A dense view
-    therefore returns a new array; an actual array is scaled in place, and
-    the sparse path returns its own.
+    The caller must assign the result: a dense view returns a new array, as
+    anndata copies a view on first write (#466, #496).
     """
     if sp.issparse(counts):
-        # NB CSR, and not CSC, because it is CSR whose `indices` are column
-        #    indices -- CSC's are row indices, and factors read through them
-        #    scale the wrong entries where the matrix is not square, or index
-        #    out of bounds where it is wider than it is tall.
+        # NB CSR, whose `indices` are column indices.
         scaled = counts.tocsr()
         scaled.data = (scaled.data * factors[scaled.indices]).astype(counts.dtype)
         scaled.eliminate_zeros()
@@ -264,12 +171,7 @@ def _scaled_columns(counts: Any, factors: np.ndarray) -> Any:
         return scaled.asformat(counts.format)
 
     if isinstance(counts, ArrayView):
-        # NB a view's layer is not written in place: `counts[:, :] = ...`
-        #    makes the parent `AnnData` actual and writes into its new copy,
-        #    and the view returned here still reads the old values, which the
-        #    caller then assigns back over the written ones. That dropped
-        #    every zeroed outlier gene (100 on `dev_tree` 60 x 50) where
-        #    `cnaster` zeroes them.
+        # NB writing into a view's layer leaves the view unchanged (#496).
         return (np.asarray(counts) * factors).astype(counts.dtype)
 
     counts[:, :] = (counts * factors).astype(counts.dtype)
@@ -278,13 +180,9 @@ def _scaled_columns(counts: Any, factors: np.ndarray) -> Any:
 
 
 def filter_ranges(filter_range_file: Any) -> pd.DataFrame:
-    """`cnaster.filter.get_filter_ranges`, reading bare-integer chromosomes too.
+    """`cnaster.filter.get_filter_ranges`, also reading bare-integer chromosomes (#176).
 
-    `cnaster` decides whether to strip a `chr` prefix with `"chr" in
-    ranges.Chr.iloc[0]`, which raises `TypeError` when the column parses as
-    integers (#176), so only the `chrN` form was readable. Here each value is
-    read as a string and a `chr` prefix stripped where present; the result is
-    `cnaster`'s -- integer `Chr`, sorted by `Chr` and `Start` -- for either form.
+    Returns integer `Chr`, sorted by `Chr` and `Start`, as `cnaster` does.
     """
     ranges = pd.read_csv(
         filter_range_file, header=None, sep="\t", names=["Chr", "Start", "End"]
@@ -299,20 +197,10 @@ def filter_ranges(filter_range_file: Any) -> pd.DataFrame:
 
 
 def _range_mask(unique_snp_ids: np.ndarray, ranges: pd.DataFrame) -> np.ndarray:
-    """Which SNPs `cnaster`'s forward pointer over the filtered ranges keeps.
+    """Which SNPs survive `cnaster`'s forward-pointer walk over the filter ranges.
 
-    `cnaster` walks the SNPs in order with a pointer `j` into the ranges as
-    `get_filter_ranges` sorts them (by `Chr`, `Start`): it skips each range
-    whose `(Chr, End)` is at or before the SNP's `(chr, pos)`, then drops the
-    SNP if it lies in range `j`. It rebuilds the columns per comparison.
-
-    For SNPs in `(chr, pos)` order the pointer at a SNP is the first range
-    whose `(Chr, End)` is past it, which is `searchsorted` over the running
-    maximum of `(Chr, End)`. That is exact whether or not the ranges overlap:
-    GRCh38's `HLA_regions.bed` has 4 overlapping pairs, where the version this
-    replaces -- sorted by `End`, assuming disjoint ranges -- kept 10 SNPs
-    `cnaster` drops on `dev_tree` 60 x 50. SNPs out of order take the
-    pointer walk itself.
+    For SNPs in `(chr, pos)` order this is `searchsorted` over the running
+    maximum of `(Chr, End)`, exact for overlapping ranges; otherwise the walk.
     """
     chromosome = np.array(
         [int(str(snp).split("_")[0]) for snp in unique_snp_ids], dtype=np.int64
@@ -357,17 +245,11 @@ def _range_mask(unique_snp_ids: np.ndarray, ranges: pd.DataFrame) -> np.ndarray:
 
 
 NORMAL_SPOTS: list[np.ndarray] = []
-"""The spots `normal_idx_file` names, per loaded spot, from the last load (#479).
-
-`cnaster` annotates them (`tumor_annotation`) and then never reads them back
-as candidates, so `port.patch.normal_spot.determine_normal_candidates` reads
-them here. Empty when the last load had no file, and after the run
-(:func:`release`, T- #617).
-"""
+"""Per loaded spot, whether `normal_idx_file` names it, from the last load (#479)."""
 
 
 def release() -> None:
-    """Drop the run's normal spots; `port.pipeline.patched` calls this on exit (T- #617)."""
+    """Drop the run's normal spots; `port.pipeline.patched` calls this on exit (#617)."""
     NORMAL_SPOTS.clear()
 
 
@@ -382,23 +264,11 @@ def load_input_data(
     *,
     sparse_counts: bool = False,
 ) -> ProcessedData:
-    """What `cnaster.io.load_input_data` returns, computed in fewer passes.
+    """`cnaster.io.load_input_data`'s return, computed in fewer passes.
 
-    Parameters
-    ----------
-    sparse_counts : bool
-        Return the two allele matrices, the count layer and `exp_counts`
-        sparse rather than dense. `False`, the default, is what `cnaster`
-        returns and what its callers index; `True` is the measurement of what
-        the dense forms cost, and changes the type every downstream consumer
-        sees. Under `True`, `exp_counts` **is** `adata.layers["count"]` rather
-        than a copy of it, so a consumer that mutates one mutates the other --
-        `cnaster`'s frame is a separate object.
-
-    Raises
-    ------
-    NotImplementedError
-        If `alignment_files` is given, as upstream.
+    `sparse_counts` returns the allele matrices, count layer and `exp_counts`
+    sparse; `exp_counts` is then `adata.layers["count"]` itself, not a copy.
+    Raises `NotImplementedError` for `alignment_files`, as upstream.
     """
     if alignment_files is not None:
         msg = "Alignment files are not supported."
@@ -431,9 +301,7 @@ def load_input_data(
         msg = "expected cell_snp_Aallele.shape == cell_snp_Ballele.shape"
         raise AssertionError(msg)
 
-    # NB upstream writes `(A + B).todense().sum(axis=1)`, which allocates a
-    #    dense (spots, snps) matrix to reduce it away on the next call. The
-    #    sum is the same; only the intermediate is not built.
+    # NB upstream densifies `(A + B)` to sum it.
     snp_umis_per_spot = np.asarray(
         (cell_snp_Aallele + cell_snp_Ballele).sum(axis=1)
     ).ravel()
@@ -456,9 +324,7 @@ def load_input_data(
         df_this_pos = get_spatial_positions(df_meta["spaceranger_dir"].iloc[i])
         df_this_pos = he_image(df_meta["spaceranger_dir"].iloc[i], pos=df_this_pos)
 
-        # NB read and cast sparse on every path (#488): the dense layer
-        #    `cnaster` returns is built once, at the end, rather than per
-        #    slice and carried through the concatenation and the scaling.
+        # NB read and cast sparse on every path; densified once at the end (#488).
         adatatmp = _spaceranger_counts(
             df_meta["spaceranger_dir"].iloc[i], config, sparse_counts=True
         )
@@ -536,10 +402,7 @@ def load_input_data(
         alignment_files, df_meta, df_agg_barcode
     )
 
-    # NB one pass over the counts, where upstream takes four: the UMI filter,
-    #    the total, the percentiles and the post-filter median each recompute
-    #    it. The filter itself is unchanged -- transcript UMIs and SNP UMIs
-    #    both at or above the floor.
+    # NB one pass over the counts, where upstream takes four.
     spot_umis = _spot_umis(adata.layers["count"])
     allele_umis = (
         np.asarray(cell_snp_Aallele.sum(axis=1)).ravel()
@@ -652,9 +515,7 @@ def load_input_data(
             f"{100.0 * top_umis / total_umis:.3f} [%]."
         )
 
-    # NB `run_cnaster` never passes `normal_idx_file`, so the key a user sets
-    #    reached neither the annotation nor the candidates (#479); read it from
-    #    the configuration when the argument is absent.
+    # NB `run_cnaster` never passes `normal_idx_file`; read it from the config (#479).
     if normal_idx_file is None:
         normal_idx_file = getattr(
             getattr(config, "preprocessing", None), "normalidx_file", None
@@ -665,11 +526,8 @@ def load_input_data(
             pd.read_csv(normal_idx_file, header=None).iloc[:, 0].to_numpy()
         )
 
-        # NB `.loc` rather than upstream's
-        #    `adata.obs["tumor_annotation"][mask] = "normal"`, which is chained
-        #    assignment: it writes through an intermediate that pandas 3.0's
-        #    copy-on-write makes a copy, so the annotation would silently stop
-        #    being applied. Same values today, and reported upstream.
+        # NB `.loc` rather than upstream's chained assignment, which pandas
+        #    3.0 copy-on-write would silently drop.
         adata.obs["tumor_annotation"] = "tumor"
         adata.obs.loc[adata.obs.index.isin(normal_barcodes), "tumor_annotation"] = (
             "normal"
@@ -690,17 +548,11 @@ def load_input_data(
         msg = "expected len(unique_snp_ids) == cell_snp_Aallele.shape[1]"
         raise AssertionError(msg)
 
-    # NB the frame costs 679 ms at 2,500 spots and is built eagerly, and its
-    #    one live consumer -- `filter_normal_diffexp` -- opens with
-    #    `anndata.AnnData(exp_counts)` and `exp_counts.values`, which makes it
-    #    dense again. Under `sparse_counts` the matrix is handed back instead.
+    # NB the frame's one consumer densifies it again; `sparse_counts` skips it.
     stored = adata.layers["count"]
 
     if not sparse_counts and sp.issparse(stored):
-        # NB `cnaster`'s dense `int64` layer, built once (#488). The values
-        #    are the sparse ones: a structural zero is not `NaN` and truncates
-        #    to zero, so densifying after the cast and the scaling equals
-        #    casting and scaling the dense array.
+        # NB `cnaster`'s dense `int64` layer, built once (#488).
         dense = adata.layers["count"].toarray()
 
         if adata.is_view:
@@ -709,10 +561,7 @@ def load_input_data(
         adata.layers["count"] = dense
 
     if sparse_counts:
-        # NB the layer's own format, unconverted. `cnaster` builds the frame
-        #    from CSC because `from_spmatrix` wants a column store; the one
-        #    live consumer takes `anndata.AnnData(exp_counts)`, which reads
-        #    either, so the conversion is 86 ms bought for the container.
+        # NB the layer's own format, without `cnaster`'s CSC conversion.
         exp_counts = adata.layers["count"]
     else:
         exp_counts = pd.DataFrame.sparse.from_spmatrix(
@@ -736,17 +585,10 @@ def load_input_data(
 def get_aggregated_barcodes(
     barcode_file: str, known_sample_id: str | None = None
 ) -> pd.DataFrame:
-    """`cnaster.io.get_aggregated_barcodes`, with each slice's `sample_id` kept (#446).
+    """`cnaster.io.get_aggregated_barcodes`, keeping each slice's `sample_id` (#446).
 
-    Upstream splits `{barcode}_{sample_id}` and then overwrites both columns
-    with the whole string and `known_sample_id`, which `load_input_data`
-    passes as `None` for two or more slices: every slice then matches no spot.
-
-    With a `known_sample_id` -- one slice -- this is upstream's, bitwise; its
-    overwrite is what keeps CalicoST's `spot_0` barcodes whole. With none, the
-    `sample_id` is the suffix after the last `_` and `barcode` stays the
-    combined string, which is how each slice's counts and positions index
-    their spots, and the suffix `construct_df_clone_label` reads.
+    With a `known_sample_id` this is upstream's, bitwise; without one,
+    `sample_id` is the suffix after the last `_`.
     """
     frame = _UPSTREAM_AGGREGATED_BARCODES(barcode_file, known_sample_id)
 
@@ -758,20 +600,10 @@ def get_aggregated_barcodes(
 
 
 def get_sample_list(adata: Any) -> tuple[list[str], np.ndarray]:
-    """`cnaster.io.get_sample_list`, keyed by sample name rather than row order (#418).
+    """`cnaster.io.get_sample_list`, keyed by sample name (#418).
 
-    Upstream appends a name each time `obs["sample"]` changes between
-    adjacent rows. Names here are kept in first-seen order, so on contiguous
-    rows -- sorted or not -- this is upstream's, bitwise. The one stated
-    difference is a fix:
-
-    - **interleaved rows** (`A, B, A`): upstream returns `[A, B, A]`, every
-      `A` spot takes code 2 and code 0 has no spot, which its assert does not
-      catch. Here `[A, B]`, every spot coded by name.
-
-    Names are read as `str` (`port.extensions.samples.samples_of`). The pair
-    is recorded for the run's outputs while `port.extensions.samples` is
-    recording.
+    Bitwise upstream on contiguous rows; interleaved rows (`A, B, A`) give
+    `[A, B]` rather than `[A, B, A]`. Recorded while `port.extensions.samples` records.
     """
     from port.extensions.samples import observe, samples_of
 

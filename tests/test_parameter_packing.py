@@ -1,21 +1,8 @@
-"""`cnaster`'s parameter vector, round-tripped.
-
-The optimizer works on a flat unconstrained vector and the model works on
-named arrays, so `pack_params` and `unpack_params` are the seam between
-them. A packing that loses a parameter, orders one wrongly or inverts a
-transform asymmetrically does not raise: it fits a different model and
-reports the fit as a success.
-
-Checked against an identity rather than against upstream: unpacking what was
-packed returns what went in, whatever the flags. That holds by construction
-and needs no correspondence.
-
-The same vector is what #6 would take a Hessian of, so its layout is the
-thing an error bar is attached to.
-"""
+"""cnaster's `pack_params`/`unpack_params` round trip, against the identity."""
 
 import numpy as np
 import pytest
+from cnaster.hmm_nophasing import hmm_nophasing
 
 TOLERANCE = 1e-9
 
@@ -32,16 +19,22 @@ FLAG_SETS = [
 ]
 
 
-def named_parameters(n_states: int, n_spots: int = 1) -> dict[str, np.ndarray]:
-    """A parameter set in the model's own terms, seeded and in range."""
+def named_parameters(n_states: int, flags: dict[str, bool]) -> dict[str, np.ndarray]:
+    """A parameter set in the model's own terms, seeded, in range, one dispersion where shared."""
     rng = np.random.default_rng(17)
-    return {
+    params = {
         "log_startprob": np.log(np.full(n_states, 1.0 / n_states)),
-        "log_mu": rng.normal(scale=0.3, size=(n_states, n_spots)),
-        "p_binom": rng.uniform(0.15, 0.85, size=(n_states, n_spots)),
-        "alphas": rng.uniform(0.05, 0.5, size=(n_states, n_spots)),
-        "taus": rng.uniform(20.0, 500.0, size=(n_states, n_spots)),
+        "log_mu": rng.normal(scale=0.3, size=(n_states, 1)),
+        "p_binom": rng.uniform(0.15, 0.85, size=(n_states, 1)),
+        "alphas": rng.uniform(0.05, 0.5, size=(n_states, 1)),
+        "taus": rng.uniform(20.0, 500.0, size=(n_states, 1)),
     }
+    if flags.get("shared_NB_dispersion"):
+        params["alphas"][:] = params["alphas"][0]
+    if flags.get("shared_BB_dispersion"):
+        params["taus"][:] = params["taus"][0]
+
+    return params
 
 
 @pytest.mark.smoke
@@ -50,21 +43,10 @@ def named_parameters(n_states: int, n_spots: int = 1) -> dict[str, np.ndarray]:
 def test_unpacking_what_was_packed_returns_it(
     flags: dict[str, bool], n_states: int
 ) -> None:
-    """The round trip is the identity on every parameter it carries.
-
-    Where a dispersion is shared the packed vector holds one value for all
-    states, so the recovered array is that value repeated; the identity is
-    asserted against what was packed rather than against the draw.
-    """
-    from cnaster.hmm_nophasing import hmm_nophasing
+    """The round trip is the identity on every parameter it carries; shared dispersions repeat."""
 
     model = hmm_nophasing()
-    params = named_parameters(n_states)
-
-    if flags.get("shared_NB_dispersion"):
-        params["alphas"][:] = params["alphas"][0]
-    if flags.get("shared_BB_dispersion"):
-        params["taus"][:] = params["taus"][0]
+    params = named_parameters(n_states, flags)
 
     packed = model.pack_params(**params, **flags)
     assert np.all(np.isfinite(packed))
@@ -99,20 +81,10 @@ def test_unpacking_what_was_packed_returns_it(
 @pytest.mark.parametrize("flags", FLAG_SETS)
 @pytest.mark.parametrize("n_states", [1, 3])
 def test_bounds_match_the_packed_vector(flags: dict[str, bool], n_states: int) -> None:
-    """One bound per packed coordinate, each an interval containing it.
-
-    A bound array of the wrong length silently misaligns every limit with
-    the parameter it constrains, and the optimizer then holds the wrong one
-    fixed. Length and containment together are what rule that out.
-    """
-    from cnaster.hmm_nophasing import hmm_nophasing
+    """One bound per packed coordinate, each an interval containing it."""
 
     model = hmm_nophasing()
-    params = named_parameters(n_states)
-    if flags.get("shared_NB_dispersion"):
-        params["alphas"][:] = params["alphas"][0]
-    if flags.get("shared_BB_dispersion"):
-        params["taus"][:] = params["taus"][0]
+    params = named_parameters(n_states, flags)
 
     packed = model.pack_params(**params, **flags)
     bounds = model.get_bounds(n_states, **flags)

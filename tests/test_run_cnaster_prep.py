@@ -1,18 +1,7 @@
-"""`cnaster` derives its own bins from the written files, and they are the planted ones (#92).
+"""`cnaster` derives its bins from written coordinates, and they are the planted ones
+(#92).
 
-`tests/test_tmp_input_round_trip.py` hands `summarize_counts_for_bins` a table
-that already carries the bin assignment. `run_cnaster` has no such column: it
-reads gene and SNP **coordinates** and decides the partition itself, through
-`form_gene_snp_table`, `assign_initial_blocks` and `create_bin_ranges`.
-
-So this is the stronger claim. What is supplied is where the genes and the
-SNPs are; what is recovered is the segmentation **and** the counts in it.
-
-The partition is asserted before any count is compared, because a count
-comparison over a partition nobody checked could be measuring a coincidence.
-And it is asserted as the whole `lengths` vector rather than a bin total: a
-different split of the same total is exactly the error this arrangement could
-make, and a scalar would not see it.
+The `lengths` vector is asserted before the counts.
 """
 
 from pathlib import Path
@@ -27,25 +16,15 @@ pytestmark = [pytest.mark.preprocessing]
 
 INITIAL_MIN_UMI = 1
 SECONDARY_MIN_UMI = 1
-"""The floors `assign_initial_blocks` and `create_bin_ranges` apply.
-
-At one, because the fixture's job here is the **partition**: a floor that
-merged blocks would be measuring the floor, and what it does at a realistic
-setting is a separate question with its own instance.
-"""
+"""The floors `assign_initial_blocks` and `create_bin_ranges` apply, at one so no block merges."""
 
 
 def _prepared(tmp_path: Path, n_obs: int = 20) -> tuple[CoreInferenceTruth, Binned]:
-    """Drive the prep chain `run_cnaster` runs, in its order, and bin at the end.
-
-    One call, because every function in the chain reads the global config and
-    the chain has to hold it open across all of them.
-    """
+    """Drive `run_cnaster`'s prep chain in order under one global config, and bin at the end."""
     truth = core_inference_truth(
         n_clones=2, n_states=3, lattice=(6, 6), n_obs=n_obs, n_segments=2
     )
-    # No flipped haplotype: the files carry allele counts, and the phase is
-    # `cnaster`'s to infer. The flipped form is exercised at the binner.
+    # No flipped haplotype: phase is `cnaster`'s to infer.
     written = write_tmp_inputs(truth, unsegment(truth, flip_every=0), tmp_path)
 
     with written_config(written):
@@ -60,12 +39,7 @@ def _prepared(tmp_path: Path, n_obs: int = 20) -> tuple[CoreInferenceTruth, Binn
 
 @pytest.mark.snapshot
 def test_the_blocks_are_one_per_planted_bin(tmp_path: Path) -> None:
-    """`assign_initial_blocks` merges overlapping intervals, and these do not.
-
-    The first place the arrangement could go wrong: intervals spaced closer
-    than a gene's length would merge, and the partition would be coarser than
-    the planted one before `create_bin_ranges` ever ran.
-    """
+    """`assign_initial_blocks` gives one block per planted bin."""
     truth, prepared = _prepared(tmp_path)
 
     assert int(prepared.table.block_id.dropna().nunique()) == truth.n_obs
@@ -80,13 +54,7 @@ def test_the_blocks_are_one_per_planted_bin(tmp_path: Path) -> None:
 @pytest.mark.end2end
 @pytest.mark.critical
 def test_the_derived_segmentation_is_the_planted_one(tmp_path: Path) -> None:
-    """`lengths`, as a vector, from coordinates alone.
-
-    `create_bin_ranges` groups blocks into bins under three UMI floors and a
-    5 Mb cap, and `summarize_counts_for_bins` counts distinct bins per
-    chromosome. Nothing here was told the segmentation; it comes back because
-    the coordinates encode it.
-    """
+    """`lengths`, derived from coordinates alone, equals the planted segmentation."""
     truth, prepared = _prepared(tmp_path, n_obs=20)
 
     assert int(prepared.table.bin_id.dropna().nunique()) == truth.n_obs
@@ -95,12 +63,7 @@ def test_the_derived_segmentation_is_the_planted_one(tmp_path: Path) -> None:
 
 @pytest.mark.snapshot
 def test_the_counts_in_the_derived_bins_are_the_planted_ones(tmp_path: Path) -> None:
-    """All three channels, bitwise, over a partition `cnaster` chose.
-
-    The claim #92 asks for. The expression channel travels as genes through an
-    `.h5ad`, the alleles as two sparse matrices, and both are summed back into
-    bins the fixture never named.
-    """
+    """All three channels in `cnaster`'s derived bins equal the planted counts bitwise."""
     truth, prepared = _prepared(tmp_path, n_obs=20)
 
     np.testing.assert_array_equal(

@@ -1,23 +1,6 @@
-"""Integer copies decoded at known states, after fitting only the dispersions (#362).
+"""Integer copies decoded at known states after fitting only the two dispersions (#362).
 
-The copy-lattice fixture plants integer `(A, B)` states. Given the planted
-`mu`, `p`, clone labels and copy states, the only free parameters of the
-HMM's emission are the two shared dispersions: the negative binomial's
-`alpha` and the beta-binomial's `tau`. They are fitted here by maximum
-likelihood on each clone's pseudobulk, with every other quantity held -- the
-complete-data likelihood at the known path, which is what Baum-Welch
-maximizes when the states are known.
-
-The integer copies are then decoded by `port.extensions.copy_likelihood.
-fit_copies` under `SHARED`, the decode `port.patch.integer_copy` runs, at those
-states: the normal state `(1, 1)` by definition and the shift 0, because the
-planted `mu` is already on the normal scale. Referee: the planted pairs.
-The fixture writes the major allele second (`p = B / (A + B)`) and the
-decoder first, so pairs are compared as unordered.
-
-The dispersions fitted are the pseudobulk's, not the spots': on this instance
-`alpha = 7.6e-4` and `tau = 3.0e3` against the planted per-spot `1/6` and
-`30`, since each clone's pseudobulk sums 100 or more spots.
+Referee: the planted `(A, B)` pairs, compared unordered.
 """
 
 from __future__ import annotations
@@ -27,8 +10,8 @@ import pytest
 from port.extensions.copy_likelihood import (
     Pseudobulk,
     pseudobulk_log_pmf,
-    shared_decode,
 )
+from port.sandbox.extensions.shared_decode import shared_decode
 from port.sim.truth import COPY_LATTICE, CoreInferenceTruth, core_inference_truth
 from scipy.optimize import minimize_scalar
 
@@ -76,9 +59,7 @@ def _fit_dispersions(
             for bulk, path in bulks
         )
 
-    # NB the two channels are separate terms, so each dispersion is fitted
-    #    with the other at any value: `alpha` enters the NB term only, `tau`
-    #    the BB term only.
+    # NB `alpha` enters only the NB term and `tau` only the BB term, so each fits independently.
     alpha = float(
         np.exp(
             minimize_scalar(

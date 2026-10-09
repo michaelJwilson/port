@@ -6,14 +6,10 @@ Referees: a brute-force walk over the table for what a labelling says
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import numpy as np
 import pandas as pd
 import pytest
-
-if TYPE_CHECKING:
-    from port.extensions.segments import Segmentation
+from port.extensions.segments import Segmentation
 
 
 def _table(seed: int = 3) -> pd.DataFrame:
@@ -50,8 +46,6 @@ def _table(seed: int = 3) -> pd.DataFrame:
 
 
 def _levels() -> tuple[pd.DataFrame, Segmentation, Segmentation, Segmentation]:
-    from port.extensions.segments import Segmentation
-
     table = _table()
     blocks = Segmentation.from_table(table, "block_id")
     rng = np.random.default_rng(5)
@@ -89,7 +83,7 @@ def test_each_level_labels_the_genes_as_the_table_does() -> None:
 
 @pytest.mark.oracle
 def test_aggregate_is_a_groupby_and_broadcast_undoes_it() -> None:
-    """Sums over each block's genes equal pandas' `groupby`; broadcast gives each gene its block."""
+    """Block sums equal pandas' `groupby`; broadcast gives each gene its block."""
     table, blocks, _, _ = _levels()
     genes = table[table.is_interval]
     values = np.random.default_rng(9).normal(size=(len(genes), 2))
@@ -131,8 +125,7 @@ def test_lengths_are_the_contig_runs_and_never_zero() -> None:
 def test_a_labelling_that_would_misalign_rows_is_refused(
     defect: str, message: str
 ) -> None:
-    """Non-contiguous genes, a segment over two contigs, ids out of order, or a gene-less segment."""
-    from port.extensions.segments import Segmentation
+    """Refuses non-contiguous genes, cross-contig segments, out-of-order ids and gene-less segments."""
 
     table = _table()
     labels = table.block_id.to_numpy().copy()
@@ -158,8 +151,7 @@ def test_a_labelling_that_would_misalign_rows_is_refused(
 
 @pytest.mark.analytic
 def test_the_known_range_paths_minus_one_is_refused_by_name() -> None:
-    """`block_id = -1` marks rows no known range covers; it is refused as that, not as a gap."""
-    from port.extensions.segments import Segmentation
+    """`block_id = -1` (uncovered rows) is refused by that name, not as a gap."""
 
     table = _table()
     labels = table.block_id.to_numpy().copy()

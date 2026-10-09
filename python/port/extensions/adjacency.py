@@ -1,38 +1,9 @@
-"""The fixtures' lattices as adjacencies: symmetric, no self loops, boundaries reinforced (#417).
+"""Lattice adjacencies for the fixtures: symmetric, no self loops, boundaries reinforced (#417).
 
-`cnaster` builds its spatial graph as eight nearest neighbours per spot. That
-is a directed graph -- spot `i` naming `j` does not make `j` name `i` -- and
-its ICM sums a spot's own row, so the Potts term is not a symmetric coupling.
-On the dev instance 344 of 12,800 entries have no transpose, and `--sal`'s
-conversion kept the upper triangle and dropped them silently.
-
-**For now**, the lattices the fixtures plant are built directly:
-
-| lattice | coordinates | neighbours | `z` |
-| --- | --- | --- | --- |
-| square | integer `(row, col)` | `(0, ±1)`, `(±1, 0)`, `(±1, ±1)` | 8 |
-| triangular | Visium array: `col` steps by 2, odd rows offset | `(0, ±2)`, `(±1, ±1)` | 6 |
-
-The square lattice keeps its diagonals because `cnaster`'s eight nearest
-neighbours on a square grid are exactly these eight: the interior graph is
-`cnaster`'s, and what changes is symmetry and the boundary. Dropping them
-(`cnaster.adjacency.lattice_map`'s `square: 4`) halves the coupling at a
-fixed `spatial_weight`; measured on the dev instance, clone ARI 0.3851.
-
-**Boundary reinforcement.** A spot on the boundary has fewer neighbours, so
-the smoothing it feels is weaker. Each edge carries
-`w_ij = (z / d_i + z / d_j) / 2`, with `d` the spot's neighbour count: `1`
-between two interior spots, above `1` wherever an end is on the boundary,
-and symmetric by construction. Exact balancing -- every weighted degree `z`
--- converges for the triangular lattice and fails for the four-neighbour
-square one, which is bipartite; the closed form is used for both kinds.
-
-Coordinates that are neither lattice are refused rather than approximated;
-the general construction is #417's future work.
-
-`port.patch.spatial.lattice_multislice_adjacency` is the swap that installs
-these over `cnaster`'s builder; what is here replaces nothing, so it lives
-under `extensions/` (#274).
+`knn` (default) is `cnaster`'s directed k-nearest construction with `k` the
+neighbourhood's coordination; `lattice` takes the offsets exactly, weighting
+each edge `(z / d_i + z / d_j) / 2`. Square (Moore, `z = 8`, or 4) and
+triangular (Visium, `z = 6`) only; other coordinates are refused.
 """
 
 from __future__ import annotations
@@ -71,10 +42,7 @@ OFFSETS: dict[str, tuple[tuple[int, int], ...]] = {
 }
 
 Construction = Literal["knn", "lattice"]
-"""`knn`: each spot's `z` nearest, `cnaster`'s directed construction with `k`
-set by the neighbourhood rather than fixed at eight -- a boundary spot reaches
-farther to keep `k`, which is its reinforcement. `lattice`: the
-neighbourhood's offsets exactly, symmetric, with boundary edges reinforced."""
+"""`knn`: each spot's `z` nearest, directed; `lattice`: the neighbourhood's offsets, symmetric, reinforced."""
 
 ENVIRONMENT = {"construction": "PORT_ADJACENCY", "square": "PORT_SQUARE_NEIGHBOURHOOD"}
 DEFAULTS: dict[str, str] = {"construction": "knn", "square": "moore"}
@@ -87,10 +55,7 @@ CHOICES: dict[str, tuple[str, ...]] = {
 def adjacency_setting(name: str) -> str:
     """The construction or the square grid's neighbourhood, refusing a typo.
 
-    **Read from the environment** (`ENVIRONMENT`), not bound at install: a
-    stated departure from rule 1 of T- #617, held by
-    `tests/test_environment_reads.py`. Unset, the defaults are `cnaster`'s
-    construction (`knn`) and the Moore neighbourhood.
+    Read from the environment (`ENVIRONMENT`), a stated departure from rule 1 of T- #617.
     """
     import os
 
@@ -112,16 +77,10 @@ def neighbourhood_for(kind: Lattice) -> Neighbourhood:
 
 
 AXIS: tuple[tuple[int, int], ...] = ((0, 1), (0, -1), (1, 0), (-1, 0))
-"""What only a square grid has: a triangular layout's diagonals are its own too."""
+"""Axis offsets, which only a square grid has."""
 
 RECIPROCATED = 0.6
-"""Of a kNN graph's edges, the share whose transpose is also an edge must be
-at least this: asymmetry belongs at the boundary, where a spot reaches
-farther to keep `k`. Counted over edges rather than spots because a small
-slice is mostly boundary: per spot the fixtures' 6 x 5 lattices realize
-0.40, per edge 0.85. Realized per edge, Moore: 0.987 at 40 x 40, 0.942 at
-12 x 10, 0.781 at 4 x 4; the least over every fixture shape and
-neighbourhood is 0.775 (4 x 5, square)."""
+"""Minimum share of a kNN graph's edges whose transpose is also an edge; fixtures realize at least 0.775."""
 
 TOLERANCE = 1e-12
 """On a reinforced weight: the rule is exact arithmetic on small integers."""
@@ -175,13 +134,7 @@ def _neighbours(
 
 
 def lattice_kind(coords: np.ndarray) -> Lattice:
-    """`square` if any spot has an axis neighbour at unit distance, else `triangular`.
-
-    A triangular (Visium) layout has no pair at `(0, ±1)` or `(±1, 0)`: columns
-    step by two within a row and change parity between rows. A square grid
-    has both kinds of offset -- its diagonals are triangular ones -- so the
-    axis test is the one that decides.
-    """
+    """`square` if any spot has an axis neighbour at unit distance, else `triangular`."""
     grid = _integer_coords(coords)
 
     if grid.shape[0] < 2:
@@ -227,12 +180,8 @@ def _reinforced(
 def knn_adjacency(coords: np.ndarray, neighbourhood: Neighbourhood) -> Any:
     """Each spot's `z` nearest as unit edges, directed, no self loop.
 
-    `cnaster`'s construction (`construct_lattice_adjacency`) with `k` the
-    neighbourhood's coordination instead of a fixed eight, measured in the
-    lattice's own embedding: unit spacing on a square grid, a unit hexagon
-    for Visium array positions. Every row carries exactly `k` edges, so a
-    boundary spot is not under-coupled: it reaches farther instead. On a
-    square grid with `k = 8` this is `cnaster`'s graph entry for entry.
+    `cnaster`'s `construct_lattice_adjacency` with `k = z`, in the lattice's
+    own embedding; on a square grid with `k = 8` it is `cnaster`'s graph.
     """
     from scipy.spatial import cKDTree
 
@@ -250,8 +199,7 @@ def knn_adjacency(coords: np.ndarray, neighbourhood: Neighbourhood) -> Any:
 
     _, nearest = cKDTree(grid).query(grid, k=k + 1)
     rows = np.repeat(np.arange(n_spots), k)
-    # NB the query's first column is the spot itself at distance zero, as
-    #    `cnaster` drops it; positions are distinct, so it is never a tie.
+    # NB the first column is the spot itself, dropped as `cnaster` does.
     cols = np.asarray(nearest)[:, 1:].reshape(-1)
     adjacency = sp.csr_matrix(
         (np.ones(rows.size), (rows, cols)), shape=(n_spots, n_spots)
@@ -283,15 +231,11 @@ def validate_adjacency(
     *,
     construction: Construction = "lattice",
 ) -> None:
-    """Raise unless the graph is one the HMRF may be given.
+    """Raise `AdjacencyError` unless the graph is one the HMRF may be given.
 
-    Both constructions: square, and no self loop. `knn` may be asymmetric --
-    it is directed by construction -- but only at the edges of the lattice:
-    at least `RECIPROCATED` of its edges have their transpose, and every
-    row carries exactly `z` edges of unit weight, so `spatial_weight` is the
-    coupling (#420) and no spot is under-coupled. `lattice` must be symmetric, and each weight the
-    reinforced `(z / d_i + z / d_j) / 2` for the neighbour counts the pattern
-    gives, to `TOLERANCE`. `z` is the largest row count when not given.
+    Both: square, no self loop. `knn`: exactly `z` unit edges per row (#420),
+    at least `RECIPROCATED` reciprocated. `lattice`: symmetric, reinforced
+    weights to `TOLERANCE`. `z` defaults to the largest row count.
     """
     matrix = sp.csr_matrix(adjacency, dtype=np.float64)
     matrix.eliminate_zeros()

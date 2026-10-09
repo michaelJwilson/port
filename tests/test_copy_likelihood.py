@@ -1,23 +1,32 @@
 """`port.extensions.copy_likelihood` against pseudobulks drawn from its own model (#327).
 
-The shared decode claims that, with the path held, the pseudobulk
-likelihood the EM fits identifies each state's integer `(A, B)`. So the
-referee is the truth the counts were drawn from: a clone-sized pseudobulk
-under the shifted NB/BB model, planted `(A, B)` including totals above
-`cnaster`'s 6 (`end2end` against the planted pairs). The decode is held to
-be the likelihood's own maximum over single-state moves (`analytic`).
+Referees: the planted `(A, B)` including totals above `cnaster`'s 6 (`end2end`), and the
+likelihood's own maximum over single-state moves (`analytic`).
 """
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+import matplotlib as mpl
 import numpy as np
+import pandas as pd
 import pytest
-
-if TYPE_CHECKING:
-    from port.extensions.copy_likelihood import Pseudobulk
+from port.extensions.copy_likelihood import (
+    PURITY_GRID,
+    Pseudobulk,
+    _monotone,
+    candidates,
+    pair_rate_and_share,
+    pseudobulk_log_pmf,
+)
+from port.patch import integer_copy
+from port.sandbox.extensions.shared_decode import shared_decode
+from port.scripts.run_cnaster import main
+from port.sim.run_config import isolated_run, write_for_run
+from port.sim.truth import critical_instance
 
 PLANTED = np.array([(1, 1), (2, 1), (1, 3), (2, 2), (4, 6), (5, 4)], dtype=np.int64)
 """`cnaster`'s convention, `p = A / (A + B)`; state 0 is the neutral one."""
@@ -27,8 +36,6 @@ OCCUPANCY = (700, 60, 60, 60, 60, 60)
 
 
 def _draw(seed: int = 3, *, shift: bool = True) -> tuple[np.ndarray, Pseudobulk]:
-    from port.extensions.copy_likelihood import Pseudobulk
-
     rng = np.random.default_rng(seed)
     path = np.repeat(np.arange(len(OCCUPANCY)), OCCUPANCY)
     rng.shuffle(path)
@@ -73,7 +80,6 @@ def _offset(path: np.ndarray, bulk: Pseudobulk) -> float:
 @pytest.mark.parametrize("shift", [True, False], ids=["shifted", "unshifted"])
 def test_the_shared_decode_recovers_every_planted_pair(shift: bool) -> None:
     """All six states exactly, `(4, 6)` and `(5, 4)` above cnaster's cap included."""
-    from port.extensions.copy_likelihood import shared_decode
 
     path, bulk = _draw(shift=shift)
     fitted = shared_decode(
@@ -90,12 +96,6 @@ def test_the_shared_decode_recovers_every_planted_pair(shift: bool) -> None:
 @pytest.mark.analytic
 def test_the_shared_decode_is_each_states_likelihood_maximum() -> None:
     """With the path held, no other pair for any one state raises the likelihood."""
-    from port.extensions.copy_likelihood import (
-        candidates,
-        pair_rate_and_share,
-        pseudobulk_log_pmf,
-        shared_decode,
-    )
 
     path, bulk = _draw()
     shift = _offset(path, bulk)
@@ -125,8 +125,6 @@ def test_the_shared_decode_is_each_states_likelihood_maximum() -> None:
 
 @pytest.mark.infra
 def test_the_candidates_are_every_pair_under_the_cap() -> None:
-    from port.extensions.copy_likelihood import candidates
-
     lattice = candidates(12)
 
     assert len(lattice) == 90
@@ -137,27 +135,12 @@ def test_the_candidates_are_every_pair_under_the_cap() -> None:
 def _entry_point_run(
     tmp_path: Path, argv: tuple[str, ...]
 ) -> tuple[Any, list[Any], Any]:
-    """`run_cnaster_port` on the two-state copy lattice: the critical instance
-    with `(1, 1)` and `(1, 2)` planted. Returns the written segment table, the
-    decodes it made, and the run's output directory."""
-    import warnings
-
-    import matplotlib as mpl
-    import pandas as pd
-    from port.patch import integer_copy
-    from port.scripts.run_cnaster import main
-    from port.sim.inputs import write_tmp_inputs
-    from port.sim.run_config import isolated_run, write_run_cnaster_config
-    from port.sim.truth import critical_instance
-    from port.sim.unsegment import unsegment
+    """`run_cnaster_port` on the critical instance with `(1, 1)` and `(1, 2)` planted: segment table, decodes, output dir."""
 
     mpl.use("Agg")
     truth = critical_instance(copy_lattice=True)
-    written = write_tmp_inputs(
-        truth, unsegment(truth, flip_every=0, unassigned_genes=0), tmp_path
-    )
-    config = write_run_cnaster_config(
-        written, truth, max_iter_outer=1, max_iter=3, n_states=2
+    written, config = write_for_run(
+        truth, tmp_path, max_iter_outer=1, max_iter=3, n_states=2
     )
     with isolated_run(), warnings.catch_warnings(), integer_copy.recorded() as decodes:
         warnings.simplefilter("ignore")
@@ -171,19 +154,7 @@ def _entry_point_run(
 def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
     tmp_path: Path,
 ) -> None:
-    """The default decode, `lattice` (#370), written per bin to the files (#371).
-
-    Every clone-bin of the segment table is the planted pair, phase folded;
-    each clone's `A` and `B` columns are the lattice decode's pairs bin for
-    bin, so the file carries the per-bin decode rather than a per-state
-    summary of it; and `copy_decode.tsv` records the fractions it fitted,
-    both 1 on this pure instance.
-
-    This is the test that found #371's M-step defect: the fraction's bounded
-    search returned 0.546 and wrote `(1, 3)`, 3,363 nats below the planted
-    `(1, 2)` at fraction 1.
-    """
-    import pandas as pd
+    """The default `lattice` decode (#370) writes the planted pair per clone-bin, at fitted fractions 1 (#371)."""
 
     copies, seen, output = _entry_point_run(tmp_path, ())
 
@@ -206,35 +177,9 @@ def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
     assert fitted["tumour_fraction"].to_list() == pytest.approx([1.0, 1.0])
 
 
-@pytest.mark.patch
-def test_the_shared_decode_is_still_one_flag_away(tmp_path: Path) -> None:
-    """`--copy-decode shared` writes #327's per-state pairs through the path.
-
-    Each clone's written `A` and `B` are the shared decode's state pairs
-    indexed by that clone's `Z`, as before #371: the flag restores the
-    previous output rather than approximating it.
-    """
-    copies, seen, _ = _entry_point_run(tmp_path, ("--copy-decode", "shared"))
-
-    assert len(seen) == 1
-    states = seen[0].states
-
-    for column in ("clone0", "clone1"):
-        path = copies[f"{column} Z"].to_numpy().astype(np.int64) % len(states)
-        written = copies[[f"{column} A", f"{column} B"]].to_numpy()
-        np.testing.assert_array_equal(written, states[path])
-
-
 @pytest.mark.analytic
 def test_the_fraction_step_never_goes_uphill() -> None:
-    """A bounded search on an objective whose minimum is its endpoint.
-
-    `f(x) = min((x - 0.2)^2 + 0.05, 1 - x)` is least at `x = 1`, with a
-    shallower basin at 0.2 that a bounded Brent search settles in, since it
-    never scores the endpoint. The step returns the endpoint, and from any
-    start never a value above the start's (#371).
-    """
-    from port.extensions.copy_likelihood import PURITY_GRID, _monotone
+    """The bounded fraction step never returns a value above its start's, on a minimum at the endpoint (#371)."""
 
     def objective(x: float) -> float:
         return min((x - 0.2) ** 2 + 0.05, 1.0 - x)

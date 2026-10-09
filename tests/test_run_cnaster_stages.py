@@ -1,13 +1,7 @@
-"""The stages `run_cnaster` calls, one at a time.
+"""The stages `run_cnaster` calls, one at a time, against the planted truth of one fixture.
 
-`tests/test_run_cnaster_round_trip.py` establishes that the pipeline reaches
-the end; it asserts nothing about what any stage computed. These do, on the
-same fixture, so a failure names a stage rather than the run.
-
-**The bins are renumbered downstream of `normal_baf_bin_filter`** (#105), so a
-stage after it cannot be refereed against the planted bin index. Every test
-here sits upstream of that filter or is indifferent to it, and the ones that
-cannot be are #105's to unblock.
+Bins are renumbered after `normal_baf_bin_filter` (#105), so tests sit upstream of it or
+are indifferent.
 """
 
 from collections.abc import Iterator
@@ -16,6 +10,27 @@ from typing import Any
 
 import numpy as np
 import pytest
+from cnaster.config import get_global_config
+from cnaster.hmm_initialize import gmm_init
+from cnaster.hmm_nophasing import get_log_transmat
+from cnaster.hmm_phased import hmm_phased
+from cnaster.hmrf_utils import clone_stack_obs
+from cnaster.io import (
+    construct_df_clone_label,
+    get_sample_list,
+    load_input_data,
+    read_tumor_prop,
+)
+from cnaster.normal_spot import (
+    determine_normal_baseline,
+    determine_normal_candidates,
+    filter_normal_diffexp,
+    normal_baf_bin_filter,
+)
+from cnaster.omics import binned_gene_snp
+from cnaster.phasing import initial_phase_given_partition
+from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
+from cnaster.spatial import initialize_clones
 from port.sim.inputs import (
     WrittenInputs,
     read_to_bins,
@@ -30,8 +45,10 @@ from port.sim.run_config import (
 )
 from port.sim.truth import CoreInferenceTruth, balanced_clone, core_inference_truth
 from port.sim.unsegment import unsegment
+from scipy.sparse import eye as sparse_eye
 
-from tests.fixtures import END_TO_END_LATTICE
+from tests.adapters import cnaster_initial_phase
+from tests.fixtures import END_TO_END_LATTICE, end_to_end_truth
 
 pytestmark = pytest.mark.preprocessing
 
@@ -40,103 +57,39 @@ BALANCED_STATE = 0
 """The planted diploid balanced state, which casts no phase vote (#106)."""
 
 TRIVIAL_AGREEMENT = 1.0 - 1.0 / FLIP_EVERY
-"""What an unphased answer scores, which is why a threshold is not a test.
-
-Phase is defined up to a global complement, so a comparison against the
-planted haplotype takes the better of the two directions. Against
-`flip_every=3` an identically-zero indicator therefore scores
-`max(2/3, 1/3)` = **0.667** having flipped nothing, and any pin below that
-measures the fixture's flip rate rather than the phasing.
-
-The earlier pins here -- 0.65, realized 0.661 and 0.667 -- were exactly that
-(#122). The figures #108 recorded, 0.857 and 0.925, are above it and were
-measuring something; they were measured on the Markov-chain genome #120
-retired.
-"""
+"""Agreement an all-zero indicator scores, phase being up to a complement (#122, #120)."""
 
 STRONG_MARGIN = 0.1
 """How far from balance a planted state has to sit to count as strong."""
 
 RESOLVING_SELF_TRANSITIONS = (0.7, 0.6, 0.5)
-"""Swept `t` at which the decode resolves three states on every platform (#142).
-
-**Where the threshold sits is not reproducible, so it is not asserted.** This
-machine resolves three states from 0.85 down; a GitHub runner collapses at
-0.85 and reaches only two at 0.8. Both agree from 0.7 down, and both collapse
-at every value at or above 0.9. Those two bands are what the tests claim, and
-the boundary between them is reported rather than pinned.
-
-The fit is a non-convex optimization over a multimodal likelihood and `t`
-moves the basin, so which optimum it reaches turns on floating-point
-arithmetic -- the same platform sensitivity #147 found in `opt/fit`, here
-changing a decoded state count rather than a convergence flag.
-
-The implied segment length is `1 / (1 - t)` bins: 10 at the collapsing end,
-3.3 at the resolving one, against the 10-to-25-bin events this fixture plants.
-The prior has to be weaker than the truth before the truth is recoverable,
-which is the finding rather than any particular number.
-"""
+"""Swept `t` resolving three states on every platform; the boundary is not (#142, #147)."""
 
 PHASING_SELF_TRANSITION = 1.0 - 1e-6
-"""What `phased` passes, between the two shipped values and representative."""
+"""What `phased` passes, between the two shipped values."""
 
 PHASING_EPS_BAF = 0.1
-"""`phasing.py:67`'s deadband, inside which a block casts no phase vote.
-
-A local in `initial_phase_given_partition`, so it is restated rather than
-imported; `test_no_block_casts_a_vote_because_every_one_decodes_balanced`
-fails if the value drifts, since the count it pins depends on it.
-"""
+"""`phasing.py:67`'s deadband, restated since it is a local there."""
 
 
 @pytest.fixture(scope="module")
 def planted() -> CoreInferenceTruth:
-    """One instance for the module: the stages below are pure functions of it.
-
-    **Equal bands with events in both clones** (`normal_clone=False`), the
-    layout the numbers here were measured on: with #298's normal clone the
-    bands are unequal and the rectangular partition returns them at 0.96
-    rather than exactly.
-    """
-    return core_inference_truth(
-        n_clones=2,
-        n_states=3,
-        lattice=END_TO_END_LATTICE,
-        n_obs=40,
-        n_segments=3,
-        seed=11,
-        normal_clone=False,
-    )
+    """One planted instance for the module: equal bands, events in both clones (#298)."""
+    return end_to_end_truth(normal_clone=False)
 
 
 @pytest.fixture(scope="module")
 def written(
     planted: CoreInferenceTruth, tmp_path_factory: pytest.TempPathFactory
 ) -> WrittenInputs:
-    """The fixture as files, written once for the module.
-
-    Separate from `loaded` because the prep chain needs the gene table's path
-    as well as what the loader returned, and a loader that also carried the
-    paths would be two things.
-    """
+    """The fixture as files, written once for the module."""
     root: Path = tmp_path_factory.mktemp("stages")
     return write_tmp_inputs(planted, unsegment(planted, flip_every=0), root)
 
 
 @pytest.fixture(scope="module")
 def loaded(planted: CoreInferenceTruth, written: WrittenInputs) -> Iterator[Any]:
-    """`load_input_data`'s return, from files written once for the module.
-
-    The configuration stays installed for the body of every test: these stages
-    read the global rather than taking it as an argument, and a fixture that
-    restored it on the way out would leave them reading `None`.
-
-    The pipeline's own configuration rather than the loader's subset: these
-    stages read sections the loader never touches -- `preprocessing`,
-    `hmrf`, `int_copy_num` -- so a partial global makes them raise
-    `AttributeError` rather than run.
-    """
-    from cnaster.io import load_input_data
+    """`load_input_data`'s return; the pipeline's full configuration stays installed for each test."""
 
     with written_config(write_run_cnaster_config(written, planted)) as config:
         yield load_input_data(config)
@@ -146,13 +99,7 @@ def loaded(planted: CoreInferenceTruth, written: WrittenInputs) -> Iterator[Any]
 def test_the_sample_list_is_the_one_slice_the_fixture_wrote(
     planted: CoreInferenceTruth, loaded: Any
 ) -> None:
-    """One slice in, one slice out, and every spot assigned to it.
-
-    `get_sample_list` derives the slices from `adata.obs["sample"]` by
-    removing adjacent duplicates, so a fixture written in spot order returns
-    one name however many spots carry it.
-    """
-    from cnaster.io import get_sample_list
+    """One slice in, one slice out, every spot assigned to it."""
 
     sample_list, sample_ids = get_sample_list(loaded.adata)
 
@@ -163,13 +110,7 @@ def test_the_sample_list_is_the_one_slice_the_fixture_wrote(
 
 @pytest.mark.smoke
 def test_no_tumour_proportion_file_gives_no_proportion(loaded: Any) -> None:
-    """`preprocessing.tumorprop_file: None` returns `None`, not zeros.
-
-    The distinction is load-bearing downstream: `run_core_inference` branches
-    on `single_tumor_prop is None` and an array of zeros would take the mixed
-    path with every spot called normal.
-    """
-    from cnaster.io import read_tumor_prop
+    """`preprocessing.tumorprop_file: None` returns `None`, not zeros."""
 
     assert read_tumor_prop(loaded.adata) is None
 
@@ -179,25 +120,11 @@ def test_no_tumour_proportion_file_gives_no_proportion(loaded: Any) -> None:
 def test_the_rectangular_partition_recovers_the_planted_bands(
     planted: CoreInferenceTruth, loaded: Any
 ) -> None:
-    """A partition along the axis the clones are banded on returns them.
-
-    The fixture lays clones in horizontal bands -- `labels` is a function of
-    the row alone -- so a one-by-`M` partition of the lattice is the planted
-    labelling, and the strongest claim available about the initializer is that
-    it reproduces it exactly rather than approximately.
-
-    This is what `run_cnaster` starts its outer loop from, and until now
-    nothing in this repository ran it: the solver tests supply their own
-    `initial_clone_index` and step over `spatial.py` entirely (#95).
-    """
-    from cnaster.spatial import initialize_clones
+    """The rectangular partition reproduces the planted bands exactly (#95)."""
 
     coordinates = np.asarray(loaded.coords, dtype=float)
-    # NB the bands run along `x`: `tissue_positions.csv` writes the lattice
-    #    row as `x`, and `labels` is a function of the row alone. So the
-    #    partition is `n_clones` by one, and the transpose recovers nothing --
-    #    which is the check, since a partition on the wrong axis still
-    #    partitions.
+    # NB the bands run along `x`, so the partition is `n_clones` by one; the transpose
+    # recovers nothing.
     index = initialize_clones(
         coordinates,
         np.zeros(planted.n_spots, dtype=int),
@@ -212,8 +139,7 @@ def test_the_rectangular_partition_recovers_the_planted_bands(
 
     assert sum(len(spots) for spots in index) == planted.n_spots
     assert len(index) == planted.n_clones
-    # NB the partition names its clones by position, and the fixture names
-    #    its own by band, so the two agree up to which end counts as first.
+    # NB the two agree up to which end is first.
     agreement = max(
         float(np.mean(recovered == planted.labels)),
         float(np.mean(recovered == planted.n_clones - 1 - planted.labels)),
@@ -225,15 +151,7 @@ def test_the_rectangular_partition_recovers_the_planted_bands(
 def test_the_partition_covers_every_spot_exactly_once(
     planted: CoreInferenceTruth, loaded: Any
 ) -> None:
-    """Whatever the geometry, a partition loses no spot and duplicates none.
-
-    It is **not** balanced, and that is the function working rather than
-    failing: `rectangle_partition` cuts the bounding box into equal
-    rectangles, so a 25 by 40 lattice split two ways on each axis gives
-    [260, 260, 240, 240] -- thirteen rows against twelve. `best_equal_partition`
-    is the one that balances, and it chooses among candidates this produces.
-    """
-    from cnaster.spatial import initialize_clones
+    """The partition covers every spot exactly once, though unbalanced."""
 
     coordinates = np.asarray(loaded.coords, dtype=float)
     index = initialize_clones(
@@ -250,7 +168,6 @@ def test_the_clone_label_table_carries_every_spot_once(
     planted: CoreInferenceTruth, loaded: Any
 ) -> None:
     """`construct_df_clone_label` is the run's output table, one row per spot."""
-    from cnaster.io import construct_df_clone_label
 
     table = construct_df_clone_label(
         np.asarray(loaded.barcodes),
@@ -260,8 +177,7 @@ def test_the_clone_label_table_carries_every_spot_once(
 
     assert len(table) == planted.n_spots
     assert set(table.columns) == {"sample_id", "x", "y", "clone_label"}
-    # NB the barcode is the index rather than a column, which is what the
-    #    written `clone_labels.tsv` carries in its first field.
+    # NB the barcode is the index, as `clone_labels.tsv`'s first field.
     assert table.index.nunique() == planted.n_spots
     np.testing.assert_array_equal(
         np.sort(table.clone_label.to_numpy()), np.sort(planted.labels)
@@ -270,28 +186,11 @@ def test_the_clone_label_table_carries_every_spot_once(
 
 @pytest.fixture(scope="module")
 def flipped(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Any]:
-    """An instance whose files store every third block on the other haplotype.
+    """An instance whose files store every third block on the other haplotype."""
 
-    One block per bin (`blocks_per_bin=(1, 2)` draws from `[1, 2)`), so a
-    flipped block is a flipped bin and the planted phase is a vector over the
-    segmentation `cnaster` derives. With several blocks to a bin the planted
-    phase would be ambiguous wherever they disagreed, which is a fixture
-    question rather than a phasing one.
-    """
-    from cnaster.io import load_input_data
-
-    # NB `self_transition` is loosened from the default 0.99: over sixty bins
-    #    a 0.99 chain barely leaves the state it starts in, and starting in
-    #    the balanced one leaves no block that carries a phase at all.
-    # NB a phase-rich genome, deliberately. Phase is defined only where the
-    #    allele share is imbalanced, and #120 made the default genome mostly
-    #    neutral -- 78 per cent of this instance's bins, which leaves two
-    #    blocks carrying a phase out of sixty. That is the right default and
-    #    the wrong instance for this test, so the events here cover the
-    #    genome instead of decorating it -- and so it has no normal clone
-    #    (`normal_clone=False`, #298), which would leave half the spots with
-    #    no phase to recover. With one, the decode no longer collapses: 18,
-    #    84 and 18 bins over the three states at the fit's second iteration.
+    # NB `self_transition` loosened from 0.99 so the chain leaves its start state.
+    # NB a phase-rich genome with no normal clone (#120, #298), so most blocks carry a
+    # phase.
     truth = core_inference_truth(
         n_clones=2,
         n_states=3,
@@ -316,44 +215,10 @@ def flipped(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Any]:
 
 @pytest.fixture(scope="module")
 def phased(flipped: Any) -> Any:
-    """`initial_phase_given_partition` on the flipped instance, run once.
-
-    The fit inside it is the expensive part, and the tests below read the same
-    output from three sides: the phase it returned, the decode that produced
-    it, and the segmentation it refined.
-    """
-    from cnaster.hmm_nophasing import get_log_transmat
-    from cnaster.phasing import initial_phase_given_partition
-
+    """`initial_phase_given_partition` on the flipped instance, run once."""
     truth, pre_image, loaded, written = flipped
     blocks = read_to_bins(written, loaded=loaded, through="blocks").blocks
-
-    res, recovered, refined = initial_phase_given_partition(
-        blocks.X,
-        blocks.lengths,
-        # NB BAF only: a zero exposure is what `run_cnaster` passes here too,
-        #    and it is `(n_obs, n_spots)` rather than a vector.
-        np.zeros_like(blocks.total_bb_RD),
-        blocks.total_bb_RD,
-        None,
-        # NB the planted partition, as `run_cnaster` passes `initialize_clones`'
-        #    output. One clone over every spot pools clones whose states
-        #    differ, and the imbalance the vote reads washes out in the mix.
-        truth.clone_index,
-        truth.n_states,
-        get_log_transmat(truth.n_states, 1.0 - 1e-6),
-        np.zeros(blocks.X.shape[0]),
-        "sp",
-        1.0 - 1e-6,
-        0,
-        fix_NB_dispersion=False,
-        shared_NB_dispersion=True,
-        fix_BB_dispersion=False,
-        shared_BB_dispersion=True,
-        max_iter=100,
-        tol=1e-3,
-        threshold=0.5,
-    )
+    res, recovered, refined = cnaster_initial_phase(truth, blocks, 1.0 - 1e-6)
 
     return truth, pre_image, blocks, res, recovered, refined
 
@@ -361,12 +226,7 @@ def phased(flipped: Any) -> Any:
 def _recovered_on(
     recovered: np.ndarray, planted: np.ndarray, mask: np.ndarray
 ) -> float:
-    """Agreement over `mask`, taking phase up to a global complement.
-
-    Which is what makes an absolute threshold meaningless below
-    `TRIVIAL_AGREEMENT`: the better of the two directions is reported, so an
-    answer that flipped nothing still scores the fixture's unflipped fraction.
-    """
+    """Agreement over `mask`, phase taken up to a global complement."""
     return max(
         float(np.mean(recovered[mask] == planted[mask])),
         float(np.mean(recovered[mask] != planted[mask])),
@@ -377,23 +237,7 @@ def _recovered_on(
 def test_no_block_casts_a_vote_because_every_one_decodes_balanced(
     phased: Any,
 ) -> None:
-    """**`phase_indicator` comes back zero everywhere: nothing is phased (#122).**
-
-    Not an absence of signal. 114 of this instance's 120 clone-blocks are
-    planted in a non-balanced state, at `p` of 0.58 or 0.88. What happens is
-    that `phasing.py:121` fits the clone-stacked phased HMM, `:141` decodes it,
-    and **every block in both clones decodes to state 0**, whose fitted BAF is
-    0.50004. `:156` then reads a block within `EPS_BAF` of balance as
-    normal-like and `:162` sets its vote to `-1`, so nothing votes and `:174`
-    leaves the zero default in place.
-
-    The fit also drives the other two states to 0.99999 and 0.108, both at the
-    boundary of the parameter -- the same collapse seen from the parameters
-    rather than from the decode.
-
-    Pinned as `cnaster`'s behaviour, not as the method's: the referee is the
-    module's own arithmetic, and what the method claims is the next test.
-    """
+    """`phase_indicator` is zero everywhere: every block decodes balanced, so none votes (#122)."""
     truth, _, _, res, recovered, _ = phased
 
     fitted_p = np.asarray(res["new_p_binom"]).ravel()
@@ -419,33 +263,13 @@ def test_no_block_casts_a_vote_because_every_one_decodes_balanced(
 @pytest.mark.end2end
 @pytest.mark.xfail(strict=True, reason="the vote returns no phase at all (#122)")
 def test_the_phasing_recovers_the_planted_haplotype(phased: Any) -> None:
-    """Every block stored on the other haplotype is the one phasing flips back.
-
-    The claim `phasing.py` exists to support, and the one the round trip
-    cannot make: it drives the stage but compares nothing. Written against a
-    fixture that plants the answer -- `unsegment(flip_every=3)` stores every
-    third block's B count as `total - B`, and nothing in the files says which
-    ones.
-
-    **The threshold is `TRIVIAL_AGREEMENT`, rather than a number beside it.**
-    An absolute pin is what let #122 sit here unnoticed: 0.661 cleared a
-    threshold of 0.65 while the indicator was constant. Recovery has to beat
-    what flipping nothing already scores, or it is not recovery.
-
-    Two regimes are still excluded by `cnaster`'s own rule: a block whose state
-    is balanced casts no vote (#106), and phase is defined up to a global
-    complement.
-
-    `strict`, so that a fix upstream turns this red rather than passing
-    quietly.
-    """
+    """Phasing flips back the planted flipped blocks above `TRIVIAL_AGREEMENT` (#122, #106)."""
     truth, pre_image, _, _, recovered, _ = phased
 
     planted = ~pre_image.phase_indicator
     assert recovered.shape == planted.shape
 
-    # The blocks the rule can speak for: those whose planted state is not the
-    # balanced one, since a balanced block casts no vote.
+    # Blocks whose planted state is not balanced, the only ones that vote.
     per_block = truth.states[:, : recovered.size]
     speakable = np.all(per_block != BALANCED_STATE, axis=0)
     assert speakable.sum() > 0.25 * recovered.size, "too few blocks carry a phase"
@@ -456,7 +280,6 @@ def test_the_phasing_recovers_the_planted_haplotype(phased: Any) -> None:
         f"{TRIVIAL_AGREEMENT:.3f} for flipping nothing"
     )
 
-    # And the subset a fit cannot mistake for balance.
     strong = np.any(np.abs(truth.p_binom - 0.5)[per_block] >= STRONG_MARGIN, axis=0)
     strong_agreement = _recovered_on(recovered, planted, strong)
     assert strong_agreement > TRIVIAL_AGREEMENT, (
@@ -466,14 +289,7 @@ def test_the_phasing_recovers_the_planted_haplotype(phased: Any) -> None:
 
 @pytest.fixture(scope="module")
 def phase_inputs(flipped: Any) -> Any:
-    """The clone-stacked arrays and the initializer's output, as `phasing.py`
-    builds them (`:75`, `:100`, `:105`), so the tests below can take the fit
-    apart without re-deriving the pre-image.
-    """
-    from cnaster.hmm_initialize import gmm_init
-    from cnaster.hmm_nophasing import get_log_transmat
-    from cnaster.hmrf_utils import clone_stack_obs
-    from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
+    """Clone-stacked arrays and initializer output as `phasing.py:75-105` builds them."""
 
     truth, _, loaded, written = flipped
     blocks = read_to_bins(written, loaded=loaded, through="blocks").blocks
@@ -514,7 +330,6 @@ def _decode_occupancy(result: Any, n_states: int, n_clones: int) -> np.ndarray:
 
 def _fit(phase_inputs: Any, *, t: float, max_iter: int, planted: bool) -> Any:
     """`phasing.py:121`'s call, with the starting point and `t` as knobs."""
-    from cnaster.hmm_phased import hmm_phased
 
     truth, stacked, init_log_mu, init_p_binom, _ = phase_inputs
     if planted:
@@ -543,15 +358,7 @@ def _fit(phase_inputs: Any, *, t: float, max_iter: int, planted: bool) -> Any:
 
 @pytest.mark.warning
 def test_the_phasing_refuses_a_non_zero_exposure(flipped: Any) -> None:
-    """**The BAF-only call is enforced, not chosen (#122).**
-
-    `phasing.py:64` opens with `assert np.all(single_base_nb_mean == 0)`, so
-    the zero exposure `run_cnaster` passes is the only exposure the function
-    accepts. That eliminates the first of #122's three candidates outright:
-    the collapse cannot be attributed to the call site, because no other call
-    is reachable.
-    """
-    from cnaster.phasing import initial_phase_given_partition
+    """`initial_phase_given_partition` refuses a non-zero exposure, ruling out the call site (#122)."""
 
     truth, _, _, _ = flipped
 
@@ -581,13 +388,7 @@ def test_the_phasing_refuses_a_non_zero_exposure(flipped: Any) -> None:
 
 @pytest.mark.end2end
 def test_the_initializer_recovers_the_planted_minor_bafs(phase_inputs: Any) -> None:
-    """**And the second candidate is eliminated: `gmm_init` is right (#122).**
-
-    Asked for a minor-BAF initialization (`only_minor=True`), it returns
-    `[0.1197, 0.4191, 0.5000]` against the planted minor BAFs of
-    `[0.12, 0.42, 0.50]` -- every state to within 0.001. Whatever destroys the
-    decode, it is not the starting point handed to the fit.
-    """
+    """`gmm_init` recovers the planted minor BAFs within 0.001 (#122)."""
     truth, _, _, init_p_binom, _ = phase_inputs
 
     planted_minor = np.sort(np.minimum(truth.p_binom, 1.0 - truth.p_binom))
@@ -600,19 +401,7 @@ def test_the_initializer_recovers_the_planted_minor_bafs(phase_inputs: Any) -> N
 def test_the_fit_collapses_the_decode_between_its_first_two_iterations(
     phase_inputs: Any,
 ) -> None:
-    """**So it is the fit, and it happens at iteration two (#122).**
-
-    Started from the planted minor BAFs, one Baum-Welch iteration still holds
-    them -- `[0.1198, 0.4194, 0.6961]` -- and the decode uses **all three**
-    states, 28 / 40 / 52 clone-blocks. Two iterations put every one of the 120
-    on a single state, and it never comes back: at 20 iterations the fit has
-    settled on `[0.1048, 0.5000, 1.0000]`, one state at the pooled mean and one
-    parked at the boundary with nothing assigned to it.
-
-    The truth is representable and decodable, then, and the fit walks away
-    from it. This is the attribution #122 asks for, and it holds from the
-    planted starting point, so it is not a basin the initializer chose.
-    """
+    """From the planted start the decode collapses to one state at iteration two (#122)."""
     truth, _, _, _, n_clones = phase_inputs
 
     first = _decode_occupancy(
@@ -632,13 +421,7 @@ def test_the_fit_collapses_the_decode_between_its_first_two_iterations(
 
 @pytest.mark.snapshot
 def test_the_refinement_conserves_every_block(phased: Any) -> None:
-    """The segmentation `initial_phase_given_partition` hands on.
-
-    Split from the recovery claim because it holds whatever the vote did: the
-    refinement redistributes blocks between contigs and is not allowed to lose
-    or invent one. Kept live rather than folded into the `xfail` above, which
-    would have taken this pin down with it.
-    """
+    """The refinement conserves every block across contigs."""
     _, _, blocks, _, _, refined = phased
 
     assert refined.sum() == blocks.X.shape[0], "the refinement lost a block"
@@ -653,18 +436,7 @@ def test_the_refinement_conserves_every_block(phased: Any) -> None:
 def test_the_decode_collapses_at_every_self_transition_down_to_nine_tenths(
     phase_inputs: Any, t: float
 ) -> None:
-    """Seven values spanning seven orders of magnitude in `1 - t`, all collapsing.
-
-    #142, absorbing #129's four-value sweep: that test asserted the same
-    thing over a subset of these values with an identical body, so it is
-    gone and its one value #142 lacked -- `PHASING_SELF_TRANSITION` -- is
-    here. Every value puts all 120 clone-blocks on one state, on this
-    machine and on a GitHub runner alike.
-
-    `0.9` implies a ten-bin segment, already *shorter* than the events the
-    fixture plants, and it still collapses. Every value `cnaster` ships is in
-    this band.
-    """
+    """Every `t` from 0.9 to `PHASING_SELF_TRANSITION` collapses the decode (#142, #129)."""
     truth, _, _, _, n_clones = phase_inputs
 
     occupancy = _decode_occupancy(
@@ -679,21 +451,7 @@ def test_the_decode_collapses_at_every_self_transition_down_to_nine_tenths(
 def test_the_decode_resolves_once_the_prior_is_weak_enough(
     phase_inputs: Any, t: float
 ) -> None:
-    """**The instance is decodable, so the collapse is the prior's doing.**
-
-    The lower band, and the half of #142 that matters: three states come back
-    once `t` is weak enough, so #122's collapse is the fit's and not the
-    data's -- the attribution #129 rested on, measured directly.
-
-    Only values that resolve on both platforms are asserted. The boundary
-    itself moves between them, and `RESOLVING_SELF_TRANSITIONS` says why it is
-    reported instead of pinned.
-
-    `zenodo_sim_config.yaml` sets `t = 0.9999999` and `t_phaseing = 0.99999`,
-    implying segments of ten million and one hundred thousand bins against a
-    sixty-bin genome. Those are not priors on segment length; they assert one
-    segment.
-    """
+    """Three states resolve at `RESOLVING_SELF_TRANSITIONS`, so the collapse is the prior's (#142)."""
     truth, _, _, _, n_clones = phase_inputs
 
     occupancy = _decode_occupancy(
@@ -708,24 +466,7 @@ def test_the_decode_resolves_once_the_prior_is_weak_enough(
 def test_resolving_the_state_count_is_not_recovering_the_parameters(
     phase_inputs: Any, t: float
 ) -> None:
-    """**A weaker prior buys the state count and not the states (#142).**
-
-    Wherever the decode resolves, the fit still does not recover all three
-    planted minor BAFs. On this machine at `t = 0.5` the folded fit is
-    `[0.129, 0.212, 0.494]` against planted `[0.12, 0.42, 0.50]`: the two
-    extremes land, the middle one is out by 0.21.
-
-    So a fix for #122 that stopped at the state count would be measuring the
-    wrong thing. Asserted as a count of recovered parameters rather than
-    against those numbers, which are as platform-dependent as the threshold
-    is -- the claim is that the set is incomplete, not which member is missing.
-
-    The middle state does return at `t = 0.4`, within 0.01, with the occupancy
-    changing character to 66/17/37. That is four orders below anything
-    `cnaster` ships and well past a defensible prior, so it is recorded here
-    rather than swept: it says the parameter is reachable, not that the value
-    is usable.
-    """
+    """Where the decode resolves, not all three planted minor BAFs are recovered (#142)."""
     truth, _, _, _, _ = phase_inputs
 
     fitted = np.asarray(
@@ -742,35 +483,12 @@ def test_resolving_the_state_count_is_not_recovering_the_parameters(
 
 
 NORMAL_BASELINE_TOLERANCE = 0.15
-"""Total variation between the fitted normal baseline and the planted one.
-
-Realized 0.101 on this fixture. The baseline is a per-bin **share** over the
-candidate spots, so the comparison is between two distributions over its 40
-bins and total variation is what states it: a per-bin relative error is
-dominated by the low-count bins (median 12 per cent, 95th percentile 56) and
-says more about the draw than about the stage.
-"""
+"""Total-variation bound between fitted and planted normal baseline shares."""
 
 
 @pytest.fixture(scope="module")
 def normal_stage(planted: Any, loaded: Any) -> tuple[Any, np.ndarray, np.ndarray]:
-    """The normal stage run once: its candidate mask and its baseline.
-
-    `determine_normal_candidates` reads a clone assignment and per-clone BAF
-    profiles; the fixture knows both, so neither is taken from a fit. That is
-    what makes the claims below end-to-end against planted truth rather than
-    an agreement between two of `cnaster`'s own stages.
-
-    Module-scoped because the three assertions are three claims about one
-    run, not three runs: repeating the stage per test would treble a
-    thirty-second call to restate the same arrays.
-    """
-    from cnaster.config import get_global_config
-    from cnaster.normal_spot import (
-        determine_normal_baseline,
-        determine_normal_candidates,
-    )
-    from scipy.sparse import eye as sparse_eye
+    """The normal stage run once from the planted clones and BAF profiles."""
 
     truth = planted
     config = get_global_config()
@@ -795,18 +513,7 @@ def normal_stage(planted: Any, loaded: Any) -> tuple[Any, np.ndarray, np.ndarray
 def test_the_normal_candidates_are_the_planted_balanced_clone(
     normal_stage: tuple[Any, np.ndarray, np.ndarray],
 ) -> None:
-    """**The stage selects the clone the fixture planted as balanced (#160).**
-
-    `cnaster` picks by the smallest BAF deviation from 0.5, summed over the
-    genome with a 0.05 deadband. The fixture plants by copy state: one clone
-    sits at the balanced state in more of its bins than any other. The two
-    rules are different, so their agreeing is a claim rather than a tautology,
-    and it is the claim the whole normal-baseline path rests on.
-
-    Every candidate must come from that clone. A candidate drawn from a clone
-    carrying events would put tumour coverage into the baseline every later
-    stage divides by.
-    """
+    """Normal candidates all come from the planted balanced clone (#160)."""
     truth, candidate, _ = normal_stage
 
     planted_balanced = balanced_clone(truth)
@@ -822,17 +529,7 @@ def test_the_normal_candidates_are_the_planted_balanced_clone(
 def test_the_normal_baseline_follows_the_planted_exposure(
     normal_stage: tuple[Any, np.ndarray, np.ndarray],
 ) -> None:
-    """**The baseline is the planted exposure over the spots it selected (#160).**
-
-    `determine_normal_baseline` sums the read-depth channel over the candidate
-    spots and normalizes, so it estimates the per-bin share of the library the
-    normal population carries. The fixture planted that share as
-    `base_nb_mean`, and the normal clone sits at `mu = 1` in most of its bins,
-    so the planted expectation is the exposure itself.
-
-    Every later stage divides by this baseline, so an error here is an error
-    in every copy ratio the pipeline reports. Nothing checked it before.
-    """
+    """The baseline is the planted exposure within `NORMAL_BASELINE_TOLERANCE` TV (#160)."""
     truth, candidate, rdr_normal = normal_stage
 
     planted_share = np.asarray(truth.base_nb_mean)[:, candidate].sum(axis=1)
@@ -850,12 +547,7 @@ def test_the_normal_baseline_follows_the_planted_exposure(
 def test_the_normal_baseline_is_a_distribution_over_bins(
     normal_stage: tuple[Any, np.ndarray, np.ndarray],
 ) -> None:
-    """Conservation: the baseline is a share, so it sums to one.
-
-    Holds of any correct implementation -- the stage divides by its own total
-    -- and it is what makes the total-variation comparison above a comparison
-    between two distributions rather than between two scales.
-    """
+    """The baseline sums to one."""
     _, _, rdr_normal = normal_stage
 
     assert float(np.sum(rdr_normal)) == pytest.approx(1.0, abs=1e-12)
@@ -863,24 +555,11 @@ def test_the_normal_baseline_is_a_distribution_over_bins(
 
 
 SHIPPED_NORMAL_CONFIDENCE = (0.01, 0.99)
-"""`zenodo_sim_config.yaml`'s `quality.normal_allele_specific_confidence`.
-
-`python/port/sim/run_config.py` widens it to `(0.0, 1.0)` so the fixture's bins survive
-into the round trip, so the shipped value is restated here and passed
-explicitly: what the filter does at what ships is the claim, and a test reading
-the widened configuration would be measuring the widening.
-"""
+"""The shipped `quality.normal_allele_specific_confidence`, which the run config widens."""
 
 
 def _prep_chain(loaded: Any, written: WrittenInputs) -> tuple[Any, Any, Any]:
-    """The five `omics` calls `run_cnaster` makes between loading and binning.
-
-    Returns the gene-SNP table, the binned counts, and the per-bin table the
-    normal stage reads. `tests/test_run_cnaster_prep.py` asserts this chain
-    recovers the planted segmentation and counts on its own instance; here it
-    is the input to the two filters, not the subject.
-    """
-    from cnaster.omics import binned_gene_snp
+    """The five `omics` calls `run_cnaster` makes between loading and binning."""
 
     chain = read_to_bins(written, loaded=loaded)
 
@@ -897,14 +576,7 @@ def prepared(loaded: Any, written: WrittenInputs) -> tuple[Any, Any, Any]:
 def baf_filtered(
     planted: CoreInferenceTruth, prepared: tuple[Any, Any, Any]
 ) -> tuple[Any, Any, np.ndarray]:
-    """`normal_baf_bin_filter` at the shipped interval, and what it removed.
-
-    The table is copied in: the function writes `None` into its caller's
-    `bin_id` column and then renumbers it, so a caller that kept the reference
-    has a different table afterwards (#89). Copying is what lets the removal
-    set be read off as the difference between the two.
-    """
-    from cnaster.normal_spot import normal_baf_bin_filter
+    """`normal_baf_bin_filter` at the shipped interval on a copy, and what it removed (#89)."""
 
     truth, binned, _ = planted, *prepared[1:]
     table = prepared[0]
@@ -932,22 +604,7 @@ def baf_filtered(
 def test_the_baf_filter_removes_the_imbalanced_bins_of_the_normal_clone(
     planted: CoreInferenceTruth, baf_filtered: tuple[Any, Any, np.ndarray]
 ) -> None:
-    """**The removal set is exactly the planted non-balanced bins (#38, #160).**
-
-    The filter pools B-allele counts over the normal spots, fits a
-    beta-binomial with `p` forced to 0.5, and drops the bins whose pooled
-    count falls outside the interval. The fixture plants which bins those are:
-    the balanced clone sits at `p = 0.5` everywhere except inside its own
-    events, where the planted `p` is 0.58 or above.
-
-    So the two sets have to agree, and they do **exactly** -- eight bins
-    removed, eight planted, no bin either way. That is the claim the whole
-    filter exists to support, and nothing checked it before.
-
-    Set equality rather than a rate: a recall figure would let a filter that
-    removed the genome score well, and a precision figure alone would let one
-    that removed nothing.
-    """
+    """The removed bins are exactly the planted non-balanced bins of the normal clone (#38, #160)."""
     _, _, removed = baf_filtered
 
     planted_imbalanced = np.flatnonzero(planted.states[balanced_clone(planted)] != 0)
@@ -959,16 +616,7 @@ def test_the_baf_filter_removes_the_imbalanced_bins_of_the_normal_clone(
 def test_the_filtered_segmentation_is_the_planted_one_less_the_removals(
     planted: CoreInferenceTruth, baf_filtered: tuple[Any, Any, np.ndarray]
 ) -> None:
-    """The chromosomes shorten by what was removed from each, not by a total.
-
-    `lengths` is rebuilt from the surviving bins per chromosome, so a removal
-    charged to the wrong chromosome -- the error an off-by-one in the
-    renumbering would make -- moves the boundary without changing the total.
-    A scalar count of survivors cannot see it; the vector can.
-
-    Realized `[8, 17, 7]` against the planted `[10, 21, 9]`: two removals in
-    the first chromosome, four in the second, two in the third.
-    """
+    """Each chromosome's length drops by its own removals: `[8, 17, 7]` from `[10, 21, 9]`."""
     _, counts, removed = baf_filtered
 
     chromosome_of_bin = np.repeat(
@@ -986,15 +634,7 @@ def test_the_filtered_segmentation_is_the_planted_one_less_the_removals(
 def test_the_surviving_bins_are_renumbered_onto_a_contiguous_range(
     baf_filtered: tuple[Any, Any, np.ndarray],
 ) -> None:
-    """Conservation: the survivors are relabelled `0 .. n-1`, once each.
-
-    Which is why a stage downstream of this filter cannot be refereed against
-    a planted bin index (#105): the label a bin carries afterwards is its rank
-    among the survivors, not the bin it was. Holds of any correct
-    implementation, so it says nothing about `cnaster` being right -- it says
-    the renumbering is a bijection, which is what makes the two claims above
-    readable.
-    """
+    """Survivors are relabelled `0 .. n-1`, once each (#105)."""
     filtered, counts, _ = baf_filtered
 
     surviving = np.sort(filtered.bin_id.dropna().unique().astype(int))
@@ -1006,20 +646,7 @@ def test_the_surviving_bins_are_renumbered_onto_a_contiguous_range(
 def one_gene_per_bin(
     planted_instance: PlantedInstance, tmp_path_factory: pytest.TempPathFactory
 ) -> tuple[CoreInferenceTruth, np.ndarray, np.ndarray]:
-    """`filter_normal_diffexp` on an instance whose bins hold one gene each.
-
-    `genes_per_bin=(1, 2)` draws from `[1, 2)`, so every bin is one gene and
-    the bin's counts are the gene's. That is the instance on which the
-    filter's **selection** is what decides the answer, which the module
-    fixture's multi-gene instance is not: see the pinned defect below.
-
-    The configuration is installed for the body of this fixture alone and the
-    work is done inside it, because `filter_normal_diffexp` reads none of it
-    and the module already holds two instances whose globals would otherwise
-    interleave.
-    """
-    from cnaster.io import get_sample_list, load_input_data
-    from cnaster.normal_spot import filter_normal_diffexp
+    """`filter_normal_diffexp` on an instance with one gene per bin."""
 
     truth = planted_instance[0]
     root: Path = tmp_path_factory.mktemp("one_gene")
@@ -1048,27 +675,7 @@ def one_gene_per_bin(
 def test_the_expression_filter_keeps_every_planted_count_it_should(
     one_gene_per_bin: tuple[CoreInferenceTruth, np.ndarray, np.ndarray],
 ) -> None:
-    """**Nothing in this instance is differentially expressed, so nothing goes.**
-
-    The filter drops a gene whose expression differs between the normal
-    candidates and the rest by more than `logfcthreshold_t = 4` -- a factor of
-    16 -- among genes above the 80th percentile of total UMIs. The fixture's
-    widest planted contrast is `mu = 5` against `mu = 1`, a log fold change of
-    2.32, and the realized maximum over every gene is **2.47**. So the
-    prediction from the planted parameters is that the filter returns its
-    input unchanged, and it does, bitwise.
-
-    Asserted against `truth.counts_nb` rather than against the binner's output:
-    the planted counts are what the claim is about, and comparing two
-    `cnaster` stages to each other would pass equally well if both were wrong.
-
-    What this does **not** establish is that the selection fires correctly when
-    something is differentially expressed. It cannot on this fixture: the 13
-    genes above the UMI gate are every one of them an `unassigned_*` gene,
-    which carries no copy-number signal by construction, and no planted
-    contrast reaches 16-fold. A positive case needs a fixture with a wider
-    expression separation, and is #160's to place.
-    """
+    """No planted contrast reaches 16-fold, so the filter returns `truth.counts_nb` bitwise (#160)."""
     truth, retained, _ = one_gene_per_bin
 
     np.testing.assert_array_equal(retained, truth.counts_nb.astype(float))
@@ -1080,28 +687,7 @@ def test_the_expression_filter_empties_every_bin_holding_more_than_one_gene(
     loaded: Any,
     prepared: tuple[Any, Any, Any],
 ) -> None:
-    """**A separator mismatch zeroes 32 of 40 bins, 82 per cent of the UMIs.**
-
-    `binned_gene_snp` writes `INCLUDED_GENES` as `",".join(...)`
-    (`omics.py:261`); `filter_normal_diffexp` reads it back with
-    `genestr.split(" ")` (`normal_spot.py:903`). So a bin holding more than one
-    gene yields a single name -- `"gene_0_0,gene_0_1"` -- that matches nothing
-    in `adata.var`, its gene set is empty, and its counts are summed over no
-    genes at all.
-
-    The result is not a filter doing too much: **no gene passes either
-    threshold on this instance** -- 0 of the 131 that survive
-    `sc.pp.filter_genes` -- and the bins still come back at zero. Bins holding
-    exactly
-    one gene carry no comma and survive bitwise, which is what identifies the
-    mechanism rather than merely pinning the symptom.
-
-    Gated behind `config.quality.filter_normal_diffexp`, which this fixture and
-    `zenodo_sim_config.yaml` leave off; a run that turns it on loses the read
-    depth of every multi-gene bin. Reported upstream; `port` does not land the
-    fix.
-    """
-    from cnaster.normal_spot import filter_normal_diffexp
+    """`INCLUDED_GENES` joined by `,` but split on ` ` zeroes every multi-gene bin (`bug`)."""
 
     _, binned, df_bin_info = prepared
     genes_per_bin = np.array(

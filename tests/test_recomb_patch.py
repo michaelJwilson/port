@@ -1,20 +1,23 @@
-"""The phase-switch kernel from the segment lineage, against `cnaster`'s (#438).
+"""The phase-switch kernel from the segment lineage, against cnaster's (#438).
 
-Three referees. Where `cnaster` reads the map correctly -- contigs whose
-string order is their numeric order -- the drop-in is `cnaster`'s kernel
-bitwise away from contig boundaries (`patch`). On a 22-chromosome map it is
-a per-pair computation written from the definition (`oracle`). And
-`cnaster`'s reading of chr2-9 is pinned as the defect it is (`bug`).
+`patch`: bitwise to cnaster's where its contig order is numeric. `oracle`: a per-pair
+Haldane computation on 22 chromosomes. `bug`: cnaster's chr2-9 reading.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
+from cnaster.config import get_global_config
+from cnaster.recomb import get_sitewise_transmat as upstream
+from port.extensions.segments import composable_log_switch
+from port.patch.recomb import get_sitewise_transmat
 
+from tests.builders import gene_snp_blocks
 from tests.fixtures import recombination_map
 
 NU = 1.0
@@ -22,61 +25,21 @@ SHIFT = 0.0
 
 
 def _blocks(contigs: range) -> pd.DataFrame:
-    """Twenty blocks per contig, 50-150 kb wide, every 1-3 Mb.
-
-    Each block is a gene, a SNP inside it, and a second gene, so its first
-    and last rows are genes: the extent `cnaster` reads from its rows and the
-    one read here from its genes are the same, and the comparison is of the
-    map alone.
-    """
+    """Twenty gene-SNP-gene blocks per contig, 50-150 kb wide, every 1-3 Mb."""
     rng = np.random.default_rng(13)
-    rows = []
-    block = 0
 
-    for contig in contigs:
-        starts = np.cumsum(rng.integers(1_000_000, 3_000_000, 20))
-        for start in starts:
-            width = int(rng.integers(50_000, 150_000))
-            s = int(start)
-            rows += [
-                {
-                    "CHR": contig,
-                    "START": s,
-                    "END": s + 10,
-                    "is_interval": True,
-                    "block_id": block,
-                },
-                {
-                    "CHR": contig,
-                    "START": s + 5,
-                    "END": s + 6,
-                    "is_interval": False,
-                    "block_id": block,
-                },
-                {
-                    "CHR": contig,
-                    "START": s + width - 10,
-                    "END": s + width,
-                    "is_interval": True,
-                    "block_id": block,
-                },
-            ]
-            block += 1
+    def drawn(contig: int) -> Iterator[tuple[int, int, int]]:
+        for start in np.cumsum(rng.integers(1_000_000, 3_000_000, 20)):
+            yield contig, int(start), int(rng.integers(50_000, 150_000))
 
-    return pd.DataFrame(rows)
+    return gene_snp_blocks(block for contig in contigs for block in drawn(contig))
 
 
 @pytest.mark.cnaster
 @pytest.mark.patch
 @pytest.mark.usefixtures("cnaster_config")
 def test_the_kernel_is_cnasters_where_cnaster_reads_the_map(tmp_path: Path) -> None:
-    """Contigs 1 and 2 sort alike as strings and integers: every within-contig entry equal.
-
-    The contig's last entry differs by design: `log 1/2` here, `cnaster`'s
-    `min_prob` there.
-    """
-    from cnaster.recomb import get_sitewise_transmat as upstream
-    from port.patch.recomb import get_sitewise_transmat
+    """Contigs 1 and 2: every within-contig entry equals cnaster's; the last differs by design."""
 
     contigs = range(1, 3)
     path = recombination_map(tmp_path / "map.tsv", contigs)
@@ -99,8 +62,6 @@ def test_the_kernel_is_haldane_over_each_contigs_own_map(tmp_path: Path) -> None
     The referee interpolates each position with `np.interp` on its own
     contig's rows, and walks the blocks pair by pair.
     """
-    from cnaster.config import get_global_config
-    from port.patch.recomb import get_sitewise_transmat
 
     contigs = range(1, 23)
     path = recombination_map(tmp_path / "map.tsv", contigs)
@@ -132,14 +93,7 @@ def test_the_kernel_is_haldane_over_each_contigs_own_map(tmp_path: Path) -> None
 @pytest.mark.bug
 @pytest.mark.usefixtures("cnaster_config")
 def test_cnaster_reads_chr2_to_9_as_chr1s_last_centimorgan(tmp_path: Path) -> None:
-    """`get_reference_recomb_rates` sorts `chrom` as strings; the cursor assumes integers.
-
-    Every within-contig entry on chr2-9 is `cnaster`'s floor, and on no other
-    contig; the drop-in's are Haldane's there as everywhere.
-    """
-    from cnaster.config import get_global_config
-    from cnaster.recomb import get_sitewise_transmat as upstream
-    from port.patch.recomb import get_sitewise_transmat
+    """cnaster sorts `chrom` as strings: chr2-9 within-contig entries are its floor; the drop-in's are Haldane's."""
 
     contigs = range(1, 23)
     path = recombination_map(tmp_path / "map.tsv", contigs)
@@ -173,7 +127,6 @@ def _composed(log_ab: np.ndarray, log_bc: np.ndarray) -> np.ndarray:
 @pytest.mark.analytic
 def test_the_composable_law_composes_over_any_binning() -> None:
     """Splitting a distance into two bins changes nothing (#449), to 1e-12 relative."""
-    from port.extensions.segments import composable_log_switch
 
     rng = np.random.default_rng(449)
     first, second = rng.uniform(1e-4, 5.0, 200), rng.uniform(1e-4, 5.0, 200)
@@ -194,12 +147,7 @@ def test_the_composable_law_composes_over_any_binning() -> None:
 def test_cnasters_law_depends_on_the_binning(
     distance: float, one_bin: float, two_bins: float
 ) -> None:
-    """With `cnaster`'s shift of -2 and floor of 0.01, two bins imply another switch rate (#449).
-
-    Fails when the law composes. The `e^2` factor lowers the composed
-    probability (0.05 cM: 0.352 in one bin, 0.295 in two); the floor raises
-    it (0.002 cM: 0.074 in one bin, 0.137 in two).
-    """
+    """cnaster's shift of -2 and floor of 0.01 make two bins imply another switch rate (#449)."""
     whole = _cnaster_log_switch(np.array([distance]), -2.0, 0.01)
     half = _cnaster_log_switch(np.array([distance / 2]), -2.0, 0.01)
     split = _composed(half, half)
@@ -214,8 +162,6 @@ def test_the_kernel_takes_the_composable_law_only_when_installed(
     tmp_path: Path,
 ) -> None:
     """`composable=True` gives `composable_log_switch` within contigs; outside, `cnaster`'s law."""
-    from port.extensions.segments import composable_log_switch
-    from port.patch.recomb import get_sitewise_transmat
 
     contigs = range(1, 3)
     path = recombination_map(tmp_path / "map.tsv", contigs)

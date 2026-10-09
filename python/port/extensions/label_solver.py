@@ -1,20 +1,8 @@
-"""Which solver `pipeline_clone_assignment` uses for the clone labelling.
+"""Which solver `pipeline_clone_assignment` uses for the clone labelling (#246).
 
-**#246.** `cnaster` has one: `icm.icm_sweep_deque`, greedy single-site
-descent. `snakes_and_ladders` has another that solves the same Potts MAP
-problem with a proved bound. Both now sit behind one signature
-(`port.patch.icm.interface.icm_sweep` and
-`port.patch.icm.alpha_expansion.alpha_expansion_sweep`), so the choice is a
-setting rather than an edit.
-
-**Process-wide rather than an argument**, because the call site is inside
-`cnaster`'s pipeline and `port` reaches it by rebinding a name, not by
-passing one. A parameter would have to be threaded through `cnaster` code
-this repository does not own.
-
-Default `icm`, so installing `port`'s patches does not silently change which
-algorithm decides the clones -- that is a scientific choice and #246 is where
-it is argued, not a side effect of a refactor.
+All solvers share `icm_sweep`'s signature, so the choice is a setting. It is
+process-wide because `port` reaches the call site by rebinding a name inside
+`cnaster`. Default `icm` (`cnaster`'s), so installing patches changes no algorithm.
 """
 
 from __future__ import annotations
@@ -49,24 +37,11 @@ SOLVERS: tuple[Solver, ...] = (
     "icm-numba",
     "alpha-rust-fuse-merge",
 )
-"""`icm` is `cnaster`'s. `alpha`, `alpha-rust` and `icm-numba` are
-`snakes_and_ladders`' (#246, #312): alpha expansion with its Python or Rust
-minimum cut, and single-site descent compiled with `numba`.
-`alpha-rust-fuse-merge` is `--sal`'s (#410): the expansion fused with the
-argmax descent, then sal's floor.
-
-Kept: ICM, alpha expansion and the rows the rendered study figure draws
-(#749 WP5). `alpha-rust-icm`, `alpha-rust-merge`, `icm-numba-floor` and
-`icm-argmax-floor` are set aside in `port.sandbox.extensions.label_solvers`,
-with their measurements (`port.extensions.sal`)."""
+"""`icm` is `cnaster`'s; `alpha`, `alpha-rust`, `icm-numba` are sal's (#246, #312);
+`alpha-rust-fuse-merge` is `--sal`'s (#410). Others set aside (#749 WP5)."""
 
 ENVIRONMENT = "PORT_LABEL_SOLVER"
-"""Read once per call, so a subprocess arm can select without a flag.
-
-**Overrides the solver bound at install**: a stated departure from rule 1
-of T- #617, held by `tests/test_environment_reads.py`. Unset, the bound
-solver runs.
-"""
+"""Overrides the bound solver when set; read per call (departs from T- #617 rule 1)."""
 
 
 def _checked(name: str, source: str) -> Solver:
@@ -84,9 +59,7 @@ def _checked(name: str, source: str) -> Solver:
 def solver_for(requested: str) -> Solver:
     """The solver a call uses: `requested`, or the environment's override.
 
-    The environment is consulted on every call rather than at import, so a
-    benchmark harness that sets it per subprocess does not depend on import
-    order. Either is refused if it names no solver.
+    Read per call, not at import; raises ValueError if either names no solver.
     """
     from_environment = os.environ.get(ENVIRONMENT)
 
@@ -123,13 +96,9 @@ def sweep_for(name: Solver) -> Any:
 
 
 def _finite(field: Any, graph: Any, spatial_weight: float) -> Any:
-    """`field` with each `-inf` a penalty no labelling pays, before sal reads it.
+    """`field` with each `-inf` replaced by a finite forbidding penalty (#373, #462, #466).
 
-    sal's expansion makes no move on a field holding `-inf` (#373 B0), and
-    `alpha_expansion_sweep` applies `forbidden_as_finite` for that reason
-    (#462). Every row here that hands sal the field goes through it too, so
-    one fix covers every path to sal's solvers (#466). A labelling that takes
-    no forbidden label has the same energy under either field.
+    sal's expansion makes no move on `-inf`; energies of allowed labellings are unchanged.
     """
     import numpy as np
 
@@ -143,12 +112,10 @@ def _finite(field: Any, graph: Any, spatial_weight: float) -> Any:
 def solved_on_sal(
     field: Any, graph: Any, assignment: Any, spatial_weight: float, search: Any
 ) -> IcmResult:
-    """The part every sal row shares: the finite field, the Potts graph, the result.
+    """Run `search` on sal's finite field and Potts graph; shared by every sal row (#517).
 
-    `search(potts, values, start)` returns `(labelling, sweeps, termination)`,
-    the last stage's `Termination`; `assignment`
-    is written in place with its dtype kept, and the cost is the Potts energy
-    of the labelling returned. One implementation for the five rows (#517).
+    `search(potts, values, start)` returns `(labelling, sweeps, termination)`;
+    `assignment` is written in place, dtype kept; cost is the Potts energy.
     """
     import numpy as np
     from sal.sim.potts import energy
@@ -184,20 +151,11 @@ def sal_icm_sweep(
     cost_zeropoint: float = 0.0,
     onehot_allowed_clones: Any = None,
 ) -> IcmResult:
-    """`icm_sweep`'s signature, upstream's single-site descent: sal's Rust ICM, bitwise its `numba` one (sal #1368).
+    """`icm_sweep`'s signature over sal's Rust ICM, bitwise its `numba` one (sal #1368).
 
-    The same move set as `cnaster`'s `icm_sweep_deque`, so what differs is
-    the implementation and the visit order: index order every sweep, where
-    `cnaster` shuffles a two-queue worklist from the unseeded global RNG
-    (#45). The two reach different local minima of the same energy; #312
-    measured the difference within 31 nats either way on real fields, and
-    39 to 61 times the speed at 5,000 to 10,000 spots.
-
-    Deterministic, so `rng` is a fixed seed that the index order never
-    draws from. `assignment` is updated in place, and the ICM knobs are
-    accepted and ignored, as :func:`alpha_expansion_sweep` does and for the
-    same reason -- including `min_clone_spots`: the merge below 200 spots is
-    `cnaster`'s, not the descent's.
+    Same move set as `icm_sweep_deque`, but visits in index order where
+    `cnaster` shuffles from the unseeded global RNG (#45, #312). `assignment`
+    is updated in place; the ICM knobs are accepted and ignored.
     """
     del tolerance, epsilon, min_clone_spots, cost_zeropoint, onehot_allowed_clones
 
@@ -227,11 +185,8 @@ def fusion_then_merge(
 ) -> IcmResult:
     """Fuse the expansion's labelling with the argmax descent's, then sal's floor.
 
-    sal #1125's fusion move: per site, one proposal's label or the other's,
-    chosen by the roof dual, and never worse than the better proposal. The
-    proposals are alpha expansion (Rust cut) from the caller's labelling and
-    sal's descent (its Rust ICM, bitwise its `numba` one, sal #1368) from the field's argmax, which reach different
-    minima; sal's floor (`merge_small_labels`) follows.
+    sal #1125's fusion move over alpha expansion (from the caller's labelling)
+    and sal's ICM (from the field's argmax), then `merge_small_labels`.
     """
     del tolerance, epsilon, cost_zeropoint, onehot_allowed_clones
 

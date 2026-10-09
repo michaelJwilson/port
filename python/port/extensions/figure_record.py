@@ -1,22 +1,8 @@
-"""A `run_cnaster_port --sal` page as references into `cnamaste.h5`, and the page drawn again from them (T- #817).
+"""Records `run_cnaster_port --sal` pages as references into `cnamaste.h5`, and replays them (#817).
 
-`port`'s three plotters -- `plot_clones_genomic`, `plot_clones_spatial`,
-`plot_copy_number_profile` -- `attach` to each page they own what it was drawn
-from. `write_fig` (and `discard_fig`, so a `--no-plots` run keeps them too)
-`keep`s the page as `figures/<name>`: no data, only `sources`, the groups of
-the run's file it reads, with its plotter's and `write_fig`'s options.
-`replay` draws every kept page again from those groups and writes it where
-the run wrote it.
-
-**Resolved by content, kept only if exact.** A page's summed counts are a
-level's `/counts` summed over a labelling a stage holds (or every spot), its
-fit a stage's fit (columns permuted where
-`reindex_clones` renumbered them), its integer table `/integer_copy`, its
-spots, positions, samples and tumour proportions `/inputs`, its `lengths` its
-level's, each checked equal to what the plotter was handed. A page any of
-them does not reproduce is not kept, and says so: `tests/test_run_plots.py`
-holds a `--sal` run to 19 of 19, the same bytes under one
-`SOURCE_DATE_EPOCH`.
+Plotters `attach` their inputs; `write_fig` `keep`s each page as `figures/<name>`,
+its inputs resolved to groups of the run's file and kept only if they
+reproduce exactly. `replay` redraws every kept page where the run wrote it.
 """
 
 from __future__ import annotations
@@ -53,8 +39,7 @@ _UNNAMED = "unnamed"
 _ASSIGNMENTS = ("initial_clones/clone_index", "phasing/clone_index", "baf/clone_index", "baf/assignment", "baf_merged/assignment",
                 "rdrbaf/clone_index", "rdrbaf/assignment", "rdrbaf_merged/assignment",
                 "clone_assignment/assignment", "integer_clones/assignment")  # fmt: skip
-"""Where a page's clones are found. Clones drawn before any stage holds them are the initial clones,
-and the page writes `/initial_clones` (`run_record.initial`)."""
+"""Where a page's clones are found; clones drawn before any stage are written as `/initial_clones`."""
 
 
 def attach(
@@ -66,7 +51,7 @@ def attach(
 
 
 def axis_option(axis: Any) -> Any:
-    """An axis as an option: `None`, or `{"ticks": every}` for the `Ticks` the run binds; a `GenomicAxis` is not kept."""
+    """An axis as an option: `None`, `{"ticks": every}` for `Ticks`, else unnamed and not kept."""
     from port.extensions.genomic_axis import Ticks
 
     if axis is None:

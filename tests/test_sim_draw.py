@@ -1,36 +1,49 @@
-"""#445: samples drawn from a version-3 manifest, and #446's two-slice load.
+"""Samples drawn from a version-3 manifest (#445) and the two-slice load (#446).
 
-`port.sim.normal_fit` fits the normal baseline and laws on CalicoST's normal
-spots; `port.sim.draw` draws clones, layouts, counts and phase from a
-manifest that states every assumption. The referees: a second computation of
-the baseline from the AnnData (`oracle`), the planted truth the draw was made
-from (`end2end`), and the properties the construction must hold (`analytic`).
-
-The draws here are 20 x 20 per slice from the shipped dev manifests; they
-need CalicoST's `GRCh38_resources` for the genetic map.
+Referees: the baseline recomputed from the AnnData (`oracle`), the planted truth
+(`end2end`), and construction properties (`analytic`). Needs CalicoST's
+`GRCh38_resources`.
 """
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+import anndata
 import numpy as np
 import pandas as pd
+import port.sim.draw as sim_draw
 import pytest
 import scipy.sparse
+from cnaster.io import get_aggregated_barcodes
+from cnaster.io import get_aggregated_barcodes as upstream
+from port.extensions.adjacency import knn_adjacency, lattice_kind
+from port.patch.io import get_aggregated_barcodes as patched
+from port.patch.io import load_input_data
 from port.sim.draw import (
     DrawManifest,
     Drawn,
+    clone_size,
     draw,
+    draw_tree,
     extended,
     from_document,
     hex_array,
     layout,
+    merged_tables,
+    read_manifest,
+    realize,
+    resolved,
+    sample_ids,
     square_array,
+    switch_probabilities,
 )
 from port.sim.files import located
-from port.sim.fixtures import EASY, HARD, SIM_ROOT, references
+from port.sim.fixtures import EASY, HARD, SIM_ROOT, load_simulated, references
+from port.sim.inputs import written_config
+from scipy.stats import kstest
 
 from tests.fixtures import SIM_MANIFESTS, draw_manifest
 
@@ -62,11 +75,7 @@ def star_draw(resources: Path, tmp_path_factory: pytest.TempPathFactory) -> Draw
 
 @pytest.mark.oracle
 def test_lambda_is_each_genes_share_of_normal_spot_umi() -> None:
-    """`normal_baseline.txt.gz` against the AnnData summed by `pandas`, to 1e-8 relative.
-
-    The file writes 10 significant digits (5e-10); Σλ is 1 to 1e-8.
-    """
-    import anndata
+    """`normal_baseline.txt.gz` against the AnnData summed by `pandas`, to 1e-8 relative."""
 
     totals = []
     for name in (EASY, HARD):
@@ -132,14 +141,7 @@ def test_an_unknown_array_kind_is_refused() -> None:
 
 @pytest.mark.analytic
 def test_a_square_array_is_the_lattice_the_adjacency_reads_as_square() -> None:
-    """`square_array` against `port.extensions.adjacency`'s reading of it (#569).
-
-    Unit spacing, `rows x columns` distinct integer positions, `lattice_kind`
-    `square`, and every interior spot with its eight Moore neighbours at
-    distance 1 or sqrt(2) under the `knn` construction the run installs; the
-    hex array of the same size reads `triangular`.
-    """
-    from port.extensions.adjacency import knn_adjacency, lattice_kind
+    """`square_array` against `port.extensions.adjacency`'s reading: square lattice, Moore neighbours at 1 or sqrt(2) (#569)."""
 
     rows, cols, points = square_array(7, 9)
 
@@ -161,11 +163,7 @@ def test_a_square_array_is_the_lattice_the_adjacency_reads_as_square() -> None:
 def test_every_clone_carries_the_events_on_its_path_from_normal(
     tree_draw: Drawn, star_draw: Drawn
 ) -> None:
-    """Leaves hang from a tree rooted at `normal`; a clone's events are its path's.
-
-    `shared.unique`: every clone shares the trunk's `shared` events and has
-    `unique` of its own, CalicoST's `numcnas{shared}.{unique}`.
-    """
+    """A clone's events are its path's from `normal`: shared trunk plus `unique` own (`shared.unique`)."""
     tree = tree_draw.tree
     assert tree.parent["normal"] is None
     for leaf in tree.leaves:
@@ -189,11 +187,7 @@ def test_every_clone_carries_the_events_on_its_path_from_normal(
 
 @pytest.mark.analytic
 def test_clones_sit_in_one_frame_and_a_shared_clone_is_imaged_by_both_slices() -> None:
-    """`dev_tree`'s second slice overlaps the first's right half: `clone_1`, on both, is on both.
-
-    Every listed clone claims spots, no spot is claimed twice, and a stated
-    overlap or a clone on two slices that do not overlap is refused.
-    """
+    """Clones partition the frame; `clone_1` is on both overlapping `dev_tree` slices; bad overlaps are refused."""
     manifest = draw_manifest("dev_tree")
     _, _, points = hex_array(20, 20)
     labels, shapes = layout(manifest, points, np.random.default_rng(3))
@@ -239,11 +233,7 @@ def test_clones_sit_in_one_frame_and_a_shared_clone_is_imaged_by_both_slices() -
 
 @pytest.mark.analytic
 def test_phase_switches_occur_at_the_haldane_rate(tree_draw: Drawn) -> None:
-    """Switches within chromosomes against Σ p, to 4 SE of the Bernoulli sum.
-
-    Read from the written `truth_phase.npy`, where a switch is a change of
-    phase between consecutive SNPs of a chromosome.
-    """
+    """Within-chromosome phase switches in `truth_phase.npy` against Σ p, to 4 SE."""
     snps = np.load(tree_draw.path / "snp" / "unique_snp_ids.npy", allow_pickle=True)
     chromosome = np.array([s.split("_")[0] for s in snps.astype(str)])
     same = chromosome[1:] == chromosome[:-1]
@@ -261,13 +251,7 @@ def test_phase_switches_occur_at_the_haldane_rate(tree_draw: Drawn) -> None:
 
 @pytest.mark.analytic
 def test_the_switch_law_composes_over_any_binning() -> None:
-    """Two steps of the chain are one step over the summed distance.
-
-    `(1 - 2 p_ab)(1 - 2 p_bc) = 1 - 2 p_ac`: the SNP-level draw gives the law
-    `cnaster.recomb` states over a bin, whatever the bin, to 1e-10 relative:
-    at 5 cM the product is 2.3e-6, and `1 - 2p` cancels to 1.4e-12 realized.
-    """
-    from port.sim.draw import switch_probabilities
+    """`(1 - 2 p_ab)(1 - 2 p_bc) = 1 - 2 p_ac`: the switch law composes over any binning, to 1e-10 relative."""
 
     cm = np.array([0.0, 0.7, 2.2, 5.0])
     gmap = {"1": (np.array([0, 1000, 2000, 3000]), cm)}
@@ -288,10 +272,7 @@ def _segments(drawn: Drawn) -> pd.DataFrame:
 
 @pytest.mark.end2end
 def test_each_clones_baf_is_the_planted_share(star_draw: Drawn) -> None:
-    """Per clone and aberrant segment, the mean SNP BAF against `A / (A + B)`, 4 SE.
-
-    No switches in this draw, so the written `A` is the planted haplotype.
-    """
+    """Per clone and aberrant segment, the mean SNP BAF against `A / (A + B)`, to 4 SE (no switches)."""
     path = star_draw.path
     a = scipy.sparse.load_npz(path / "snp" / "cell_snp_Aallele.npz").tocsr()
     b = scipy.sparse.load_npz(path / "snp" / "cell_snp_Ballele.npz").tocsr()
@@ -324,14 +305,7 @@ def test_each_clones_baf_is_the_planted_share(star_draw: Drawn) -> None:
 
 @pytest.mark.end2end
 def test_each_clones_expression_is_the_planted_depth(star_draw: Drawn) -> None:
-    """Per clone and aberrant segment, clone over normal mean UMI against `(A+B)/2`, 4 SE.
-
-    The ranked counts are scaled by `(A + B) / 2` after ordering (#455), so
-    the ratio of a clone's to the normal spots' mean UMI over a segment's
-    genes is its depth factor; the SE is the ratio's by the delta method. A
-    segment whose genes no normal spot expresses carries no ratio.
-    """
-    import anndata
+    """Per clone and aberrant segment, clone over normal mean UMI against `(A+B)/2`, to 4 SE (#455)."""
 
     sid = star_draw.sample_ids[0]
     assay = anndata.read_h5ad(star_draw.path / sid / "filtered_feature_bc_matrix.h5ad")
@@ -370,7 +344,6 @@ def test_each_clones_expression_is_the_planted_depth(star_draw: Drawn) -> None:
 @pytest.mark.bug
 def test_cnaster_assigns_no_spot_to_any_of_two_slices(tree_draw: Drawn) -> None:
     """#446: with 2+ slices every barcode's `sample_id` is `None`, so no slice matches."""
-    from cnaster.io import get_aggregated_barcodes
 
     frame = get_aggregated_barcodes(str(tree_draw.path / "snp" / "barcodes.txt"), None)
 
@@ -381,8 +354,6 @@ def test_cnaster_assigns_no_spot_to_any_of_two_slices(tree_draw: Drawn) -> None:
 @pytest.mark.patch
 def test_one_slice_is_cnasters_bitwise(star_draw: Drawn) -> None:
     """The patch leaves the single-slice path, `known_sample_id` given, as upstream."""
-    from cnaster.io import get_aggregated_barcodes as upstream
-    from port.patch.io import get_aggregated_barcodes as patched
 
     path = str(star_draw.path / "snp" / "barcodes.txt")
     sid = star_draw.sample_ids[0]
@@ -395,8 +366,6 @@ def test_the_patched_loader_puts_every_spot_in_the_slice_it_was_drawn_on(
     tree_draw: Drawn,
 ) -> None:
     """Both slices load, each spot under the `sample_id` its barcode was written with."""
-    from port.patch.io import load_input_data
-    from port.sim.inputs import written_config
 
     with written_config(tree_draw.path / "config.yaml") as config:
         loaded = load_input_data(config, min_snp_umis=1)
@@ -411,13 +380,7 @@ def test_the_patched_loader_puts_every_spot_in_the_slice_it_was_drawn_on(
 def test_realizations_share_the_clones_and_redraw_counts_and_phase(
     resources: Path, tmp_path: Path
 ) -> None:
-    """Two realizations: one truth, two phases, two count draws; r0 as if drawn alone.
-
-    Each realization is a complete sample `load_simulated` reads, and asking
-    for more realizations leaves the first one's bits unchanged.
-    """
-    import anndata
-    from port.sim.fixtures import load_simulated
+    """Realizations share one truth and redraw counts and phase; r0 is bitwise as if drawn alone."""
 
     one = draw(draw_manifest("dev_tree"), tmp_path / "one", resources=resources)
     two = draw(
@@ -449,9 +412,6 @@ def test_streamed_realizations_are_the_written_ones(
     resources: Path, tmp_path: Path
 ) -> None:
     """`realize(into=None)` writes nothing and yields exactly what `draw` writes."""
-    import anndata
-    import scipy.sparse
-    from port.sim.draw import realize
 
     manifest = draw_manifest("dev_tree", {"sample": {"realizations": 2}})
     streamed = list(realize(manifest, None, resources=resources))
@@ -486,8 +446,7 @@ def test_a_manifest_extended_from_elsewhere_keeps_its_base_paths(
 
 
 def _sized(law: dict[str, Any]) -> DrawManifest:
-    """`study` at its own 60 x 50, with `[layout.size]` replaced by `law`: three named clones,
-    each placed or the draw refused, so the size law is all that varies (T- #807)."""
+    """`study` at 60 x 50 with `[layout.size]` replaced by `law`, three named clones (T- #807)."""
     document = extended(SIM_MANIFESTS / "study15.toml")
     document["cna"]["n_clones"] = 3
     document["slice"] = [
@@ -500,35 +459,31 @@ def _sized(law: dict[str, Any]) -> DrawManifest:
     return from_document(document, SIM_MANIFESTS)
 
 
+def _placed(manifest: DrawManifest, seeds: int) -> tuple[np.ndarray, np.ndarray]:
+    """Each clone's placed spots and drawn target on a 60 x 50 hex array, over `seeds` seeds."""
+    _, _, points = hex_array(60, 50)
+    sizes, targets = [], []
+
+    for seed in range(seeds):
+        labels, _ = layout(manifest, points, np.random.default_rng(seed))
+        rng = np.random.default_rng(seed)
+        for clone in sorted(manifest.tumour):
+            # NB a clone's target counts its spots on every slice it is on
+            targets.append(clone_size(manifest.layout["size"], rng))
+            sizes.append(np.sum(np.concatenate(labels) == manifest.tumour.index(clone)))
+
+    return np.array(sizes, dtype=np.int64), np.array(targets)
+
+
 @pytest.mark.analytic
 def test_clone_sizes_follow_the_stated_law_across_seeds() -> None:
-    """`[layout.size]` loguniform on [25, 1,000] spots, 100 seeds x 3 clones (#544).
-
-    A polygon claims the fewest spots at least its target, so a clone's size
-    is its draw unless the array's edge clips it: log sizes are uniform on
-    `[log 25, log 1,000]` by Kolmogorov-Smirnov at 1%, and every clone is
-    within 10% below its draw or above it.
-    """
-    from port.sim.draw import clone_size
-    from scipy.stats import kstest
+    """Clone sizes against loguniform on [25, 1,000], KS at 1%, each within 10% below its draw (#544)."""
 
     manifest = _sized(
         {"law": "loguniform", "minimum": 25, "maximum": 1000, "edge": "grow"}
     )
-    _, _, points = hex_array(60, 50)
-    sizes, ratios = [], []
-
-    for seed in range(100):
-        labels, _ = layout(manifest, points, np.random.default_rng(seed))
-        rng = np.random.default_rng(seed)
-        targets = {
-            c: clone_size(manifest.layout["size"], rng) for c in sorted(manifest.tumour)
-        }
-        for clone, target in targets.items():
-            # NB over every slice: a clone's target counts its spots on each slice it is on
-            size = int(np.sum(np.concatenate(labels) == manifest.tumour.index(clone)))
-            sizes.append(size)
-            ratios.append(size / target)
+    sizes, targets = _placed(manifest, 100)
+    ratios = sizes / targets
 
     low, high = np.log(25), np.log(1000)
     statistic = kstest((np.log(sizes) - low) / (high - low), "uniform")
@@ -559,31 +514,13 @@ def test_a_seed_draws_the_same_sizes_and_an_unknown_law_is_refused() -> None:
 
 @pytest.mark.analytic
 def test_a_clipped_clone_keeps_what_lands_on_the_array() -> None:
-    """`edge = "clip"` on `study15.toml`'s sizes, 200 seeds x 3 clones (T- #807).
-
-    A clone is sized on the array continued past its edge, so it claims at most
-    its target (5% over for the lattice's ties) and one that runs off keeps
-    fewer spots: measured, the realized share of the target has median 0.85.
-    Every seed places every clone, where `grow` refused 6 of the 200 (the three
-    targets can sum to 2,245 of the slice's 3,000 spots).
-    """
-    from port.sim.draw import clone_size
+    """`edge = "clip"`: every clone placed over 200 seeds, at most 5% over its target (T- #807)."""
 
     manifest = _sized(
         {"law": "loguniform", "minimum": 100, "maximum": 1000, "edge": "clip"}
     )
-    _, _, points = hex_array(60, 50)
-    ratios = []
-
-    for seed in range(200):
-        labels, _ = layout(manifest, points, np.random.default_rng(seed))
-        rng = np.random.default_rng(seed)
-        targets = {
-            c: clone_size(manifest.layout["size"], rng) for c in sorted(manifest.tumour)
-        }
-        for clone, target in targets.items():
-            size = int(np.sum(np.concatenate(labels) == manifest.tumour.index(clone)))
-            ratios.append(size / target)
+    sizes, targets = _placed(manifest, 200)
+    ratios = sizes / targets
 
     assert max(ratios) <= 1.05, max(ratios)
     assert np.mean(np.array(ratios) < 0.9) > 0.05, np.quantile(ratios, [0.05, 0.25])
@@ -591,12 +528,7 @@ def test_a_clipped_clone_keeps_what_lands_on_the_array() -> None:
 
 @pytest.mark.bug
 def test_no_sample_id_reads_as_a_number() -> None:
-    """`cnaster` parses a numeric-looking id as a number and fails on it (#544).
-
-    Over 20,000 draws of a four-byte id, about 1 in 400 is all digits or
-    digits with one `e`; none is kept.
-    """
-    from port.sim.draw import sample_ids
+    """No drawn `sample_id` reads as a number, over 20,000 draws (#544)."""
 
     rng = np.random.default_rng(544)
     ids = [i for _ in range(10_000) for i in sample_ids(2, 4, rng)]
@@ -610,19 +542,14 @@ def test_no_sample_id_reads_as_a_number() -> None:
 def test_the_map_cache_returns_the_parse_and_follows_the_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`genetic_map` from its Parquet cache equals the text parse, bitwise (#549).
+    """`genetic_map` from its Parquet cache equals the text parse bitwise, and an edit invalidates it (#549)."""
 
-    The second call reads the cache the first wrote; editing the map file
-    changes its digest, so the edit is parsed rather than served stale.
-    """
-    from port.sim import draw
-
-    monkeypatch.setattr(draw, "MAP_CACHE", tmp_path / "cache")
+    monkeypatch.setattr(sim_draw, "MAP_CACHE", tmp_path / "cache")
     path = tmp_path / "map.tab"
     rows = ["chrom\tpos\tpos_cm", "chr1\t10\t0.1", "chr1\t30\t0.4",
             "chrX\t50\t0.9", "chrX\t20\t0.2"]  # fmt: skip
     path.write_text("\n".join(rows) + "\n")
-    parse = draw.genetic_map.__wrapped__
+    parse = sim_draw.genetic_map.__wrapped__
 
     first = parse(path)
     assert len(list((tmp_path / "cache").glob("*.parquet"))) == 1
@@ -640,7 +567,7 @@ def test_the_map_cache_returns_the_parse_and_follows_the_file(
 
 
 def _felsenstein(leaves: int, expected: float) -> DrawManifest:
-    """`dev_tree_1s_easy`'s `[cna]` and genome at `leaves` clones, opted into `felsenstein`; no resources read."""
+    """`dev_tree_1s_easy`'s `[cna]` and genome at `leaves` clones under `felsenstein`."""
     manifest = from_document(extended(SIM_MANIFESTS / "dev_tree_1s_easy.toml"))
     cna = {**manifest.tables["cna"], "mode": "felsenstein", "n_clones": leaves,
            "expected_cnas": expected}  # fmt: skip
@@ -651,11 +578,7 @@ def _felsenstein(leaves: int, expected: float) -> DrawManifest:
 def test_felsenstein_trees_are_uniform_over_rooted_shapes_with_the_expected_events() -> (
     None
 ):
-    """T- #660: on 3 clones the (2 x 3 - 3)!! = 3 rooted binary trees, named by
-    the clone that branches off the founder alone, each drawn 1/3 of the time;
-    the mean event count `expected_cnas` = 7; every leaf edge at least one
-    event; within `SIGMAS` standard errors over 3,000 seeds."""
-    from port.sim.draw import draw_tree
+    """Felsenstein trees on 3 clones: each rooted shape 1/3, mean events 7, every leaf edge an event, within `SIGMAS` SE over 3,000 seeds (T- #660)."""
 
     manifest = _felsenstein(3, 7.0)
     n = 3_000
@@ -674,7 +597,7 @@ def test_felsenstein_trees_are_uniform_over_rooted_shapes_with_the_expected_even
     assert sorted(shares.index) == list(manifest.tumour)
     third = np.sqrt((1 / 3) * (2 / 3) / n)
     assert np.allclose(shares.to_numpy(), 1 / 3, atol=SIGMAS * third)
-    # NB the total is 3 held events plus a Poisson of mean 4: its variance is 4
+    # NB 3 held events plus a Poisson of mean 4: variance 4
     assert totals.mean() == pytest.approx(7.0, abs=SIGMAS * np.sqrt(4.0 / n))
     assert totals.min() >= 3
 
@@ -690,13 +613,7 @@ def test_felsenstein_refuses_fewer_expected_events_than_clones() -> None:
 
 @pytest.mark.analytic
 def test_a_clone_count_law_draws_its_counts() -> None:
-    """`[cna] n_clones` as a law, 6,000 draws each (T- #807).
-
-    `uniform` 2-4 (`study15`): each count within 0.03 of 1/3 (about 5 standard errors);
-    `poisson` at mean 3, minimum 1: at least 1, the mean 3 / (1 - e^-3) = 3.157 to 0.06.
-    A fixed count consumes nothing from the generator.
-    """
-    from port.sim.draw import read_manifest, resolved
+    """`[cna] n_clones` laws over 6,000 draws: uniform 2-4 within 0.03 of 1/3; Poisson mean 3.157 to 0.06 (T- #807)."""
 
     manifest = read_manifest(SIM_MANIFESTS / "study15.toml")
     rng = np.random.default_rng(807)
@@ -721,11 +638,7 @@ def test_a_clone_count_law_draws_its_counts() -> None:
 
 @pytest.mark.analytic
 def test_a_dropped_clone_leaves_the_rest_numbered_in_order() -> None:
-    """`[layout] unplaced = "drop"` on `study15` (T- #807): the truth's clones are
-    `clone_0 ...` with no gap, every one with spots, whichever drawn clone was dropped (12 realizations)."""
-    from dataclasses import replace
-
-    from port.sim.draw import merged_tables, read_manifest, realize
+    """`unplaced = "drop"`: the remaining clones are numbered `clone_0 ...` without gaps, each with spots (T- #807)."""
 
     manifest = read_manifest(SIM_MANIFESTS / "study15.toml")
     manifest = replace(
@@ -742,9 +655,7 @@ def test_a_dropped_clone_leaves_the_rest_numbered_in_order() -> None:
 
 @pytest.mark.analytic
 def test_a_clone_that_does_not_fit_ends_the_layout() -> None:
-    """`[layout] unplaced = "stop"`: the placed clones are a prefix of the drawn, every one
-    with spots, and a later clone is never placed past an unplaced one (T- #807)."""
-    from port.sim.draw import resolved
+    """`unplaced = "stop"`: the placed clones are a prefix of the drawn, each with spots (T- #807)."""
 
     document = extended(SIM_MANIFESTS / "study15.toml")
     document["layout"] |= {"shape": "polygons", "max_placements": 10, "unplaced": "stop",
@@ -768,10 +679,7 @@ def test_a_clone_that_does_not_fit_ends_the_layout() -> None:
 
 @pytest.mark.analytic
 def test_rectangles_partition_the_frame_by_the_clone_count() -> None:
-    """`[layout] shape = "rectangles"` (T- #807): every spot in one block of a `p x p` grid,
-    `p = ceil(sqrt(n + 1))`, each tumour clone holding a block, normal the top-left one and
-    at least `normal_share` of the slice; against `port.sim.truth.clone_quadrants`' counts."""
-    from port.sim.draw import resolved
+    """`shape = "rectangles"`: clones fill blocks of a `p x p` grid, against `clone_quadrants`' counts (T- #807)."""
 
     document = extended(SIM_MANIFESTS / "study15.toml")
     document["layout"] |= {"shape": "rectangles", "normal_share": 0.3}

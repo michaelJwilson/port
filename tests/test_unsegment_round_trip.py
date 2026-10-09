@@ -1,28 +1,28 @@
-"""A binned fixture, unsegmented and binned back (issue #68).
+"""A binned fixture, unsegmented and re-binned by cnaster's `summarize_counts_for_bins`
+(#68).
 
-`run_cnaster` starts at genes and SNPs; the fixture plants at bins. `unsegment`
-builds a **pre-image** -- gene-level and block-level counts that `cnaster`'s
-own `summarize_counts_for_bins` carries back to exactly the bins they came
-from. The referee is the fixture, and the bar is bitwise: the aggregation sums
-integers, so nothing may move.
-
-That makes the segmentation code testable without inverting it, and it is what
-lets a temporary-file fixture for `run_cnaster` carry planted truth all the way
-down: the truth is stated at the bins, written out at the genes and SNPs, and
-the code under test is what puts it back.
+Referee: the fixture, bitwise, since the aggregation sums integers.
 """
 
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
 import pytest
-from port.sim.truth import core_inference_truth
+from cnaster.omics import summarize_counts_for_bins
+from port.sim.truth import CoreInferenceTruth, core_inference_truth
 from port.sim.unsegment import Unsegmented, unsegment
+
+
+def _truth(n_obs: int, n_segments: int) -> CoreInferenceTruth:
+    """Two clones and three states on a 6 x 6 lattice."""
+    return core_inference_truth(
+        n_clones=2, n_states=3, lattice=(6, 6), n_obs=n_obs, n_segments=n_segments
+    )
 
 
 def _rebin(pre_image: Unsegmented) -> Any:
     """`cnaster`'s own aggregation, on the pre-image."""
-    from cnaster.omics import summarize_counts_for_bins
 
     return summarize_counts_for_bins(
         pre_image.df_gene_snp,
@@ -41,15 +41,8 @@ def _rebin(pre_image: Unsegmented) -> Any:
 @pytest.mark.critical
 @pytest.mark.parametrize("n_obs", [60, 240])
 def test_the_round_trip_returns_the_binned_fixture(n_obs: int) -> None:
-    """Both channels come back bitwise, at two bin counts.
-
-    Swept because the partition is drawn per bin: a single size could land on
-    a run where every bin happened to take the same number of genes, and the
-    variable grouping is half of what this checks.
-    """
-    truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(6, 6), n_obs=n_obs, n_segments=2
-    )
+    """Both channels come back bitwise, at two bin counts."""
+    truth = _truth(n_obs, 2)
     rebinned = _rebin(unsegment(truth))
 
     np.testing.assert_array_equal(rebinned.X[:, 0, :], truth.counts_nb.astype(np.int64))
@@ -62,15 +55,8 @@ def test_the_round_trip_returns_the_binned_fixture(n_obs: int) -> None:
 @pytest.mark.snapshot
 @pytest.mark.preprocessing
 def test_the_round_trip_returns_the_segmentation() -> None:
-    """`lengths` comes back, which is what #67's decision is about.
-
-    The binner counts distinct bins per chromosome in order of first
-    appearance, so a pre-image that grouped the rows differently would return
-    the right counts against the wrong segmentation.
-    """
-    truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(6, 6), n_obs=240, n_segments=4
-    )
+    """`lengths` comes back (#67)."""
+    truth = _truth(240, 4)
     rebinned = _rebin(unsegment(truth))
 
     np.testing.assert_array_equal(rebinned.lengths, truth.lengths)
@@ -79,20 +65,8 @@ def test_the_round_trip_returns_the_segmentation() -> None:
 @pytest.mark.snapshot
 @pytest.mark.preprocessing
 def test_the_unassigned_genes_never_reach_a_bin() -> None:
-    """Counts outside the table's assignment are dropped, not summed.
-
-    `unsegment` plants 25 genes carrying counts and no `bin_id`. A binner that
-    summed `adata` by position rather than by the grouping the table declares
-    would pass every other assertion here and fail this one, because those
-    counts would land somewhere.
-
-    Asserted by construction and by consequence: the pre-image's gene matrix
-    carries strictly more than the fixture, and the round trip still returns
-    the fixture exactly.
-    """
-    truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(6, 6), n_obs=60, n_segments=2
-    )
+    """Counts outside the table's assignment are dropped, not summed."""
+    truth = _truth(60, 2)
     pre_image = unsegment(truth)
 
     unassigned = pre_image.df_gene_snp.bin_id.isnull().sum()
@@ -108,18 +82,9 @@ def test_the_unassigned_genes_never_reach_a_bin() -> None:
 @pytest.mark.snapshot
 @pytest.mark.preprocessing
 def test_the_flipped_blocks_are_unflipped_by_the_binner() -> None:
-    """`phase_indicator` is read, not assumed true.
+    """`phase_indicator` is read: forcing it true changes the result."""
 
-    Every third block is stored on the opposite haplotype, so the binner has
-    to apply `total - B` to recover it. Driven rather than asserted: the same
-    pre-image with every indicator forced true returns a **different** answer,
-    and that difference is the branch.
-    """
-    from dataclasses import replace
-
-    truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(6, 6), n_obs=60, n_segments=2
-    )
+    truth = _truth(60, 2)
     pre_image = unsegment(truth)
     assert not pre_image.phase_indicator.all(), "no block is flipped"
 
@@ -135,16 +100,8 @@ def test_the_flipped_blocks_are_unflipped_by_the_binner() -> None:
 @pytest.mark.smoke
 @pytest.mark.preprocessing
 def test_the_pre_image_is_a_partition_and_not_a_copy() -> None:
-    """Each bin is split across several genes and blocks, and the counts vary.
-
-    One gene per bin would make the aggregation a copy, and a copy round-trips
-    under an implementation that picks rather than sums. Pinned so a change to
-    `unsegment` that flattened the split would fail here rather than quietly
-    weaken every test above.
-    """
-    truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(6, 6), n_obs=240, n_segments=4
-    )
+    """Each bin is split across several genes and blocks, with varying counts."""
+    truth = _truth(240, 4)
     table = unsegment(truth).df_gene_snp
     assigned = table[table.bin_id.notnull()]
 

@@ -1,27 +1,18 @@
-"""`port`'s staged filter reproduces what `gmm_init` feeds the mixture, bitwise.
+"""The staged filter reproduces the array `gmm_init` hands `GaussianMixture.fit`, bitwise
+(#229 stage 1).
 
-**#229 stage 1.** `cnaster.hmm_initialize.gmm_init` performs four filters, two
-transforms and an imputation in one 235-line function, interleaved across
-three blocks. `port.sandbox.patch.hmm_initialize.filtering` separates them. A refactor is only a
-refactor if the result is the same, so the claim asserted here is the strong
-one: the array `cnaster` hands `GaussianMixture.fit` is **the same array**,
-not one within a tolerance.
-
-The referee is `cnaster` itself rather than a re-derivation. `gmm_init` does
-not return its design matrix, so the fit is intercepted and the argument
-captured -- which is what makes this a comparison against the code that ships
-instead of against a second copy of the arithmetic.
-
-`patch` throughout: this says the two agree, not that either is right. What
-the filtering *should* be is #229, and which initializer is best is #230.
+Referee: `cnaster` itself, with `fit` intercepted. `patch`: agreement, not correctness
+(#229, #230).
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+import cnaster.hmm_initialize as initialize
 import numpy as np
 import pytest
+from cnaster.hmm_nophasing import get_log_transmat
 from port.sandbox.patch.hmm_initialize.filtering import (
     Standardize,
     design_matrix,
@@ -45,7 +36,6 @@ def planted() -> CoreInferenceTruth:
 
 def _stacked(truth: CoreInferenceTruth) -> tuple[Any, ...]:
     """`gmm_init`'s positional arguments, as `run_core_inference` builds them."""
-    from cnaster.hmm_nophasing import get_log_transmat
 
     stacked = stacked_clones(truth)
 
@@ -61,13 +51,15 @@ def _stacked(truth: CoreInferenceTruth) -> tuple[Any, ...]:
     )
 
 
-def _capture_design(monkeypatch: pytest.MonkeyPatch, arguments: tuple[Any, ...]) -> Any:
-    """Run `gmm_init` and return the array it passed to `GaussianMixture.fit`.
+def _filtered(arguments: tuple[Any, ...]) -> Any:
+    """`filter_observations` over `gmm_init`'s arguments, at the configured bounds."""
+    return filter_observations(
+        *arguments[1:5], min_binom=MIN_BINOM, max_binom=MAX_BINOM
+    )
 
-    Intercepting `fit` rather than reimplementing the eleven steps is the
-    point: a re-derivation would agree with itself.
-    """
-    import cnaster.hmm_initialize as initialize
+
+def _capture_design(monkeypatch: pytest.MonkeyPatch, arguments: tuple[Any, ...]) -> Any:
+    """Run `gmm_init` and return the array it passed to `GaussianMixture.fit`."""
 
     seen: dict[str, Any] = {}
     original = GaussianMixture.fit
@@ -90,26 +82,10 @@ def _capture_design(monkeypatch: pytest.MonkeyPatch, arguments: tuple[Any, ...])
 def test_the_staged_filter_reproduces_the_design_matrix_bitwise(
     planted: CoreInferenceTruth, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The array the mixture is fitted to is the same array.
-
-    `gmm_init` augments the design by mirroring the BAF columns and stacking,
-    so what reaches `fit` is `2N` rows for `N` observations. The staged
-    pipeline produces the unaugmented half, which is the top block -- the
-    augmentation is step 8 and belongs to the fit, not to the filtering.
-    """
+    """The staged design matrix equals the top (unaugmented) half of what reaches `fit`, bitwise."""
     arguments = _stacked(planted)
     captured = _capture_design(monkeypatch, arguments)
-
-    _, stack_X, stack_base, stack_total, params, *_ = arguments
-
-    observations = filter_observations(
-        stack_X,
-        stack_base,
-        stack_total,
-        params,
-        min_binom=MIN_BINOM,
-        max_binom=MAX_BINOM,
-    )
+    observations = _filtered(arguments)
     design, standardize, record = design_matrix(observations)
 
     assert design.shape[0] == record.rows_kept
@@ -133,22 +109,8 @@ def test_the_staged_filter_reproduces_the_design_matrix_bitwise(
 @pytest.mark.patch
 @pytest.mark.usefixtures("cnaster_config", "cnaster_perf_sink")
 def test_the_transform_inverts_itself(planted: CoreInferenceTruth) -> None:
-    """`cnaster` writes the forward map at line 351 and the inverse at 519.
-
-    Nothing there checks that the second undoes the first. Here they are one
-    object, and this is the check.
-    """
-    arguments = _stacked(planted)
-    _, stack_X, stack_base, stack_total, params, *_ = arguments
-
-    observations = filter_observations(
-        stack_X,
-        stack_base,
-        stack_total,
-        params,
-        min_binom=MIN_BINOM,
-        max_binom=MAX_BINOM,
-    )
+    """The inverse transform undoes the forward one (`cnaster` lines 351 and 519)."""
+    observations = _filtered(_stacked(planted))
 
     assert observations.rdr is not None
 
@@ -167,30 +129,15 @@ def test_the_transform_inverts_itself(planted: CoreInferenceTruth) -> None:
 def test_the_record_counts_what_the_filters_did(
     planted: CoreInferenceTruth,
 ) -> None:
-    """`cnaster` logs three of the five counts as free text and two not at all.
-
-    The record is what makes a run's filtering recoverable afterwards, and
-    what #230 needs to compare backends under one filter policy.
-    """
-    arguments = _stacked(planted)
-    _, stack_X, stack_base, stack_total, params, *_ = arguments
-
-    observations = filter_observations(
-        stack_X,
-        stack_base,
-        stack_total,
-        params,
-        min_binom=MIN_BINOM,
-        max_binom=MAX_BINOM,
-    )
+    """The record counts what each filter did (#230)."""
+    observations = _filtered(_stacked(planted))
     _, _, record = design_matrix(observations)
 
     assert record.rows_kept + record.rows_dropped == record.n_bins
     assert 0.0 <= record.retained <= 1.0
     assert record.baf_clipped >= 0
 
-    # NB the conftest bounds are wide enough to clip nothing a fixture plants,
-    #    which is stated there on purpose, so this pins that intent.
+    # NB the conftest bounds clip nothing a fixture plants; this pins that intent.
     assert record.baf_clipped == 0, (
         "the fixture's allele shares now reach the clip, so the initializer's "
         "start is the clip's rather than the data's"
@@ -204,24 +151,8 @@ def test_the_record_counts_what_the_filters_did(
 def test_imputation_none_is_a_policy_rather_than_a_step(
     planted: CoreInferenceTruth,
 ) -> None:
-    """`cnaster` fills NaNs by genomic adjacency and states no assumption.
-
-    `"none"` is what measures its cost: the rows it would have saved are
-    dropped instead, and the record says how many. On a fixture that plants
-    no missing data the two agree, which is what this pins -- the policy is
-    available, and it is not silently changing a clean run.
-    """
-    arguments = _stacked(planted)
-    _, stack_X, stack_base, stack_total, params, *_ = arguments
-
-    observations = filter_observations(
-        stack_X,
-        stack_base,
-        stack_total,
-        params,
-        min_binom=MIN_BINOM,
-        max_binom=MAX_BINOM,
-    )
+    """Imputation `"none"` agrees with `cnaster` on a fixture with no missing data."""
+    observations = _filtered(_stacked(planted))
 
     filled, _, filled_record = design_matrix(observations, imputation="ffill_bfill")
     bare, _, bare_record = design_matrix(observations, imputation="none")

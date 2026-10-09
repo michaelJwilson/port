@@ -1,18 +1,24 @@
-"""Each clone's `logmu_shift`, recorded, permuted with its clone, and found (#362).
+"""Each clone's `logmu_shift`: recorded, permuted with its clone, and found (#362).
 
-`port.patch.hmrf.core_inference` records `log Z_c` per clone after the pin,
-permutes it when `cnaster` reindexes the clones, and hands it to the integer
-decode by matching the clone's path. Pinned here against the formula written
-out, and against a reindex that reverses the clones.
+Referee: the formula written out, and a reindex that reverses the clones.
 """
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Iterator
 from typing import Any
 
 import numpy as np
 import pytest
+from cnaster.cna_hmrf_result import (
+    CloneAssignment,
+    CnaHMRFResult,
+    HMMParams,
+    HMMProfile,
+)
+from port.patch.hmrf import core_inference as module
+from port.patch.hmrf.core_inference import clone_shifts
 
 N_OBS = 12
 
@@ -45,8 +51,6 @@ def _base() -> np.ndarray:
 
 @pytest.fixture
 def clean() -> Iterator[None]:
-    from port.patch.hmrf import core_inference as module
-
     yield
     module._PROPAGATED.clear()
     module._NORMAL.clear()
@@ -62,7 +66,6 @@ def _written_out(clone: int) -> float:
 @pytest.mark.parametrize("zero_normal", [True, False])
 def test_the_shifts_are_log_z_per_clone(zero_normal: bool, clean: None) -> None:
     """`log sum_g lambda_g mu_z(g,c)`, the normal clone's 0 when asked."""
-    from port.patch.hmrf.core_inference import clone_shifts
 
     result = _result()
     shifts = clone_shifts(result, _base(), zero_normal)
@@ -81,7 +84,6 @@ def test_the_reindex_carries_each_shift_with_its_clone(
     clean: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Upstream reverses the clones; each shift follows its path, as does the lookup."""
-    from port.patch.hmrf import core_inference as module
 
     def reverse(res_combine: dict[str, Any], **_: Any) -> tuple[Any, None]:
         out = dict(res_combine)
@@ -108,7 +110,6 @@ def test_without_shifts_the_reindex_is_the_reorders(
     clean: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """An unshifted fit is returned as the reorder returns it, and nothing is kept."""
-    from port.patch.hmrf import core_inference as module
 
     sentinel = ({"pred_cnv": PATHS}, "posterior")
     monkeypatch.setattr(module, "held_to_one_column", lambda *_, **__: sentinel)
@@ -122,20 +123,7 @@ def test_without_shifts_the_reindex_is_the_reorders(
 def test_the_reindex_carries_each_shift_on_cnasters_result(
     clean: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """On `cnaster`'s locked `CnaHMRFResult`, which has no `get` (#501).
-
-    The dict test above passed while every real run left the shifts
-    unpermuted: the shifts were read through `res.get`, which only a dict has.
-    """
-    import copy
-
-    from cnaster.cna_hmrf_result import (
-        CloneAssignment,
-        CnaHMRFResult,
-        HMMParams,
-        HMMProfile,
-    )
-    from port.patch.hmrf import core_inference as module
+    """On `cnaster`'s `CnaHMRFResult` (no `get`), each shift follows its clone through the reindex (#501)."""
 
     n_states, n_clones = LOG_MU.size, PATHS.shape[1]
     shifts = np.array([0.0, 0.3, -0.2])

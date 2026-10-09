@@ -1,32 +1,18 @@
-"""What the shift costs, against the loop it patches (#276).
+"""The log-mu shift's cost against the loop it patches (#276); no speedup is claimed.
 
-**No speedup is claimed and none was found.** The patch is the shape --
-`(n_clones,)` against upstream's `(n_segments,)` -- and `CLAUDE.md` says a
-simplification lands on its evidence of equivalence alone, which
-`tests/test_logmu_shift.py` carries. These rows exist to catch the case
-where the shape change cost something, not to argue it bought anything.
-
-That is worth stating because a vectorized rewrite *was* tried and is
-withdrawn: `scipy.special.logsumexp` over per-clone views measured 2.1x
-**slower** at the stress size and 3.9x at the gate one. Upstream's loop is
-`@njit`, so the compiled two-pass is not the thing worth replacing, and the
-patch keeps it. What it removes is the `n_segments` allocation and broadcast
-write, which the rows below show is close to free -- so the reason for the
-patch is the indexing hazard, not the bytes.
-
-The saving that is real is at the call site rather than here:
-`hmm_nophasing.py:275-279` puts the shift **inside** `for i in
-range(n_states)`, so folding it in as upstream wrote it would recompute the
-whole reduction `n_states` times for a quantity no state enters.
-`tests/test_shifted_emission.py` is where that is a claim about output;
-`test_the_shift_is_computed_once_per_call` below is where it is one about
-count.
+Also counts that the shift is computed once per call, not once per state.
 """
 
 from __future__ import annotations
 
 import numpy as np
+import port.patch.hmm_nophasing.shifted_emission as emission
 import pytest
+from cnaster.count_encoder import CountEncoder
+from cnaster.hmm_nophasing import compute_logmu_shifts
+from port.patch.hmm_nophasing import hmm_nophasing
+from port.patch.hmm_nophasing.logmu_shift import shifts
+from port.pipeline import with_attributes
 from pytest_benchmark.fixture import BenchmarkFixture
 
 from tests.fixtures import tiers
@@ -35,7 +21,7 @@ GATE = {"n_clones": 3, "per_clone": 1_000}
 """Small enough for the per-pull-request budget; decides no ratio."""
 
 STRESS = {"n_clones": 10, "per_clone": 29_000}
-"""290,000 segments, which is what `expected_runtime.tex` derives for a genome."""
+"""290,000 segments, `expected_runtime.tex`'s genome."""
 
 
 def _case(
@@ -56,19 +42,12 @@ def _case(
 @pytest.mark.parametrize("size", tiers(GATE, STRESS))
 @pytest.mark.parametrize("arm", ["cnaster", "patch"])
 def test_the_shift(benchmark: BenchmarkFixture, arm: str, size: dict[str, int]) -> None:
-    """Both arms, warmed, at the gate size and at a genome's.
-
-    The gate baseline argues nothing either way. At the stress size the
-    removed write is 2.3 MB per call.
-    """
-    from cnaster.hmm_nophasing import compute_logmu_shifts
-    from port.patch.hmm_nophasing.logmu_shift import shifts
+    """Both arms, warmed, at the gate size and at a genome's."""
 
     arguments = _case(**size)
     function = compute_logmu_shifts if arm == "cnaster" else shifts
 
-    # NB both are `numba`, so the first call is compilation rather than work
-    #    and is taken outside the timer (#204).
+    # NB both are `numba`; compilation is outside the timer (#204).
     function(*arguments)
 
     benchmark(function, *arguments)
@@ -76,18 +55,7 @@ def test_the_shift(benchmark: BenchmarkFixture, arm: str, size: dict[str, int]) 
 
 @pytest.mark.patch
 def test_the_shift_is_computed_once_per_call(cnaster_config: None) -> None:
-    """Once, not once per state, which is where upstream's call site puts it.
-
-    Counted rather than timed: a ratio at this size would be noise, and what
-    is being asserted is a count that does not depend on the machine. Upstream
-    writes the call inside `for i in range(n_states)`, so folding it in as
-    written is `n_states` reductions over `n_segments` where one is needed --
-    seven, at the state count the benchmarks above use.
-    """
-    import port.patch.hmm_nophasing.shifted_emission as emission
-    from cnaster.count_encoder import CountEncoder
-    from port.patch.hmm_nophasing import hmm_nophasing
-    from port.pipeline import with_attributes
+    """The shift is computed once per call, not once per state (counted)."""
 
     n_states, n_clones, per_clone = 7, 3, 8
     n_segments = n_clones * per_clone

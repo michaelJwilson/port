@@ -1,12 +1,9 @@
-"""`run_plots`: a run's figures, drawn from its `cnamaste.h5` as `run_cnaster_port --sal` drew them (T- #817).
+"""`run_plots`: redraw a run's figures from its `cnamaste.h5` (T- #817).
 
     run_plots OUTPUT/cnamaste.h5 [--out DIR] [--only NAME ...]
 
-Every page the run kept (`figures/` in the file, `port.extensions.figure_record`)
-is drawn again with the code that drew it and written under `--out`, by
-default the file's directory, at the path the run wrote it to: the same
-bytes under one `SOURCE_DATE_EPOCH`. A `--no-plots` run keeps its pages
-too, so `run_plots` draws what it skipped.
+Each page kept under `figures/` is redrawn to the path the run wrote, under
+`--out` (default: the file's directory); `--no-plots` runs keep pages too.
 """
 
 from __future__ import annotations

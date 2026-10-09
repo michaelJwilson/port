@@ -1,24 +1,9 @@
-"""The run's stages into `cnamaste.h5`, each as the run reaches it (T- #817).
+"""Stage the run's intermediate results into `cnamaste.h5` as the run reaches them (T- #817).
 
-`tapping` wraps the names `cnaster`'s pipeline calls at each stage -- the
-tumour proportion read, the lattice adjacency, the phasing,
-`run_core_inference`, `merge_by_minspots` and `reindex_clones` -- and
-`cnaster.hmrf.pipeline_clone_assignment`, and `stage`s what each returns into
-the open `cnamaste.h5` (`cnamaste.writing`). Each wrapper calls the name it
-wraps with the arguments it was given and returns its result, so the run
-computes what it computed without them. `port.extensions.segments` stages
-each level as it records it, and `integer_groups` the integer stages once the
-run has written them.
-
-**Each quantity once.** The spots' counts at a level are `/counts/<level>`,
-written the first time a stage or page reads them and found again by
-content; the baseline is kept as its two factors (`normal_rdr @ coverage`,
-as `determine_normal_baseline` builds it) where they reproduce it bitwise.
-Counts summed over clones are not kept: they are `/counts` summed over a
-labelling a stage already holds. A fit is written by the stage that made it,
-one column per clone, with how `cnaster` shaped it, and a merged stage keeps
-only its assignment: its fit is its parent's, columns kept. `figure_record`
-resolves every page to these groups.
+`tapping` wraps `cnaster`'s stage functions without changing their results.
+Each quantity is stored once: counts per level in `/counts/<level>` (found by
+content), the baseline as its factors where bitwise, a fit by the stage that
+made it, a merged stage's assignment only.
 """
 
 from __future__ import annotations
@@ -49,16 +34,16 @@ FITS = ("phasing", "baf", "rdrbaf")
 """The groups holding a fit; a page's fit is one of them, its columns permuted or kept."""
 
 _HELD: dict[str, Any] = {}
-"""What one tapped run keeps between stages: the last field, and each stage's spots and level."""
+"""What one tapped run keeps between stages."""
 
 
 def release() -> None:
-    """Forget what the run kept between stages: called once its integer stages are written."""
+    """Forget what the run kept between stages."""
     _HELD.clear()
 
 
 def level_of(n_obs: int) -> str:
-    """The last level recorded with `n_obs` segments, as the file names it: the level a stage's bins are on."""
+    """The last recorded level with `n_obs` segments, as the file names it."""
     from port.extensions.cnamaste import level_name
     from port.extensions.segments import current
 
@@ -71,7 +56,7 @@ def level_of(n_obs: int) -> str:
 
 
 def lengths_of(path: Path, level: str) -> np.ndarray:
-    """Segments per contig at `level`, contigs in genomic order: `cnaster`'s `lengths`, from the file."""
+    """Segments per contig at `level`, in genomic order (`cnaster`'s `lengths`), from the file."""
     from port.extensions import cnamaste
 
     genes, _ = cnamaste.read(path, "segments/genes")
@@ -108,16 +93,11 @@ def _product(rdr: np.ndarray, coverage: np.ndarray) -> np.ndarray:
 
 
 ZEROED = ":rdr=0"
-"""A `/counts` reference read with its read depth zeroed, as the BAF stage reads its level (`run_cnaster.py:619`)."""
+"""Suffix of a `/counts` reference read with read depth and baseline zeroed (`run_cnaster.py:619`)."""
 
 
 def spots(path: Path, name: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """`(single_X, single_base_nb_mean, single_total_bb_RD)` of a `/counts` reference.
-
-    `counts/<level>` is the group; `counts/<level>:rdr=0` the same with channel
-    0 and the baseline zero, which the BAF stage reads where the RDR+BAF one
-    reads the counts whole.
-    """
+    """`(single_X, single_base_nb_mean, single_total_bb_RD)` of a `/counts` reference, honouring `ZEROED`."""
     from port.extensions import cnamaste
 
     group = name.removesuffix(ZEROED)
@@ -136,12 +116,7 @@ def spots(path: Path, name: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 
 
 def counts(level: str, X: Any, base: Any, trials: Any) -> str | None:
-    """The `/counts` reference these spots' counts are, found by content, else written; `None` outside a file.
-
-    A level read with its read depth and baseline zeroed (the BAF stage's) is
-    a reference to the same group, `ZEROED`; a level read with a baseline
-    where the group held none rewrites the group with it.
-    """
+    """The `/counts` reference for these counts, found by content or written; `None` outside a file."""
     from port.extensions import cnamaste
 
     path = cnamaste.active()
@@ -195,7 +170,7 @@ def summed(
 
 
 def fit_arrays(res: Any, n_obs: int) -> tuple[dict[str, Any], dict[str, Any]]:
-    """A `cnaster` fit as stored: `pred_cnv` one column per clone, `log_mu` per state, and how each was shaped."""
+    """A `cnaster` fit as stored: `pred_cnv` one column per clone, `log_mu` per state, and their shapes."""
     pred = np.asarray(res["pred_cnv"], dtype=np.int64)
     layout = "stacked" if pred.ndim == 1 else "columns"
     # NB a stacked fit's clones follow one another along the genome (`clone_stack_obs`)
@@ -227,7 +202,7 @@ def _stage_counts(level: str, arguments: dict[str, Any]) -> str:
 
 
 def initial(labels: np.ndarray) -> np.ndarray | None:
-    """`labels` unless they are `/initial_clones`, written here if absent: a stage's `clone_index`, once."""
+    """`None` if `labels` are `/initial_clones` (written if absent), else `labels`."""
     from port.extensions import cnamaste
 
     path = cnamaste.active()
@@ -457,7 +432,7 @@ def integer_copy(path: Path, df_cnv: Any, level: str) -> None:
 
 
 def integer_groups(path: Path, run: Path, config: Path) -> None:
-    """`/integer_copy`, if no page wrote it, and `/integer_clones`, from what the run wrote into `run` and its spots."""
+    """`/integer_copy` if absent, and `/integer_clones`, from the run directory `run` and its spots."""
     import pandas as pd
 
     from port.extensions import cnamaste

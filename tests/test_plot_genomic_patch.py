@@ -1,19 +1,18 @@
-"""`port.patch.plot_genomic` against `cnaster.plot_genomic` (#299).
+"""`port.patch.plot_genomic` against `cnaster.plot_genomic` and a planted instance (#299).
 
-Two claims. **With the shift off, it draws what upstream draws**: every
-point, error bar, level line and colour, bitwise, on each of the three
-branches the function has -- integer copies, a fit, and raw data. **With the
-shift on, each clone's RDR line sits on the bins it describes**: at
-`exp(log_mu - log Z_c)`, which on data planted from
-`<u> = lambda T mu / sum lambda mu` is where the normal bins read.
+Unshifted it draws upstream's arrays bitwise; shifted, RDR lines sit on normal bins.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+import matplotlib as mpl
 import numpy as np
 import pytest
+from cnaster.plot_genomic import plot_clones_genomic as upstream
+from port.patch.plot_genomic import fitted_levels
+from port.patch.plot_genomic import plot_clones_genomic as replacement
 
 from tests.adapters import drawn
 from tests.fixtures import genomic_plot_instance, integer_copies
@@ -25,20 +24,9 @@ from tests.fixtures import genomic_plot_instance, integer_copies
 def test_unshifted_it_draws_what_upstream_draws(
     cnaster_config: None, branch: str
 ) -> None:
-    """Every point, error bar, level and colour, bitwise, on each branch.
-
-    The three branches colour by different things -- decoded states,
-    integer copies through `cnaster`'s palette, one colour -- and only the
-    first two draw levels, so each is compared. Bitwise, because the
-    replacement does upstream's arithmetic on the same doubles; a tolerance
-    would hide a rewiring.
-    """
-    import matplotlib as mpl
+    """Every drawn array equals upstream's, bitwise, on each of the three branches."""
 
     mpl.use("Agg")
-
-    from cnaster.plot_genomic import plot_clones_genomic as upstream
-    from port.patch.plot_genomic import plot_clones_genomic as replacement
 
     instance = genomic_plot_instance()
     arguments = instance["arguments"]
@@ -64,12 +52,7 @@ def test_unshifted_it_draws_what_upstream_draws(
 
 
 def _planted(seed: int = 3) -> dict[str, Any]:
-    """Three clones planted from `<u_gn> = lambda_g T_n mu / sum lambda mu`.
-
-    Clone 0 is normal. 60 bins, 40 spots per clone, 400 counts per bin in
-    expectation, Poisson, so each clone's normal-bin RDR median is known to
-    well under a per cent.
-    """
+    """Return three clones planted from `<u_gn> = lambda_g T_n mu / sum lambda mu`, clone 0 normal."""
     rng = np.random.default_rng(seed)
     n_obs, per_clone, n_clones = 60, 40, 3
     mu = np.array([1.0, 1.5, 3.0])
@@ -90,7 +73,7 @@ def _planted(seed: int = 3) -> dict[str, Any]:
         z = float((profile * mu[path[:, clone]]).sum())
         counts[:, spot] = rng.poisson(profile * coverage * mu[path[:, clone]] / z)
 
-    # NB `cnaster`'s baseline: lambda_g times each spot's own total.
+    # NB `cnaster`'s baseline: lambda_g times each spot's own total
     base = profile[:, None] * counts.sum(axis=0)[None, :]
 
     X = np.zeros((n_obs, 2, assignment.size))
@@ -118,19 +101,9 @@ def _planted(seed: int = 3) -> dict[str, Any]:
 
 @pytest.mark.oracle
 def test_shifted_the_rdr_line_sits_on_the_normal_bins() -> None:
-    """Each clone's neutral line at its normal bins' median RDR.
-
-    On the planted instance, with the shift on, the line drawn over each
-    clone's state-0 bins against the median `X / base` of those bins:
-    `1 / Z_c` in expectation, `Z = (1.000, 1.655, 2.161)` here. Stated to 2
-    per cent, realized 0.04, 0.39 and 0.49 per cent. Unshifted the same line
-    is drawn at 1, which is 2.15 times clone 2's median of 0.465.
-    """
-    import matplotlib as mpl
+    """Shifted, each neutral line is at its normal bins' median RDR (2%) and `1 / Z_c` (1e-12)."""
 
     mpl.use("Agg")
-
-    from port.patch.plot_genomic import fitted_levels
 
     planted = _planted()
     _, X, base, _ = planted["arguments"]

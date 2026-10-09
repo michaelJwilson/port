@@ -1,33 +1,29 @@
-"""`cnaster.hmm` and the dense recursion, refereed by upstream (#140).
+"""`cnaster.hmm` and the dense recursion against upstream `sal` (#140).
 
-**Two gaps, one module.** `cnaster/hmm.py` is 59 statements at zero: every
-rung so far has gone *around* the Baum-Welch driver into `hmm_nophasing`, so
-the loop itself has never had a referee. And `hmm_nophasing`'s backward pass
-and posterior have none either -- `test_hmm_single_chain.py` referees the
-emission and the **forward** total, and `test_oracle_rung.py` the clone-stacked
-**ragged** recursion, which leaves the rectangular batch `cnaster` actually
-runs, and the backward half of it, unchecked.
-
-Upstream's `likelihood.forward_backward` returns the evidence, the posterior
-and the pairwise posterior from one call, so it referees all three at once.
-The posterior is the strongest of them: it is a function of **both** passes,
-so a backward recursion that were wrong could not produce the right gamma.
-
-`opt.hmm.forward_log_likelihood` referees the driver. Baum-Welch's defining
-guarantee is that the evidence does not decrease, and the referee has to be
-an independent evaluation of that evidence -- `cnaster`'s own `llf` grading
-its own ascent is what `CLAUDE.md` calls measuring one implementation against
-itself.
+Posterior and evidence against `forward_backward`; Baum-Welch ascent scored by
+upstream's evidence.
 """
 
 import itertools
+import warnings
 from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
 import torch
+from cnaster.hmm import pipeline_baum_welch
+from cnaster.hmm_nophasing import hmm_nophasing
+from sal.emissions import NegativeBinomialEmission
+from sal.likelihood.forward_backward import forward_backward
+from scipy.special import logsumexp
 
-from tests.adapters import CnasterChainInputs, from_negative_binomial_chains
+from tests.adapters import (
+    CnasterChainInputs,
+    cnaster_lattice_arguments,
+    cnaster_posterior,
+    from_negative_binomial_chains,
+    upstream_chain_densities,
+)
 from tests.fixtures import NegativeBinomialChains, negative_binomial_chains
 
 if TYPE_CHECKING:
@@ -40,66 +36,18 @@ POSTERIOR_TOLERANCE = 1e-10
 """Tighter: a normalized posterior loses the evidence's magnitude."""
 
 
-def _cnaster_emission(inputs: CnasterChainInputs) -> np.ndarray:
-    from cnaster.hmm_nophasing import hmm_nophasing
-
-    rdr, baf = hmm_nophasing.compute_emission_probability_nb_betabinom(
-        inputs.single_X,
-        inputs.base_nb_mean,
-        inputs.log_mu,
-        inputs.alphas,
-        inputs.total_bb_RD,
-        inputs.p_binom,
-        inputs.taus,
-    )
-    emission: np.ndarray = rdr + baf
-    return emission
-
-
-def _cnaster_posterior(inputs: CnasterChainInputs) -> np.ndarray:
-    """`log gamma` over the concatenated axis, through `cnaster`'s own pieces.
-
-    `hmm.compute_copy_state_posterior` is the function the driver uses, so
-    this exercises `hmm.py` as well as both recursions in `hmm_nophasing`.
-    """
-    from cnaster.hmm import compute_copy_state_posterior
-    from cnaster.hmm_nophasing import hmm_nophasing
-
-    emission = _cnaster_emission(inputs)
-    log_alpha = hmm_nophasing.forward_lattice(
-        inputs.lengths,
-        inputs.log_transmat,
-        inputs.log_startprob,
-        emission,
-        inputs.log_sitewise_transmat,
-    )
-    log_beta = hmm_nophasing.backward_lattice(
-        inputs.lengths,
-        inputs.log_transmat,
-        inputs.log_startprob,
-        emission,
-        inputs.log_sitewise_transmat,
-    )
-    posterior: np.ndarray = compute_copy_state_posterior(log_alpha, log_beta)
-    return posterior
+_cnaster_posterior = cnaster_posterior
 
 
 def _upstream_forward_backward(
     fixture: NegativeBinomialChains, chain: int
 ) -> "ForwardBackward":
     """Upstream's two passes on one chain of the fixture."""
-    from sal.likelihood.forward_backward import forward_backward
 
-    # NB `observations` is `(n_sequences, sequence_length)`, one row per chain,
-    #    where `cnaster` takes them concatenated along the observation axis.
-    #    The row is what upstream's single-chain recursion wants.
-    observations = np.asarray(fixture.dataset.observations)[chain]
-
-    density = fixture.family.log_density(
-        torch.as_tensor(observations, dtype=torch.float64)
-    )
+    # NB upstream takes one row per chain; `cnaster` concatenates them
+    density = upstream_chain_densities(fixture)[chain]
     return forward_backward(
-        np.asarray(density, dtype=float),
+        density,
         np.log(np.asarray(fixture.dataset.initial, dtype=float)),
         np.log(np.asarray(fixture.dataset.transition, dtype=float)),
     )
@@ -108,17 +56,7 @@ def _upstream_forward_backward(
 @pytest.mark.oracle
 @pytest.mark.parametrize("n_sequences", [1, 3])
 def test_the_state_posterior_agrees_with_upstream(n_sequences: int) -> None:
-    """**The backward pass's first referee, and the driver's posterior.**
-
-    `log gamma` is a function of both recursions and of
-    `hmm.compute_copy_state_posterior`, so this is the one comparison that a
-    wrong backward pass cannot survive: a forward-only error would already
-    show in the evidence, and a backward-only error shows only here.
-
-    Swept over the sequence count because the recursion restarts at every
-    boundary `lengths` declares, and a restart the backward pass got wrong
-    would be invisible on one chain.
-    """
+    """The state posterior equals upstream's, to `POSTERIOR_TOLERANCE`, per chain."""
     fixture = negative_binomial_chains(
         n_states=3, sequence_length=40, n_sequences=n_sequences
     )
@@ -140,13 +78,7 @@ def test_the_state_posterior_agrees_with_upstream(n_sequences: int) -> None:
 
 @pytest.mark.oracle
 def test_every_posterior_column_is_a_distribution() -> None:
-    """What the comparison above would miss if both sides were unnormalized.
-
-    `compute_copy_state_posterior` subtracts a `logsumexp` across states, so
-    each column sums to one. Upstream's rows do too, and an agreement between
-    two arrays that were both wrong by the same constant would pass the
-    previous test on a single chain.
-    """
+    """Each posterior column sums to one, to `POSTERIOR_TOLERANCE`."""
     fixture = negative_binomial_chains(n_states=4, sequence_length=25, n_sequences=2)
     inputs = from_negative_binomial_chains(fixture)
 
@@ -160,28 +92,13 @@ def test_every_posterior_column_is_a_distribution() -> None:
 @pytest.mark.oracle
 @pytest.mark.parametrize("n_sequences", [2, 4])
 def test_the_evidence_agrees_over_a_rectangular_batch(n_sequences: int) -> None:
-    """The shape `cnaster` runs, which the ragged rung does not cover.
-
-    #97 refereed the clone-stacked **ragged** recursion against
-    `baum_welch_family`. This is the rectangular batch -- equal-length chains
-    concatenated, which is what `pipeline_baum_welch` receives from the
-    pseudobulk -- scored per chain against upstream and summed.
-    """
+    """Rectangular-batch evidence equals upstream's per-chain sum, to `TOLERANCE` (#97)."""
     fixture = negative_binomial_chains(
         n_states=3, sequence_length=30, n_sequences=n_sequences
     )
     inputs = from_negative_binomial_chains(fixture)
 
-    from cnaster.hmm_nophasing import hmm_nophasing
-    from scipy.special import logsumexp
-
-    log_alpha = hmm_nophasing.forward_lattice(
-        inputs.lengths,
-        inputs.log_transmat,
-        inputs.log_startprob,
-        _cnaster_emission(inputs),
-        inputs.log_sitewise_transmat,
-    )
+    log_alpha = hmm_nophasing.forward_lattice(*cnaster_lattice_arguments(inputs))
     ends = np.cumsum(inputs.lengths) - 1
     theirs = sum(
         float(_upstream_forward_backward(fixture, chain).log_evidence)
@@ -197,93 +114,31 @@ def _upstream_evidence_at(
     log_mu: np.ndarray,
     alphas: np.ndarray,
 ) -> float:
-    """Upstream's evidence at **`cnaster`'s** fitted parameters.
-
-    The referee for the driver. `cnaster`'s own `llf` grading its own ascent
-    is one implementation measured against itself, so the family is rebuilt
-    upstream from the parameters the fit returned and the evidence is summed
-    over the fixture's chains.
-    """
-    from sal.emissions import NegativeBinomialEmission
-    from sal.likelihood.forward_backward import forward_backward
+    """Return upstream's evidence at `cnaster`'s fitted parameters, summed over chains."""
 
     family = NegativeBinomialEmission(
         torch.as_tensor(1.0 / np.asarray(alphas).ravel(), dtype=torch.float64),
         torch.as_tensor(np.exp(np.asarray(log_mu).ravel()), dtype=torch.float64),
     )
-    observations = np.asarray(fixture.dataset.observations)
     log_initial = np.log(np.asarray(fixture.dataset.initial, dtype=float))
     log_transition = np.log(np.asarray(fixture.dataset.transition, dtype=float))
 
-    total = 0.0
-    for chain in range(observations.shape[0]):
-        density = family.log_density(
-            torch.as_tensor(observations[chain], dtype=torch.float64)
-        )
-        total += float(
-            forward_backward(
-                np.asarray(density, dtype=float), log_initial, log_transition
-            ).log_evidence
-        )
-    return total
+    return sum(
+        float(forward_backward(density, log_initial, log_transition).log_evidence)
+        for density in upstream_chain_densities(fixture, family)
+    )
 
 
 def _fit(fixture: NegativeBinomialChains, inputs: CnasterChainInputs, max_iter: int):  # type: ignore[no-untyped-def]
-    """`pipeline_baum_welch` at a budget, on the single-spot chain fixture.
-
-    `params="sp"` so the transition stays at the fixture's, which is what lets
-    the referee score a likelihood under a transition both sides agree on.
-    `hmmclass=hmm_nophasing` because the default raises on any instance with
-    more than one spot (#80).
-    """
-    import warnings
-
-    from cnaster.hmm import pipeline_baum_welch
-    from cnaster.hmm_nophasing import hmm_nophasing
-
-    # NB the starting point is supplied rather than left to the driver's own
-    #    initializer, which cannot run (#143): `hmm.py:77` calls `gmm_init`
-    #    with five positional arguments where it takes eight. Supplying it
-    #    also fixes the ascent's start, which a monotonicity claim needs.
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        return pipeline_baum_welch(
-            None,
-            inputs.single_X,
-            inputs.lengths,
-            inputs.n_states,
-            inputs.base_nb_mean,
-            inputs.total_bb_RD,
-            inputs.log_sitewise_transmat,
-            hmmclass=hmm_nophasing,
-            params="sp",
-            t=float(np.exp(inputs.log_transmat[0, 0])),
-            init_log_mu=np.asarray(inputs.log_mu, dtype=float).reshape(-1, 1),
-            init_p_binom=np.asarray(inputs.p_binom, dtype=float).reshape(-1, 1),
-            init_alphas=np.asarray(inputs.alphas, dtype=float).reshape(-1, 1),
-            init_taus=np.asarray(inputs.taus, dtype=float).reshape(-1, 1),
-            max_iter=max_iter,
-            tol=1e-12,
-        )
+    """Run `pipeline_baum_welch` at a budget with the fixture's transition (#80)."""
+    # NB the start is supplied: the driver's own initializer raises (#143)
+    self_transition = float(np.exp(inputs.log_transmat[0, 0]))
+    return _fit_at(fixture, inputs, self_transition, max_iter, params="sp")
 
 
 @pytest.mark.oracle
 def test_baum_welch_does_not_lower_the_upstream_evidence(cnaster_config: None) -> None:
-    """**Baum-Welch's defining guarantee, refereed rather than self-reported.**
-
-    The evidence is non-decreasing across iterations. `cnaster` reports an
-    `llf` of its own, so the check has to come from elsewhere: the family is
-    rebuilt upstream at each iteration's fitted parameters and scored by
-    upstream's recursion.
-
-    This is **#4's scope item 4**, which has had no test anywhere: the driver
-    is 59 statements and every rung so far went around it into
-    `hmm_nophasing`.
-
-    A failure means the M step is not maximising what the E step computed --
-    the classic symptom of a mismatched sufficient statistic, and the one
-    defect a per-function comparison cannot find.
-    """
+    """Upstream's evidence does not fall across Baum-Welch iterations, to `TOLERANCE`."""
     fixture = negative_binomial_chains(n_states=3, sequence_length=60, n_sequences=2)
     inputs = from_negative_binomial_chains(fixture)
 
@@ -302,14 +157,7 @@ def test_baum_welch_does_not_lower_the_upstream_evidence(cnaster_config: None) -
 
 @pytest.mark.oracle
 def test_baum_welch_reaches_a_fixed_point(cnaster_config: None) -> None:
-    """More iterations stop moving the parameters, scored by upstream.
-
-    Monotonicity alone is satisfied by a fit that never converges, so the
-    other half of the guarantee is that the ascent terminates. Compared at
-    the evidence rather than at the parameters, because two parameter sets
-    that differ below the tolerance are the same fixed point and the evidence
-    is the quantity the ascent is on.
-    """
+    """20 and 40 iterations reach the same upstream evidence, to 1e-6."""
     fixture = negative_binomial_chains(n_states=3, sequence_length=60, n_sequences=2)
     inputs = from_negative_binomial_chains(fixture)
 
@@ -328,24 +176,7 @@ def test_baum_welch_reaches_a_fixed_point(cnaster_config: None) -> None:
 
 @pytest.mark.bug
 def test_the_driver_cannot_initialize_itself(cnaster_config: None) -> None:
-    """**`pipeline_baum_welch`'s own default raises (#143).**
-
-    Left to initialize, `hmm.py:77` calls `gmm_init` with five positional
-    arguments -- `n_states, X, base_nb_mean, total_bb_RD, params` -- where the
-    function takes eight: `lengths`, `log_transmat` and
-    `log_sitewise_transmat` follow `params` and have no defaults.
-
-    So the branch that fires whenever a caller omits `init_log_mu` or
-    `init_p_binom`, which is the signature's own default, cannot execute. The
-    same class of defect as #9's `cna_mixture_init`, on a second path.
-
-    Pinned so a fix upstream turns this red rather than passing unnoticed,
-    and because the tests above have to work around it.
-    """
-    import warnings
-
-    from cnaster.hmm import pipeline_baum_welch
-    from cnaster.hmm_nophasing import hmm_nophasing
+    """`pipeline_baum_welch`'s default init calls `gmm_init` with too few args (#143)."""
 
     fixture = negative_binomial_chains(n_states=2, sequence_length=20, n_sequences=1)
     inputs = from_negative_binomial_chains(fixture)
@@ -368,13 +199,7 @@ def test_the_driver_cannot_initialize_itself(cnaster_config: None) -> None:
 
 
 IMPOSED_SELF_TRANSITIONS = [0.99999, 0.999, 0.99, 0.95, 0.9, 0.5]
-"""Wrong values spanning both sides of the fixture's 0.8 (#142).
-
-The first two are `zenodo_sim_config.yaml`'s `t_phaseing` and its
-neighbourhood; `0.5` is the diagnostic value #129 swept. All are wrong for
-this fixture, which generates from a self-transition of 0.8, and that is the
-point: the question is what each M step does when handed a wrong prior.
-"""
+"""Wrong self-transitions on both sides of the fixture's 0.8 (#142)."""
 
 
 def _uniform_transition(self_transition: float, n_states: int) -> np.ndarray:
@@ -389,35 +214,14 @@ def _uniform_transition(self_transition: float, n_states: int) -> np.ndarray:
 def _paper_transition_update(
     fixture: NegativeBinomialChains, log_transition: np.ndarray
 ) -> np.ndarray:
-    """The transition the paper's M step returns, assembled from upstream.
+    """Return the paper's transition M step from upstream's pairwise posterior, row-normalized."""
 
-    `hidden_markov.tex` states it as the expected transition counts,
-
-        T*_kl  is proportional to  sum_i sum_j  P(z_i = k, z_i+1 = l | x^j),
-
-    "which should be column normalized in order to provide an updated
-    transition matrix". Upstream's `forward_backward` returns exactly that
-    summand as `pairwise`, so the paper's update is a sum and a normalization
-    away and needs no second implementation of it -- which is what makes this
-    an `upstream_oracle` claim rather than a reimplementation grading itself.
-
-    Rows are the source state here, `cnaster`'s convention rather than the
-    paper's column one, so the normalization is over the row.
-    """
-    from sal.likelihood.forward_backward import forward_backward
-
-    observations = np.asarray(fixture.dataset.observations)
     log_initial = np.log(np.asarray(fixture.dataset.initial, dtype=float))
 
     counts = np.zeros(log_transition.shape, dtype=float)
-    for chain in range(observations.shape[0]):
-        density = fixture.family.log_density(
-            torch.as_tensor(observations[chain], dtype=torch.float64)
-        )
+    for density in upstream_chain_densities(fixture):
         counts += np.asarray(
-            forward_backward(
-                np.asarray(density, dtype=float), log_initial, log_transition
-            ).pairwise
+            forward_backward(density, log_initial, log_transition).pairwise
         ).sum(axis=0)
     updated: np.ndarray = counts / counts.sum(axis=1, keepdims=True)
     return updated
@@ -428,17 +232,9 @@ def _fit_at(  # type: ignore[no-untyped-def]
     inputs: CnasterChainInputs,
     self_transition: float,
     max_iter: int,
+    params: str = "stp",
 ):
-    """`_fit`, but with the self-transition imposed rather than taken from the fixture.
-
-    `params="stp"` rather than the default `"stmp"`: the `"m"` branch asserts a
-    normal baseline and `clone_lengths`, neither of which this fixture has
-    (`hmm_nophasing.py:835`). The `"t"` is what matters here and it is kept.
-    """
-    import warnings
-
-    from cnaster.hmm import pipeline_baum_welch
-    from cnaster.hmm_nophasing import hmm_nophasing
+    """`pipeline_baum_welch` from the planted parameters, at `self_transition`."""
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -451,7 +247,7 @@ def _fit_at(  # type: ignore[no-untyped-def]
             inputs.total_bb_RD,
             inputs.log_sitewise_transmat,
             hmmclass=hmm_nophasing,
-            params="stp",
+            params=params,
             t=self_transition,
             init_log_mu=np.asarray(inputs.log_mu, dtype=float).reshape(-1, 1),
             init_p_binom=np.asarray(inputs.p_binom, dtype=float).reshape(-1, 1),
@@ -467,31 +263,13 @@ def _fit_at(  # type: ignore[no-untyped-def]
 def test_the_m_step_returns_the_transition_it_was_given(
     cnaster_config: None, imposed: float
 ) -> None:
-    """**The transition is imposed, not estimated, and `params` does not change that (#142).**
-
-    `hmm_nophasing.py:1131` returns `"new_log_transmat": log_transmat` -- the
-    argument, unmodified. `hmm_phased` has no transition update either, and
-    the `"t"` in the default `params="stmp"` is read nowhere in the package:
-    grepping `cnaster` for a test on `"t"` in `params` returns nothing. This
-    passes `params="stp"`, which asks for the transition to be fitted, and it
-    is still returned unchanged.
-
-    Eight iterations, because a frozen parameter and a converged one look
-    alike after one, and swept over values wrong by up to five orders of
-    magnitude in `1 - t`, because the claim is that *nothing* moves it.
-
-    So `t` is not a starting value the fit can leave, and #142's sweep found a
-    threshold rather than a gradient because the data is never allowed to
-    move it.
-    """
+    """The M step returns the imposed transition unchanged, bitwise in log space (#142)."""
     fixture = negative_binomial_chains(n_states=3, sequence_length=60, n_sequences=2)
     inputs = from_negative_binomial_chains(fixture)
 
     fitted = _fit_at(fixture, inputs, imposed, 8)
 
-    # NB compared in log space, which is the space the driver built it in:
-    #    `hmm_nophasing.get_log_transmat` takes one `np.log` and the identity
-    #    is exact there, where an `exp` round trip back is not.
+    # NB compared in log space, where the driver built it and the identity is exact
     np.testing.assert_array_equal(
         np.asarray(fitted.params.new_log_transmat),
         np.log(_uniform_transition(imposed, inputs.n_states)),
@@ -501,28 +279,7 @@ def test_the_m_step_returns_the_transition_it_was_given(
 @pytest.mark.oracle
 @pytest.mark.parametrize("imposed", IMPOSED_SELF_TRANSITIONS)
 def test_the_paper_would_move_the_transition_toward_the_truth(imposed: float) -> None:
-    """**The divergence, as a number: one paper M step roughly halves the error (#142).**
-
-    The test above shows `cnaster` returns the transition unchanged. That is a
-    defect only if the paper's update would have changed it, so this computes
-    `T*` from upstream's pairwise posterior on the same chains. Against a
-    fixture generating from 0.8, one iteration gives:
-
-        imposed   0.99999  0.999   0.99    0.95    0.9     0.8      0.5
-        paper     0.9003   0.8875  0.8755  0.8554  0.8397  0.79994  0.6435
-
-    It moves toward the truth from both sides and is a fixed point at it, to
-    6e-5. `cnaster` moves it by zero at every one of these.
-
-    That is what makes this a **modelling** divergence rather than a
-    configuration one, and it answers the question #142 left open: no value of
-    `t` in `zenodo_sim_config.yaml` is an estimate, because the M step the
-    paper specifies is not implemented. The fix is the missing update, not a
-    better constant.
-
-    Asserted as strict improvement rather than against the numbers above,
-    which would pin upstream's fixture instead of the finding.
-    """
+    """One paper M step from upstream's pairwise posterior moves `t` toward truth (#142)."""
     fixture = negative_binomial_chains(n_states=3, sequence_length=60, n_sequences=2)
 
     truth = float(np.diag(np.asarray(fixture.dataset.transition, dtype=float)).mean())

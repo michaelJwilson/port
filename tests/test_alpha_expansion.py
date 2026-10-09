@@ -1,20 +1,12 @@
-"""Alpha expansion against ICM on the same Potts problem.
+"""Alpha expansion against ICM on one Potts problem (#246).
 
-**#246.** `cnaster` labels clones with iterated conditional modes, a greedy
-single-site descent. Upstream's alpha expansion solves the same MAP problem
-with moves that change arbitrarily many sites at once, and carries a proved
-bound. They reach different labellings by construction, so the question is
-not whether they agree but **which reaches the lower energy** --
-`search.alpha_expansion.energy` answers that for either.
-
-`oracle`: upstream decides the expected value, and the value is an absolute
-one. A lower Potts energy is a better MAP solution under the same model
-whoever produced it, so this needs no tolerance and no appeal to `cnaster`
-being right.
+Referee: upstream's `search.alpha_expansion.energy`; a lower energy is the better MAP
+solution, so no tolerance is needed.
 """
 
 from __future__ import annotations
 
+import itertools
 from typing import Any
 
 import numpy as np
@@ -22,23 +14,19 @@ import pytest
 from port.extensions.label_solver import SOLVERS, Solver, sweep_for
 from port.patch.icm.alpha_expansion import (
     alpha_expansion_sweep,
+    forbidden_as_finite,
     potts_energy,
     potts_graph_from,
 )
 from port.patch.icm.interface import CsrGraph
+from port.sandbox.extensions.label_solvers import SWEEPS
 
 from tests.fixtures import planted_blocky_field
 
 
 @pytest.mark.oracle
 def test_alpha_expansion_reaches_a_lower_energy_than_single_site_descent() -> None:
-    """The claim the bound predicts, measured on a problem with barriers.
-
-    A greedy descent stops where no single flip helps. An expansion move
-    changes many sites at once, so it crosses that. If this ever fails, the
-    field is too strong for the coupling to matter and the fixture, not the
-    algorithm, is what needs fixing.
-    """
+    """Alpha expansion reaches an energy no higher than ICM's on a field with barriers."""
     field, graph, _, beta = planted_blocky_field(12, 4, seed=3, beta=1.5)
 
     greedy = np.zeros(field.shape[0], dtype=np.int64)
@@ -74,12 +62,7 @@ def test_the_energy_is_monotone_and_the_labelling_is_the_one_scored() -> None:
 
 @pytest.mark.patch
 def test_each_undirected_edge_is_counted_once() -> None:
-    """`CsrGraph` stores both directions; `PottsGraph` counts each entry.
-
-    Listing both would double every bond and halve the effective temperature
-    without saying so, which would look like a tuning difference rather than
-    a bug.
-    """
+    """`CsrGraph`'s two directions convert to one `PottsGraph` edge each."""
     field, graph, _, beta = planted_blocky_field(4, 2, seed=1, beta=1.0)
     potts = potts_graph_from(graph, beta)
 
@@ -93,8 +76,7 @@ def test_each_undirected_edge_is_counted_once() -> None:
 
 @pytest.mark.patch
 def test_a_negative_coupling_is_refused_rather_than_clipped() -> None:
-    """The bound requires a metric. Silently clipping would forfeit it; `sal`'s
-    `from_directed_csr(scale=)` refuses it (T- #777)."""
+    """A non-metric coupling is refused by `sal`'s `from_directed_csr(scale=)` (T- #777)."""
     field, graph, _, _ = planted_blocky_field(4, 2, seed=1, beta=1.0)
 
     with pytest.raises(ValueError, match="coupling"):
@@ -103,14 +85,7 @@ def test_a_negative_coupling_is_refused_rather_than_clipped() -> None:
 
 @pytest.mark.warning
 def test_the_icm_only_knobs_are_accepted_and_ignored() -> None:
-    """`min_clone_spots` has no counterpart, and pretending otherwise is worse.
-
-    `cnaster` merges any clone below 200 spots mid-sweep (#81) using the
-    unseeded global RNG. Alpha expansion has no such move, and adding one
-    would break the monotonicity its termination proof rests on. Accepting
-    the argument keeps the two solvers interchangeable at the call site;
-    ignoring it is what this pins, so nobody reads the signature as a promise.
-    """
+    """`min_clone_spots` is accepted and ignored: alpha expansion has no merge move (#81)."""
     field, graph, _, beta = planted_blocky_field(8, 3, seed=5, beta=1.0)
 
     first = np.argmax(field, axis=1).astype(np.int64)
@@ -125,18 +100,7 @@ def test_the_icm_only_knobs_are_accepted_and_ignored() -> None:
 
 @pytest.mark.analytic
 def test_zero_coupling_recovers_the_field_argmax() -> None:
-    """With no coupling the joint MAP factorizes, so the answer is known.
-
-    The pin for the sign. Upstream minimizes `-sum h[s] - sum J [s == s]`,
-    which already carries the negation, so `cnaster`'s log-likelihood field
-    is passed through unchanged. Negating it as well solves the mirror
-    problem: this test returned `argmin` before the fix, on every site.
-
-    It is here rather than folded into the energy comparisons because those
-    score both solvers through `potts_energy`, which shared the negation --
-    an oracle carrying the defect it referees cannot see it. An analytic
-    limit can: at `beta = 0` there is nothing to solve.
-    """
+    """With no coupling the solution is the field's per-site argmax (sign check)."""
     rng = np.random.default_rng(17)
     n, n_states = 64, 4
 
@@ -160,14 +124,7 @@ def test_zero_coupling_recovers_the_field_argmax() -> None:
 
 @pytest.mark.patch
 def test_the_energy_is_minus_cnasters_objective_up_to_a_constant() -> None:
-    """What `potts_energy` has to be for "lower is better" to mean anything.
-
-    `cnaster`'s `icm_sweep_deque` maximizes
-    `sum_i field[i, s_i] + spatial_weight * sum_ij w_ij [s_i == s_j]`. This
-    asserts the referee is exactly the negation of that, offset by
-    `beta * sum(w)`, which is the same for every labelling and so cannot
-    change an ordering.
-    """
+    """`potts_energy` is the negation of cnaster's ICM objective plus a labelling- independent offset."""
     field, graph, planted, beta = planted_blocky_field(8, 3, seed=5, beta=1.25)
     first, second, coupling = potts_graph_from(graph, beta).endpoints
 
@@ -183,11 +140,7 @@ def test_the_energy_is_minus_cnasters_objective_up_to_a_constant() -> None:
 def _forbidding(
     side: int, n_states: int, seed: int, scale: float
 ) -> tuple[np.ndarray, CsrGraph, np.ndarray, float]:
-    """`planted_blocky_field` with two allowed labels per site and `-inf` on the rest.
-
-    `cnaster`'s field marks a label a spot may not take with `-inf`; `scale`
-    sets the field's magnitude against the unit coupling (#366).
-    """
+    """`planted_blocky_field` with two allowed labels per site and `-inf` elsewhere (#366)."""
     field, graph, _, beta = planted_blocky_field(side, n_states, seed, beta=1.0)
     rng = np.random.default_rng(seed)
     allowed = np.zeros(field.shape, dtype=bool)
@@ -202,17 +155,7 @@ def _forbidding(
 
 @pytest.mark.patch
 def test_a_finite_penalty_keeps_the_minimizer_of_the_forbidding_field() -> None:
-    """Brute force over every labelling of a 3 x 3 lattice, three labels.
-
-    The global minimum of the energy with `-inf` entries equals that with
-    `forbidden_as_finite`'s penalty, and the minimizer takes no forbidden
-    label. Fails if the penalty is ever payable: some neighbourhood would
-    then prefer a forbidden label, and the finite minimum would sit below
-    the true one or on a label the field forbids.
-    """
-    import itertools
-
-    from port.patch.icm.alpha_expansion import forbidden_as_finite
+    """Brute force on a 3x3 lattice: the `-inf` and `forbidden_as_finite` minima agree and avoid forbidden labels."""
 
     for seed in range(5):
         field, graph, _, beta = _forbidding(3, 3, seed, scale=100.0)
@@ -237,14 +180,7 @@ def test_a_finite_penalty_keeps_the_minimizer_of_the_forbidding_field() -> None:
 @pytest.mark.analytic
 @pytest.mark.parametrize("scale", [1.0, 1000.0])
 def test_the_sweep_moves_on_a_forbidding_field(scale: float) -> None:
-    """The result is a local minimum under every single-site allowed move.
-
-    `snakes_and_ladders` at 679d326 makes no expansion move on a field with
-    `-inf` entries, so the sweep returned its start, which no single-site
-    descent certifies (#366). The expansion's local minimum is stronger than
-    the single-site one, so this holds of any correct run and failed on the
-    stalled one at both scales.
-    """
+    """The result is a local minimum under every allowed single-site move (#366)."""
     field, graph, start, beta = _forbidding(20, 5, 366, scale)
     labelling = start.copy()
     alpha_expansion_sweep(field, graph, labelling, beta)
@@ -266,13 +202,7 @@ def test_the_sweep_moves_on_a_forbidding_field(scale: float) -> None:
 def test_every_solver_row_reaches_a_local_minimum_on_a_forbidding_field(
     name: Solver, scale: float
 ) -> None:
-    """Each `PORT_LABEL_SOLVER` row ends at a single-site local minimum (#466).
-
-    A row that hands sal's solvers a field holding `-inf` meets the no-move
-    defect #462 worked around in `alpha_expansion_sweep` alone (#373 B0), and
-    returns a labelling some allowed single-site move improves. The floor is
-    off (`min_clone_spots = 1`), so the property is the descent's own.
-    """
+    """Each `PORT_LABEL_SOLVER` row ends at a single-site local minimum (#466)."""
     field, graph, start, beta = _forbidding(20, 5, 466, scale)
     labelling = start.copy()
     sweep_for(name)(field, graph, labelling, beta, min_clone_spots=1)
@@ -298,27 +228,17 @@ EXPANDING: tuple[str, ...] = (
     "alpha-rust-merge",
     "alpha-rust-fuse-merge",
 )
-"""The rows whose first step is alpha expansion from the caller's labelling,
-live or set aside (`port.sandbox.extensions.label_solvers`)."""
+"""Rows whose first step is alpha expansion from the caller's labelling."""
 
 
 def _expanding(name: str) -> Any:
-    from port.sandbox.extensions.label_solvers import SWEEPS
-
     return SWEEPS[name] if name in SWEEPS else sweep_for(name)  # type: ignore[arg-type]
 
 
 @pytest.mark.analytic
 @pytest.mark.parametrize("name", EXPANDING)
 def test_every_expanding_row_ends_at_or_below_the_expansion(name: str) -> None:
-    """A row that expands first, then descends or fuses, ends no higher (#466).
-
-    Descent, merge and fusion never raise the energy, so each row ends at or
-    below `alpha_expansion_sweep`'s minimum from the same start. A row that
-    hands sal the raw `-inf` field expands nowhere (#373 B0) and ends at the
-    descent's own minimum instead: on this field `alpha-rust-merge` did, at
-    -497.58 against -501.14.
-    """
+    """An expand-first row ends no higher than `alpha_expansion_sweep` from the same start (#466)."""
     field, graph, start, beta = _forbidding(20, 5, 466, 1.0)
     expanded = start.copy()
     alpha_expansion_sweep(field, graph, expanded, beta)

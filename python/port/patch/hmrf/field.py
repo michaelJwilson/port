@@ -1,45 +1,8 @@
-"""`cnaster.hmrf.compute_loglike_spot_assignment`, walked in stride order.
+"""Replaces `cnaster.hmrf.compute_loglike_spot_assignment`, walked in stride order (#59).
 
-Issue #59 item 1. A drop-in replacement with `cnaster`'s signature, its
-layout and its output. The only change is the **order of the loops**.
-
-`cnaster` runs:
-
-    for spot in prange(n_spots):
-        for c in range(n_clones):
-            for o in range(n_obs):
-                rdr += log_emission_rdr[copy_state, o, spot]
-
-On a C-contiguous `(n_states, n_obs, n_spots)` emission the contiguous axis is
-`spot`, and it is the one held fixed by the outer loop. Each inner step
-strides `n_spots` floats -- 39 KB at 5,000 spots -- so every access misses.
-
-This runs the same three loops with `spot` innermost, accumulating into a
-vector rather than a scalar. Two things follow, and the second is why the
-ratio is what it is:
-
-*   The inner walk `log_emission_rdr[k, o, :]` is contiguous, and consecutive
-    `o` rows are adjacent, so the pass is one sequential sweep of the array
-    rather than `n_obs` strided probes.
-*   `acc[s] += rdr[k, o, s]` is a **vector accumulation**, not a reduction to
-    a scalar. `CLAUDE.md` asks for inner loops "contiguous, unaliased,
-    without early exit or data-dependent reduction, so NumPy and the Rust
-    compiler vectorize"; `cnaster`'s form is contiguous in neither sense and
-    is a reduction, and a form that fixes only the contiguity gets about half
-    the gain (`docs/measurements.md`).
-
-**Referee: bitwise.** The additions per `(spot, clone)` run over `o` in the
-same order as `cnaster`'s, so the same floats are summed in the same
-sequence. `np.array_equal` is the bar and a tolerance would be hiding
-something.
-
-**It needs nothing from the producer**, which is what makes it a
-simplification rather than a port-wide change. The algorithmic cut is issue
-#59 item 2 -- not materializing the `(n_states, n_obs, n_spots)` array at
-all.
-
-Measured, and the forms tried and rejected: `docs/measurements.md`,
-`port.patch.hmrf.field`.
+Same signature, layout and output; only the loop order changes: `spot` is
+innermost, so the C-contiguous `(n_states, n_obs, n_spots)` emission is swept
+sequentially and accumulated as a vector. Referee: bitwise (same summation order).
 """
 
 from __future__ import annotations
@@ -73,16 +36,10 @@ def compute_loglike_spot_assignment_strided(
     smooth_indptr=None,
     non_zero_weight=True,
 ):
-    """As `cnaster`'s, with the spot loop innermost.
+    """As `cnaster`'s, with the spot loop innermost; returns `(n_spots, n_clones)`.
 
-    Every argument, every shape and the returned `(n_spots, n_clones)` array
-    are `cnaster`'s. The relative-channel weight is carried unchanged rather
-    than fixed: it is a separate finding (#58), and changing two things at
-    once would make the bitwise comparison meaningless.
-
-    `prange` moves to the clone loop because each clone writes its own column
-    and its own accumulators, so there is no reduction across threads. The
-    spot loop cannot carry it -- it is the vectorized one.
+    The relative-channel weight is carried unchanged (#58). `prange` is over
+    clones: each writes its own column, so threads share no reduction.
     """
     loglike_spot_clone_assignment = np.zeros((n_spots, n_clones))
     rel_valid_emision_weight = np.ones(n_spots, dtype=np.float64)
@@ -116,8 +73,7 @@ def compute_loglike_spot_assignment_strided(
         for o in range(n_obs):
             copy_state = pred[c * n_obs + o] if is_1d_pred else pred[o, c]
 
-            # NB the contiguous axis, walked in stride order: a vector
-            #    accumulation rather than a reduction to a scalar.
+            # NB contiguous axis: a vector accumulation, not a scalar reduction.
             for spot in range(n_spots):
                 accumulated_rdr[spot] += log_emission_rdr[copy_state, o, spot]
                 accumulated_baf[spot] += log_emission_baf[copy_state, o, spot]

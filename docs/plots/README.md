@@ -15,7 +15,7 @@ before are in history: `git show ba34716:docs/plots/<path>.png`.
 | --- | --- |
 | the dev instance's, below, and `lattice/` | `run_figures [--out DIR]` (`--cnaster` for plain `cnaster`), or `python -m scripts.ci --figures` |
 | `realizations.png`, `realizations_truth.png`, `realizations.npz` | `run_audit --errors [--output PATH]` |
-| `realizations_copies.png` | `run_audit --copy [--output PATH]` |
+| `realizations_copies.png` | `python -m port.sandbox.copy_audit [--output PATH]` (set aside, T- #831) |
 | `metrics_history.png`, `metrics_history_classes.png` | `run_study --metrics-history [OUT.png [OUT_CLASSES.png]]` |
 | `sim_qa/` | `python -m port.sim.analysis plot sim/generated/dev_tree/r0` (writes `<r>/qa/`) |
 | `sim/cna_lengths.png` | `run_study --cna-lengths [OUT.png]` |
