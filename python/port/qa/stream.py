@@ -112,7 +112,7 @@ def redraw(study: str, record: Path, merge: Sequence[Path] = ()) -> None:
         [
             sys.executable,
             "-m",
-            "port.scripts.run_study",
+            "port.qa.scripts.run_study",
             f"--{study}",
             str(record),
             *map(str, merge),

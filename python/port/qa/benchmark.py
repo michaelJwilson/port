@@ -84,7 +84,7 @@ def port(name: str, repeats: int) -> dict[str, Any]:
             [
                 sys.executable,
                 "-m",
-                "port.scripts.run_audit",
+                "port.qa.scripts.run_audit",
                 "--sim",
                 "--sample",
                 name,

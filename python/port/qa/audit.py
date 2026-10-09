@@ -1,6 +1,6 @@
 """The audits: a run of `run_cnaster_port` scored against the truth that generated its data (T- #673 G3).
 
-Behind `run_audit` (`port.scripts.run_audit`), one mode each:
+Behind `run_audit` (`port.qa.scripts.run_audit`), one mode each:
 
 - `--sim`: CalicoST's committed samples or a `port.sim.draw` sample, scored
   by `score_sample` (#362);

@@ -180,7 +180,7 @@ def _steps(
 
     if arguments.figures:
         steps.append(
-            ("figures", [sys.executable, "-m", "port.scripts.run_figures"], {})
+            ("figures", [sys.executable, "-m", "port.qa.scripts.run_figures"], {})
         )
 
     return steps

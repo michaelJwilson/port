@@ -45,7 +45,7 @@ def record(arguments: argparse.Namespace) -> int:
     ]  # fmt: skip
     flags = [f for f in arguments.flags if f != "--"]
     command = [
-        sys.executable, "-m", "port.scripts.run_audit", "--recovery",
+        sys.executable, "-m", "port.qa.scripts.run_audit", "--recovery",
         "--instance", arguments.instance,
         *(["--lattice"] if arguments.lattice else []),
         *(["--loh"] if arguments.loh else []),
@@ -99,7 +99,7 @@ def record_sample(arguments: argparse.Namespace, *, dirty: bool) -> int:
     ]
     flags = [f for f in arguments.flags if f != "--"]
     command = [
-        sys.executable, "-m", "port.scripts.run_audit", "--sim", "--sample", sample,
+        sys.executable, "-m", "port.qa.scripts.run_audit", "--sim", "--sample", sample,
         *audit, "--", *flags,
     ]  # fmt: skip
     completed = subprocess.run(

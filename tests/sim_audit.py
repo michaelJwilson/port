@@ -15,7 +15,7 @@ __all__ = ["main", "score"]
 
 def main(argv: Sequence[str] | None = None) -> int:
     """`run_audit --sim` with these arguments."""
-    from port.scripts.run_audit import main as run_audit
+    from port.qa.scripts.run_audit import main as run_audit
 
     return run_audit(["--sim", *(sys.argv[1:] if argv is None else argv)])
 
