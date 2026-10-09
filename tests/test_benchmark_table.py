@@ -17,20 +17,20 @@ PORT = {"ari": 0.8612, "ari_integer": 1.0, "state_ari": 0.0682, "copy_ari_pf": 0
 
 @pytest.mark.snapshot
 def test_the_table_reproduces_the_papers_rows() -> None:
-    """The two archives' rows, phase-free: three decimals half up, minutes to one, the fixture's hash in the header."""
+    """The two archives' rows, phase-free: three decimals half up, minutes to one, the fixture's hash in its own column."""
     from port.studies.benchmark_table import render
 
     tex = render(
         CALICOST, PORT, fixture="3381575a", commit="abc1234", sal="5d59752c", repeats=3
     )
 
-    assert r"Method (\texttt{3381575a})" in tex
+    assert r"Method\phantom{\texttt{xxxxxxxxxxxxx}} & Hash &" in tex
     assert (
-        r"\calicost{}                  & 0.854 & 0.854 & 0.089 & 0.908 & 0.710 &      337.4 \\"
+        r"\calicost{}                    & \texttt{3381575a} & 0.854 & 0.854 & 0.089 & 0.908 & 0.710 &      337.4 \\"
         in tex
     )
     assert (
-        r"\cnamaste{}                  & 0.861 & 1.000 & 0.068 & 0.983 & 0.935 &        2.6 \\"
+        r"\cnamaste{}                    & \texttt{3381575a} & 0.861 & 1.000 & 0.068 & 0.983 & 0.935 &        2.6 \\"
         in tex
     )
     assert tex.startswith(
@@ -53,7 +53,7 @@ def test_the_cnaster_row_sits_between_and_names_its_pin() -> None:
     names = [line.split("&")[0].strip() for line in tex.splitlines() if " & 0." in line]
     assert names == [r"\calicost{}", r"\cnaster{}", r"\cnamaste{}"]
     assert (
-        r"\cnaster{}                   & 0.861 & 1.000 & 0.068 & 0.983 & 0.935 &       10.0 \\"
+        r"\cnaster{}                     & \texttt{3381575a} & 0.861 & 1.000 & 0.068 & 0.983 & 0.935 &       10.0 \\"
         in tex
     )
     assert (
@@ -103,17 +103,19 @@ def test_cnasters_committed_outputs_score_as_its_run(tmp_path: Path) -> None:
 
 @pytest.mark.snapshot
 def test_the_supported_table_is_the_ledgers_last_sweep() -> None:
-    """`--supported` renders the latest benchmark sweep from the ledger: a row per run, its fixture and hash named."""
+    """`--supported` renders the latest benchmark sweep from the ledger: a row per run, its `short` name and its hash."""
     from port.qa import ledger
-    from port.studies.benchmark_table import render_supported, swept
+    from port.studies.benchmark_table import render_supported, short, swept
 
     commit, rows = swept()
     tex = render_supported(rows, commit=commit, sal="5d59752c")
 
     assert len(rows) == len(ledger.last_benchmark())
-    assert tex.count(r"\texttt{") == 2 * len(rows)
-    for _fixture, digest, scores in rows:
-        assert f"(\\texttt{{{digest}}})" in tex
+    assert tex.count(r"\texttt{") == 2 * len(rows) + 1
+    for fixture, digest, scores in rows:
+        name = short(fixture).replace("_", "\\_")
+        assert f"\\texttt{{{name}}}" in tex
+        assert f"& \\texttt{{{digest}}} &" in tex
         assert set(scores) == {
             "ari",
             "ari_integer",
@@ -122,3 +124,19 @@ def test_the_supported_table_is_the_ledgers_last_sweep() -> None:
             "exact_altered_minor",
             "wall",
         }
+
+
+@pytest.mark.snapshot
+def test_both_tables_set_the_name_column_alike() -> None:
+    """Both headers reserve `SHORT` `\\texttt` characters for the name, and every supported fixture's `short` name fits them."""
+    from port.studies.benchmark_table import SHORT, render, render_supported, short
+
+    benchmark = render(CALICOST, PORT, fixture="3381575a", commit="abc1234", sal="5d59752c", repeats=3)  # fmt: skip
+    supported = render_supported([("dev_tree_1s_dense_r0", "33e3471e", PORT)], commit="abc1234", sal="5d59752c")  # fmt: skip
+    width = rf"\phantom{{\texttt{{{'x' * SHORT}}}}} & Hash"
+    assert width in benchmark
+    assert width in supported
+    assert short("dev_tree_1s_dense_r0") == "tree_1s_dense"
+    assert len("tree_1s_dense") == SHORT
+    with pytest.raises(ValueError, match="over 13"):
+        short("dev_tree_1s_denser_r0")
