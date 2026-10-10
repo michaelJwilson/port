@@ -20,6 +20,7 @@ import pytest
 
 from audit.scoring import matched, overlap
 from audit.segments import DROPPED
+from cnamaste.hmm_nophasing import get_log_transmat, hmm_nophasing
 
 
 def table(sim: Any, name: str, **kwargs: Any) -> pd.DataFrame:
@@ -42,21 +43,6 @@ LEVELS = {
     "kept_bins": "06_normal/normal_baf_bin_filter/out/1/X",
     "rebinned": "07_rebin/summarize_counts_for_bins/out/X",
 }
-
-
-@pytest.fixture(scope="session")
-def gene_counts(sim: Any, replayed: Any, lineage: Any) -> np.ndarray:
-    """(genes, spots) UMI counts in the lineage's gene order, from the loaded AnnData's `count` layer."""
-    adata = replayed.value("00_inputs/load_input_data/out/2")
-    names = np.asarray(sim.stored("02_blocks/assign_initial_blocks/out")["gene"])[lineage.genes.row]
-    column = pd.Index(adata.var.index).get_indexer(names)
-    assert np.all(column >= 0)
-    counts = adata.layers["count"]
-    found = np.asarray(counts[:, column].toarray() if hasattr(counts, "toarray") else counts[:, column]).T
-    # NB a name the reference carries twice (LINC01505 on easy) is one AnnData column, which the
-    #    summaries count once per segment (`np.isin` on names): its second row counts nothing.
-    found[pd.Index(names).duplicated()] = 0
-    return found
 
 
 @pytest.mark.parametrize("level", list(LEVELS))
@@ -88,8 +74,6 @@ def test_the_empty_clone_reindex_is_dense_and_order_keeping(sim: Any, run: str) 
 
 def posterior_states(sim: Any, replayed: Any, clone: int) -> tuple[np.ndarray, np.ndarray]:
     """The final fit's states for `clone`, recomputed: its pseudobulk from the spot counts, decoded with the final parameters."""
-    from cnamaste.hmm_nophasing import get_log_transmat, hmm_nophasing
-
     res = sim.result("08_rdr/reindex_clones/out/0")
     given = replayed.value("08_rdr/run_core_inference/in")
     single_x, lengths, base, depth = (given["args"][i] for i in range(4))

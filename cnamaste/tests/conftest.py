@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import random
 import time
 from collections.abc import Iterator
@@ -24,13 +25,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import h5py
 import numpy as np
+import pandas as pd
 import pytest
 import yaml
+from numba import _helperlib
 
+from audit.criteria import Units, units_of
 from audit.capture import Capture, digest, unordered, file_sha256, grch38, input_files, stage_inputs
 from audit.scoring import Truth, planted
 from audit.segments import DROPPED, Genes, Segmentation
+from cnamaste.config import YAMLConfig, set_global_config
 
 PROJECT = Path(__file__).resolve().parents[1]
 REPOSITORY = PROJECT.parent
@@ -61,8 +67,6 @@ def selected(config: pytest.Config) -> list[str]:
 
 
 def stages_of(sim_hash: str) -> list[str]:
-    import h5py
-
     with h5py.File(PROJECT / SUPPORTED_SIMS[sim_hash][1], "r") as h5:
         return list(json.loads(h5["config"].attrs["stages"]))
 
@@ -94,8 +98,6 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 @pytest.fixture(scope="session", autouse=True)
 def _working_directory(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
     """A scratch working directory: `hmm_emission.flush_perf` appends to `cnamaste.perf` in it, whatever `paths.perf_path` says."""
-    import os
-
     before = Path.cwd()
     os.chdir(tmp_path_factory.mktemp("cwd"))
     yield
@@ -132,8 +134,6 @@ class Staged:
 @pytest.fixture(scope="session")
 def staged(sim: Capture, sample: Path, tmp_path_factory: pytest.TempPathFactory) -> Staged:
     """The committed inputs staged as the capture staged them; refused on a sha256 mismatch."""
-    from cnamaste.config import YAMLConfig
-
     recorded = json.loads(sim.config["inputs"])
     for name, path in input_files(sample).items():
         assert file_sha256(path) == recorded[name]["sha256"], f"{path} is not the input the capture read"
@@ -197,9 +197,7 @@ class Replay:
     def run(self, stage: str) -> Any:
         """`stage`'s function on its recorded input, with the recorded generator states."""
         if stage not in self.outs:
-            from numba import _helperlib
 
-            from cnamaste.config import set_global_config
 
             if stage.split("/")[1] in REPLAY_SKIPPED:
                 raise LookupError(f"{stage} is not replayed")
@@ -234,6 +232,27 @@ def replayed(sim: Capture, staged: Staged) -> Replay:
 
 # --- lineage ---------------------------------------------------------------
 
+
+@pytest.fixture(scope="session")
+def gene_counts(sim: Any, replayed: Any, lineage: Any) -> np.ndarray:
+    """(genes, spots) UMI counts in the lineage's gene order, from the loaded AnnData's `count` layer."""
+    adata = replayed.value("00_inputs/load_input_data/out/2")
+    names = np.asarray(sim.stored("02_blocks/assign_initial_blocks/out")["gene"])[lineage.genes.row]
+    column = pd.Index(adata.var.index).get_indexer(names)
+    assert np.all(column >= 0)
+    counts = adata.layers["count"]
+    found = np.asarray(counts[:, column].toarray() if hasattr(counts, "toarray") else counts[:, column]).T
+    # NB a name the reference carries twice (LINC01505 on easy) is one AnnData column, which the
+    #    summaries count once per segment (`np.isin` on names): its second row counts nothing.
+    found[pd.Index(names).duplicated()] = 0
+    return found
+
+
+
+@pytest.fixture(scope="session")
+def units(sim: Capture, replayed: Replay, lineage: Lineage, gene_counts: np.ndarray) -> Units:
+    """Each level's units and counts, recomputed from the staged inputs (`audit.criteria`)."""
+    return units_of(sim, replayed, lineage, gene_counts)
 
 @dataclass
 class Lineage:

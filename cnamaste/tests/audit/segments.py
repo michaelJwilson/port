@@ -1,10 +1,8 @@
-"""Genomic segments as labellings of the gene rows: port's `port.extensions.segments`, trimmed (T- #836).
+"""Genomic segments as labellings of the gene rows (Ticket#836).
 
-Copied from port `python/port/extensions/segments.py` at badfe56, keeping
-`Genes`, `Segmentation` and `DROPPED` and what the tests use of them: the
-construction (`from_table`, `of`, `coarsen`, `select`), the derived extents
-and `lengths`, `refines`, `aggregate` and `broadcast`. The floor, the
-phase-switch kernel and `Lineage` are left out. Imports no port.
+`Genes`, `Segmentation` and `DROPPED`: the construction (`from_table`, `of`,
+`coarsen`, `select`), the derived extents and `lengths`, `refines`,
+`aggregate` and `broadcast`.
 
 The root is the gene rows of `df_gene_snp`, sorted by `(CHR, START)`; every
 coarser segmentation is one label per gene, `-1` (`DROPPED`) for a gene it
@@ -17,6 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
+import pandas as pd
 
 DROPPED = -1
 """The label of a gene a segmentation does not keep."""
@@ -81,8 +80,6 @@ class Segmentation:
         two would disagree. An id carried only by SNP rows has no gene and is
         refused.
         """
-        import pandas as pd
-
         genes = Genes.from_table(table) if genes is None else genes
         column = pd.Series(np.asarray(table[key]))
         is_gene = np.asarray(table["is_interval"], dtype=bool)
@@ -99,7 +96,7 @@ class Segmentation:
         # NB `assign_initial_blocks`' known-range path writes -1 for every row
         #    no range covers (`omics.py:528-530`): rows across the genome under
         #    one id, which `summarize_counts_for_blocks` then writes into the
-        #    *last* row of its counts while `groupby` puts it first (#438 D3).
+        #    *last* row of its counts while `groupby` puts it first (Ticket#438 D3).
         #    It is not a segment, and is refused by name rather than as a gap.
         if np.issubdtype(np.asarray(every).dtype, np.number) and np.any(
             np.asarray(every) < 0
@@ -209,13 +206,13 @@ class Segmentation:
 
     @property
     def length(self) -> np.ndarray:
-        """Each segment's extent in base pairs, `end - start` (#540)."""
+        """Each segment's extent in base pairs, `end - start` (Ticket#540)."""
         length: np.ndarray = self.end - self.start
         return length
 
     @property
     def gene(self) -> np.ndarray:
-        """Each segment's first gene, by its index label in the table the root was read from (#540)."""
+        """Each segment's first gene, by its index label in the table the root was read from (Ticket#540)."""
         gene: np.ndarray = self.genes.key[self.first]
         return gene
 
