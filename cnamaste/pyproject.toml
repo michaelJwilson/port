@@ -1,5 +1,5 @@
 # `cnamaste`, its own project (Ticket#836 PR1): its own build, lock and
-# environment. From this directory:
+# environment, sharing nothing with any other project. From this directory:
 #
 #   uv sync --locked && uv run run_cnamaste CONFIG
 #   uv build --wheel
@@ -54,7 +54,7 @@ package-dir = { "" = "python" }
 packages = ["cnamaste", "cnamaste.scripts"]
 
 [tool.uv]
-# NB the versions `cnaster` 4adad4d was measured under (a7ff616), where
+# NB the versions `cnaster` 4adad4d's reference rows were measured under, where
 #    an unpinned resolve moves them, so PR1's rows compare like with like
 #    (Ticket#836): unconstrained, polars resolves 2.0.0.
 constraint-dependencies = ["anndata==0.13.3.post0", "numba==0.67.0", "polars==1.44.2"]
