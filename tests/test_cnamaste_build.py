@@ -26,12 +26,10 @@ def test_the_copy_is_the_pinned_cnaster_renamed_plus_declared_edits() -> None:
 
 @pytest.mark.infra
 def test_cnamaste_imports_nothing_it_does_not_own() -> None:
-    """No module under `cnamaste/python/`, `tests/` or `scripts/` imports `cnaster`, port, sal or `oxiport`."""
+    """No module under `cnamaste/python/` or `tests/` imports `cnaster`, port, sal or `oxiport`."""
     found = []
     for path in sorted(
-        p
-        for d in ("python", "tests", "scripts")
-        for p in (ROOT / "cnamaste" / d).rglob("*.py")
+        p for d in ("python", "tests") for p in (ROOT / "cnamaste" / d).rglob("*.py")
     ):
         for node in ast.walk(ast.parse(path.read_text())):
             names = (

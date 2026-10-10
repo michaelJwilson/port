@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import gzip
 import io
 from pathlib import Path
 from typing import Any
@@ -23,9 +24,11 @@ import numpy as np
 import pandas as pd
 import pytest
 import scipy.sparse as sp
+from scipy import stats
 
 from audit.capture import input_files
 from audit.segments import DROPPED
+from cnamaste.utils import write_tsv
 
 pytestmark = pytest.mark.roundtrip
 
@@ -49,7 +52,6 @@ def snp_rows(frame: pd.DataFrame, ids: np.ndarray, key: str) -> tuple[np.ndarray
 def test_the_loaded_inputs_are_the_files(sample: Path, loaded: dict[str, Any]) -> None:
     """Every loaded barcode is one of `barcodes.txt`'s, and the allele totals are the files' over the loaded spots and SNPs."""
     files = input_files(sample)
-    import gzip
 
     raw = files["barcodes.txt"].read_bytes()
     barcodes = (gzip.decompress(raw) if files["barcodes.txt"].name.endswith(".gz") else raw).decode().split()
@@ -129,8 +131,6 @@ SHARES = {"umi": 0.8861, "baf": 0.9446}
 
 def test_observed_counts_fall_inside_the_predicted_intervals(sim: Any, replayed: Any) -> None:
     """UMIs ~ NB(mean = base * mu[state], dispersion alpha); B ~ BetaBinom(depth, p[state] tau, (1 - p) tau)."""
-    from scipy import stats
-
     res = sim.result("08_rdr/reindex_clones/out/0")
     pred = np.asarray(res["pred_cnv"])
     umi, b, depth, base = pseudobulk(sim, replayed)
@@ -151,7 +151,7 @@ def test_observed_counts_fall_inside_the_predicted_intervals(sim: Any, replayed:
 
 
 def test_a_removed_bins_genes_are_absent(sim: Any, lineage: Any) -> None:
-    """A gene whose bin the normal-BAF filter removed has no row in `cnv_genelevel.tsv` (#105, fixed in cnamaste)."""
+    """A gene whose bin the normal-BAF filter removed has no row in `cnv_genelevel.tsv` (Ticket#105, fixed in cnamaste)."""
     genelevel = pd.read_csv(io.BytesIO(sim.file("cnv_genelevel.tsv")), sep="\t", index_col=0)
     frame = sim.stored("02_blocks/assign_initial_blocks/out")
     names = frame["gene"].to_numpy()[lineage.genes.row]
@@ -185,8 +185,6 @@ def test_every_written_tsv_reloads_to_its_frame(sim: Any) -> None:
 
 def test_rewriting_a_tsv_is_byte_stable(sim: Any, tmp_path: Path) -> None:
     """`write_tsv` on the recorded frame writes the run's bytes again."""
-    from cnamaste.utils import write_tsv
-
     for stage in written_tsvs(sim):
         given = sim.stored(f"{stage}/in")
         target = tmp_path / sim.h5[stage].attrs["file"]

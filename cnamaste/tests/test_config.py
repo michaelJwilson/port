@@ -2,8 +2,7 @@
 
 Two files: cnaster's shipped `config.yaml` at 4adad4d (copied to `cnamaste/config.yaml`)
 and its `zenodo_sim_config.yaml`, the CalicoST simulations' configuration
-(copied unmodified to `cnamaste/zenodo_sim_config.yaml`; port's `tests/data` copy adds a
-header, `merge_agreement` and `1.0e-4` for `1e-4`). `cnamaste/config.py`
+(copied unmodified to `cnamaste/zenodo_sim_config.yaml`). `cnamaste/config.py`
 holds no defaults: `YAMLConfig` is the YAML as loaded, so a key's default is
 the code's, where a signature carries one, and those join the consistency
 groups below.
@@ -13,7 +12,7 @@ For every key in each file:
 - **propagated:** `YAMLConfig` carries it, under its name, at its YAML type;
   a number YAML 1.1 loads as a string (`1e-4`) is a defect;
 - **read:** live code reads `config.<section>.<key>` (by AST over
-  `python/cnamaste`, as port's `config_audit` does, plus the reads it cannot
+  `python/cnamaste`, plus the reads it cannot
   see, `INDIRECT`). `DEFECTS` lists the keys that are not, with the
   evidence: unread, read only by an em solver other than the configured
   one, overridden by a literal, below a floor that merges first, or set past
@@ -82,7 +81,7 @@ DEFECTS: dict[str, str] = {
     "run.legacy": "overridden by a literal: `if True or config.run.legacy` (reference.py:37)",
     "references.annotation_file": "read only under reference.py:37's dead branch",
     "references.centromeres": "unread",
-    "hmrf.maxspots_pooling": "unread: construct_multislice_lattice_adjacency is passed 1, the identity smooth_mat ignores it (#180)",
+    "hmrf.maxspots_pooling": "unread: construct_multislice_lattice_adjacency is passed 1, the identity smooth_mat ignores it (Ticket#180)",
     "hmrf.nodepotential": "unread",
     "hmrf.initialization_method": "unread",
     "hmrf.num_hmrf_initialization_start": "unread",
@@ -90,7 +89,7 @@ DEFECTS: dict[str, str] = {
     "hmrf.construct_adjacency_method": "unread",
     "hmrf.construct_adjacency_w": "unread",
     "hmrf.np_merge": "unread: the Neyman-Pearson merge is commented out (run_cnamaste.py:731)",
-    "hmrf.min_spots_per_clone": "below the floor that merges first: icm_sweep_deque's min_clone_spots=200 (icm.py:820; #81, #468)",
+    "hmrf.min_spots_per_clone": "below the floor that merges first: icm_sweep_deque's min_clone_spots=200 (icm.py:820; Ticket#81, Ticket#468)",
     "hmm.params": "unread: run_cnamaste passes 'sp' and 'smp' as literals",
     "hmm.max_workers": "unread",
     "hmm.np_threshold": "unread",

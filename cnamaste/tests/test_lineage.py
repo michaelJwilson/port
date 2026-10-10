@@ -7,7 +7,8 @@ bin) and `cnv_genelevel.tsv` (one row per called gene). Each level is a
 `Segmentation.of` the gene rows, which refuses a label that is not
 contiguous, spans two contigs or is out of genomic order; each is related to
 its parent by `refines`, `select` or `coarsen`; and each level's derived
-`lengths` is the stage's own.
+`lengths` is the stage's own. `CHAIN` states the rule that built each level
+from the one below, and checks it on counts recomputed from the staged inputs.
 
 **Clones:** the initial grid -> the BAF fit's ICM labels -> its Potts
 merges -> its empty-clone re-indexing -> `merge_by_minspots` -> the RDR
@@ -19,31 +20,111 @@ recorded parent maps reproduces every later level, and `clone_labels.tsv`.
 from __future__ import annotations
 
 import io
-from typing import Any
+from collections.abc import Callable
+from typing import Any, NamedTuple
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from audit.criteria import Units, bins_of, minor_baf, normal_baf_outside
 from audit.segments import DROPPED, Segmentation
 
+def overlapping_genes_share_a_block(u: Units) -> None:
+    genes = u.lineage.genes
+    reach, group = genes.end.copy(), np.zeros(genes.n_genes, dtype=np.int64)
+    for g in range(1, genes.n_genes):
+        overlaps = genes.contig[g] == genes.contig[g - 1] and genes.start[g] < reach[g - 1]
+        reach[g] = max(reach[g], reach[g - 1]) if overlaps else reach[g]
+        group[g] = group[g - 1] + (not overlaps)
+    print(f"blocks: {u.lineage.levels['blocks'].n_segments} from {int(group[-1]) + 1} merged gene ranges")
+    assert Segmentation.of(genes, group, name="ranges").refines(u.lineage.levels["blocks"])
+
+
+def phase_segments_break_at_contigs_and_baf_steps(u: Units) -> None:
+    res, _, refined = u.replayed.value("03_phasing/initial_phase_given_partition/out")
+    lengths = np.asarray(u.sim.stored("02_blocks/summarize_counts_for_blocks/out/lengths"))
+    minor = minor_baf(res, u.setting("hmm.n_states"), int(lengths.sum()))
+    gap, step = u.setting("phasing.min_new_segment_size"), u.setting("phasing.baf_change_threshold")
+    expected, offset = [], 0
+    for n in lengths:
+        s = 0
+        for i in range(n):
+            if i > s + gap and np.any(np.abs(minor[:, offset + i] - minor[:, offset + i - 1]) >= step):
+                expected.append(i - s)
+                s = i
+        expected.append(n - s)
+        offset += n
+    print(f"phase segments: {len(expected)}, {len(expected) - lengths.size} at a BAF step")
+    assert np.array_equal(np.asarray(refined), expected)
+    assert int(np.sum(refined)) == u.lineage.levels["blocks"].n_segments
+
+
+def bins_stay_inside_their_runs(u: Units) -> None:
+    _, _, refined = u.replayed.value("03_phasing/initial_phase_given_partition/out")
+    assert bins_of(u, "bins", "blocks", np.asarray(refined), normal=False).run_edges_kept
+
+
+def bins_leave_where_normal_baf_is_off_balance(u: Units) -> None:
+    removed = normal_baf_outside(u)
+    bins, kept = u.lineage.levels["bins"], u.lineage.levels["kept_bins"]
+    print(f"bins removed: {int(removed.sum())} of {removed.size}")
+    assert np.array_equal(kept.label, bins.select(~removed, name="kept").label)
+    assert np.array_equal(np.unique(kept.label[kept.label != DROPPED]), np.arange(int((~removed).sum())))
+
+
+RECORDED_CROSSINGS = 0
+"""Re-binned bins whose genes span two phase segments, on easy. The second binning cuts runs only at contigs, so a
+re-binned bin need not respect the phase segments; on easy none crosses one."""
+
+
+def rebins_stay_inside_contigs(u: Units) -> None:
+    lengths = np.asarray(u.sim.stored("06_normal/normal_baf_bin_filter/out/1/lengths"))
+    assert bins_of(u, "rebinned", "kept_bins", lengths, normal=True).run_edges_kept
+    rebinned, phase = u.lineage.levels["rebinned"], u.lineage.levels["phase_segments"]
+    called = rebinned.label != DROPPED
+    crossing = int(np.sum(pd.Series(phase.label[called]).groupby(rebinned.label[called]).nunique().to_numpy() > 1))
+    print(f"re-binned bins across a phase-segment boundary: {crossing} of {rebinned.n_segments}")
+    assert crossing == RECORDED_CROSSINGS
+
+
+class Row(NamedTuple):
+    coarse: str
+    fine: str
+    rule: Callable[[Units], None] | None
+    doc: str
+
+
 CHAIN = [
-    ("blocks", "genes"),
-    ("phase_segments", "blocks"),
-    ("bins", "blocks"),
-    ("phase_segments", "bins"),
-    ("bins", "kept_bins"),
-    ("rebinned", "kept_bins"),
+    Row("blocks", "genes", overlapping_genes_share_a_block,
+        "`omics.assign_initial_blocks` (run_cnamaste.py:172-179): gene ranges that overlap on one contig merge "
+        "(omics.py:557-575); consecutive ranges then extend, never across a contig (omics.py:634-700, Ticket#466). "
+        "The SNP-UMI floor is `test_stages.py`'s CRITERIA."),
+    Row("phase_segments", "blocks", phase_segments_break_at_contigs_and_baf_steps,
+        "`phasing.initial_phase_given_partition` (phasing.py:140-155, 290-332): `refined_lengths` breaks at every contig end "
+        "and at block i when i > s + phasing.min_new_segment_size and some clone's minor BAF steps by phasing.baf_change_threshold."),
+    Row("bins", "blocks", bins_stay_inside_their_runs,
+        "The first `omics.create_bin_ranges` (run_cnamaste.py:425): runs cut at cumsum(refined_lengths) and either side of a "
+        "block over quality.max_binlength (omics.py:867-874); `greedy_binning_nobreak` bins inside each run (omics.py:16-105)."),
+    Row("phase_segments", "bins", None,
+        "The same binning: a run never crosses a phase segment, so neither does a bin."),
+    Row("bins", "kept_bins", bins_leave_where_normal_baf_is_off_balance,
+        "`normal_spot.normal_baf_bin_filter` (run_cnamaste.py:939): a bin leaves when its pooled normal-spot B count is outside "
+        "the beta-binomial interval at quality.normal_allele_specific_confidence (normal_spot.py:954-1000); survivors re-rank."),
+    Row("rebinned", "kept_bins", rebins_stay_inside_contigs,
+        "The second `create_bin_ranges` (run_cnamaste.py:983, key=bin_id, normal candidates): runs cut only at contigs "
+        "(`lengths`), so a re-binned bin need not respect the phase segments."),
 ]
-"""(coarse, fine): every fine segment lies inside one coarse segment. Bins are unions of blocks inside one phase
-segment (the first binning breaks at `refined_lengths`); the re-binned bins break only at contigs, so they need
-not respect the phase segments."""
+"""(coarse, fine, the rule that built `coarse` from `fine`, its source): every fine segment lies inside one coarse segment,
+and the construction holds of the units recomputed from the staged inputs (`audit.criteria`)."""
 
 
-@pytest.mark.parametrize(("coarse", "fine"), CHAIN)
-def test_a_level_coarsens_its_parent(lineage: Any, coarse: str, fine: str) -> None:
-    """Every `fine` segment lies inside one `coarse` segment, over the genes both keep."""
-    assert lineage.levels[fine].refines(lineage.levels[coarse])
+@pytest.mark.parametrize("row", CHAIN, ids=[f"{r.coarse}-{r.fine}" for r in CHAIN])
+def test_a_level_follows_its_construction_rule(lineage: Any, request: pytest.FixtureRequest, row: Row) -> None:
+    """`fine` refines `coarse`, and `row.rule` holds on easy."""
+    assert lineage.levels[row.fine].refines(lineage.levels[row.coarse])
+    if row.rule is not None:
+        row.rule(request.getfixturevalue("units"))
 
 
 def test_kept_bins_are_a_selection_of_the_bins(lineage: Any) -> None:
