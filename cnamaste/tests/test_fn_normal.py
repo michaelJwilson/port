@@ -113,8 +113,8 @@ def _diffexp(_: Any) -> None:
     counts = pd.DataFrame({f"g{i}": rng.poisson(20, size=n) for i in range(6)}, index=[f"s{i}" for i in range(n)])
     counts["up"] = np.where(normal, rng.poisson(5, size=n), rng.poisson(400, size=n))
     table_ = pd.DataFrame({"INCLUDED_GENES": [f"g{i}" for i in range(6)] + ["up"]})
-    out = unchanged(filter_normal_diffexp, counts, table_, normal, use_kmeans=False)
-    assert out.shape == (7, n)
+    out, genes = unchanged(filter_normal_diffexp, counts, table_, normal, use_kmeans=False)
+    assert out.shape == (7, n) and genes == {"up"}
     assert np.array_equal(out[:6], counts.iloc[:, :6].to_numpy().T), "a flat gene's bin keeps every UMI"
     assert not out[6].any(), "a 2^6-fold tumour gene above the UMI quantile leaves its bin"
 
@@ -232,7 +232,7 @@ INVARIANT: list[Row] = table(
 
 
 def _diffexp_captured(ctx: Any) -> tuple[np.ndarray, np.ndarray]:
-    return ctx.replayed.run("06_normal/filter_normal_diffexp"), ctx("06_normal/normal_baf_bin_filter/out/1/X")[:, 0, :]
+    return ctx.replayed.run("06_normal/filter_normal_diffexp")[0], ctx("06_normal/normal_baf_bin_filter/out/1/X")[:, 0, :]
 
 
 def _diffexp_drops(pair: tuple[np.ndarray, np.ndarray]) -> None:

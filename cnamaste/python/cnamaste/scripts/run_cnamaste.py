@@ -965,8 +965,10 @@ def run_cnamaste(config_path, over_rides=None):
     #
     # NB zeros out high-umi differentially expressed genes,
     #    which may bias rdr estimates.
+    filtered_out_set = set()
+
     if config.quality.filter_normal_diffexp:
-        copy_single_X_rdr = filter_normal_diffexp(
+        copy_single_X_rdr, filtered_out_set = filter_normal_diffexp(
             exp_counts,
             df_bin_info,
             normal_candidate,
@@ -975,6 +977,11 @@ def run_cnamaste(config_path, over_rides=None):
         )
     else:
         logger.warning(f"Assuming no filter for normal differential expression.")
+
+    # NB Ticket#177: the filtered rdr sets the bins' umi, and the filtered genes
+    #    leave the umi summed for the new bins.
+    single_X[:, 0, :] = copy_single_X_rdr
+    adata.layers["count"][:, adata.var.index.isin(filtered_out_set)] = 0
 
     pause()
 
