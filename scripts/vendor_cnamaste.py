@@ -38,6 +38,11 @@ DEPARTED: dict[str, str] = {
     "scripts/run_cnamaste.py": "PR1, #105: a removed bin's genes leave the gene-level output",
     "spatial.py": "PR1, #692: rectangular clones that admit no assignment are banded",
     "utils.py": "PR1, T- #692: write_fig releases each Text's cached renderer",
+    "recomb.py": "PR-mutation, #20: assign_centiMorgans sorts a copy; get_sitewise_transmat sorts its own list",
+    "icm.py": "PR-mutation, #45: icm_sweep_deque copies its input, returns it, and draws from a seeded generator",
+    "hmrf.py": "PR-mutation, #45: one seeded generator per run_core_inference; merge_by_minspots and reindex_clones deep-copy",
+    "omics.py": "PR-mutation, #189: assign_initial_blocks writes block ids by column name",
+    "normal_spot.py": "PR-mutation: normal_baf_bin_filter rewrites a copy of df_gene_snp",
 }
 """Copied file -> the T- #836 PR that edits it. Only grows."""
 

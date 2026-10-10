@@ -186,6 +186,7 @@ def pipeline_clone_assignment(
     single_tumor_prop=None,
     hmmclass=None,
     merge=False,
+    random_state=None,
 ):
     # NB n_obs is the number of genomic segments, N is the number of spots.
     n_obs, _, N = single_X.shape
@@ -289,7 +290,7 @@ def pipeline_clone_assignment(
     else:
         logger.info(f"Solving for updated clone assignment with icm_sweep_dequeue.")
 
-        # NB updates new_assignment and posterior in place given log emission likelihood.
+        # NB returns the updated new_assignment given log emission likelihood.
         """
         niter, new_cost = icm_sweep_deque(
             loglike_spot_clone_assignment,
@@ -304,7 +305,7 @@ def pipeline_clone_assignment(
             sample_ids=sample_ids,
         )
         """
-        niter, new_cost = icm_sweep_deque(
+        niter, new_cost, new_assignment = icm_sweep_deque(
             single_llf=loglike_spot_clone_assignment,
             adj_indptr=adjacency_mat.indptr,
             adj_indices=adjacency_mat.indices,
@@ -316,6 +317,7 @@ def pipeline_clone_assignment(
             # tol=0.1,  # MAGIC TODO
             log_persample_weights=log_persample_weights,
             sample_ids=sample_ids,
+            random_state=random_state,
         )
 
         logger.info(f"Ready for potential merging of clones?  {merge}.")
@@ -560,6 +562,9 @@ def run_core_inference(
     res = {}
     r = 0
 
+    # NB one generator for every icm sweep, seeded by random_state rather than the global state, Ticket#45.
+    icm_rng = np.random.RandomState(random_state)
+
     # NB [num_segments, num_segments ..., num_segments] of length num_clones.
     clone_lengths = X.shape[0] * np.ones(X.shape[2], dtype=int)
 
@@ -617,6 +622,7 @@ def run_core_inference(
             single_tumor_prop=single_tumor_prop,
             hmmclass=hmmclass,
             merge=merge,
+            random_state=icm_rng,
         )
         """
         # NB new assignment did not populate an input clone.
@@ -803,7 +809,8 @@ def reindex_clones(res_combine, posterior=None, single_tumor_prop=None):
     assert single_tumor_prop is None, "single_tumor_prop must be None"
 
     EPS_BAF = 0.05  # MAGIC
-    new_res_combine = copy.copy(res_combine)
+    # NB deep: a shallow copy writes through to the caller's result.
+    new_res_combine = copy.deepcopy(res_combine)
 
     assignments = res_combine["new_assignment"]
     clone_labels = np.unique(assignments)
@@ -1012,7 +1019,8 @@ def merge_by_minspots(
             map_clone_id[z] = i
     new_assignment = np.array([map_clone_id[x] for x in new_assignment])
 
-    merged_res = copy.copy(res)
+    # NB deep: a shallow copy writes through to the caller's result.
+    merged_res = copy.deepcopy(res)
     merged_res["new_assignment"] = new_assignment
     merged_res["total_llf"] = np.nan
 

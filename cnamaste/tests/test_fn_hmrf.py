@@ -118,7 +118,7 @@ def _icm_energy(f: dict[str, Any]) -> None:
     a, labels = f["adjacency"], f["labels"].copy()
     before = potts(f["llf"], a, labels, f["weight"])
     np.random.seed(0)  # noqa: NPY002
-    _, cost = icm_sweep_deque(f["llf"], a.indptr, a.indices, a.data, labels, f["weight"], None, min_clone_spots=0)
+    _, cost, labels = icm_sweep_deque(f["llf"], a.indptr, a.indices, a.data, labels, f["weight"], None, min_clone_spots=0)
     after = potts(f["llf"], a, labels, f["weight"])
     assert np.isclose(cost, after - before), "the reported cost is the Potts energy gained"
     assert after >= before
@@ -259,8 +259,7 @@ INVARIANT: list[Row] = table(
     ("hmrf_utils:get_clone_assignment", "08_rdr/reindex_clones in: the merged labels", _indices, _index_round_trip, "inverts get_clone_indices"),
     ("hmrf:reindex_clones", "08_rdr/reindex_clones in", lambda c: c.sim.stored(f"{RDR}/reindex_clones/in/args/0"), _reindex,
      "a label permutation; paths and posteriors move with it; the rest by size"),
-    ("hmrf:reindex_clones", "08_rdr/reindex_clones in", lambda c: c.sim.stored(f"{RDR}/reindex_clones/in/args/0"), _reindex_pure, "the result it is handed is not rewritten",
-     "new: reindex_clones rewrites the result it is handed through CnaHMRFResult's shallow copy (labels, pred_cnv, log_gamma); run_cnamaste's merge reaches res_combine the same way"),
+    ("hmrf:reindex_clones", "08_rdr/reindex_clones in", lambda c: c.sim.stored(f"{RDR}/reindex_clones/in/args/0"), _reindex_pure, "the result it is handed is not rewritten"),
     ("hmrf:merge_by_minspots", "synthetic: 4 clones of 50/5/30/15 spots", lambda c: None, _minspots, "groups partition the clones; survivors >= the floor; representatives' paths kept"),
     ("hmrf:run_core_inference", "05_baf, 08_rdr run_core_inference out + /internal", _core_out, _core, "labels 0..M-1, the last ICM labels re-indexed; prev the last input labels"),
     ("hmrf:run_core_inference", "source", lambda c: None, _pipeline_argmax, "the clone field is scored under each clone's posterior, not its argmax",

@@ -6,6 +6,7 @@ from collections import deque
 import numpy as np
 from numba import njit
 from scipy.special import logsumexp
+from sklearn.utils import check_random_state
 
 from cnamaste.config import start_time
 from cnamaste.hmrf_utils import hmrf_perf_entry
@@ -820,7 +821,12 @@ def icm_sweep_deque(
     temp=1.0,
     min_clone_spots=200,
     epsilon=0.0,
+    random_state=None,
 ):
+    # NB the caller's assignment is not updated in place, and draws are from a seeded generator, Ticket#45.
+    new_assignment = new_assignment.copy()
+    rng = check_random_state(random_state)
+
     n_spots, n_clones = single_llf.shape
     cost = cost_zeropoint
 
@@ -830,7 +836,7 @@ def icm_sweep_deque(
 
     # 1. Initialize the Two Queues
     initial_nodes = np.arange(n_spots)
-    np.random.shuffle(initial_nodes)
+    rng.shuffle(initial_nodes)
 
     q_sweep = deque(initial_nodes)
     q_next = []
@@ -885,13 +891,13 @@ def icm_sweep_deque(
                     max_cost = c_cost
                     label = c
 
-            if epsilon > 0.0 and np.random.rand() < epsilon:
+            if epsilon > 0.0 and rng.rand() < epsilon:
                 if onehot_allowed_clones is not None:
                     valid_labels = np.where(onehot_allowed_clones[i, :])[0]
                     if len(valid_labels) > 0:
-                        label = int(np.random.choice(valid_labels))
+                        label = int(rng.choice(valid_labels))
                 else:
-                    label = np.random.randint(n_clones)
+                    label = rng.randint(n_clones)
 
             # Process Edits
             if label != new_assignment[i]:
@@ -945,7 +951,7 @@ def icm_sweep_deque(
                         else:
                             valid_for_spot = eligible_clones_global
 
-                        new_label = np.random.choice(valid_for_spot)
+                        new_label = rng.choice(valid_for_spot)
 
                         new_assignment[idx] = new_label
                         clone_counts[c] -= 1
@@ -979,11 +985,11 @@ def icm_sweep_deque(
 
         # 4. Randomize the second queue and promote it when the first is empty
         if q_next:
-            np.random.shuffle(q_next)
+            rng.shuffle(q_next)
             q_sweep = deque(q_next)
             q_next = []
 
-    return niter, cost
+    return niter, cost, new_assignment
 
 
 def icm_sweep_pqueue(

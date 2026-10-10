@@ -223,8 +223,7 @@ INVARIANT: list[Row] = table(
      "Ticket#46: Weighted_BetaBinom_mix.fit writes to the working directory, and sends scipy an option it rejects"),
     ("hmm_emission:Weighted_BetaBinom_mix.fit", "synthetic: 100 draws", lambda c: None, _options, "every option sent to scipy is one it takes",
      "Ticket#46: Weighted_BetaBinom_mix.fit writes to the working directory, and sends scipy an option it rejects"),
-    ("normal_spot:normal_baf_bin_filter", "synthetic: 6 bins", lambda c: None, _bin_filter_pure, "the caller's gene table is not rewritten",
-     "new: normal_baf_bin_filter rewrites its caller's df_gene_snp (bin_id set to None, re-mapped, cast) in place"),
+    ("normal_spot:normal_baf_bin_filter", "synthetic: 6 bins", lambda c: None, _bin_filter_pure, "the caller's gene table is not rewritten"),
 )
 
 

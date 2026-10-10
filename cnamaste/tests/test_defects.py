@@ -159,7 +159,7 @@ def tiny_blocks() -> tuple[pd.DataFrame, Any, np.ndarray, np.ndarray, np.ndarray
     return frame, adata, a, b, ids
 
 
-@row("Ticket#189", "omics.assign_initial_blocks", "xfail", "Ticket#189: assign_initial_blocks writes by positional column and is not re-entrant", IndexError)
+@row("Ticket#189", "omics.assign_initial_blocks", "regression", "Ticket#189: fixed in cnamaste PR-mutation; assign_initial_blocks writes block ids by column name")
 def _(**_: Any) -> None:
     frame, adata, a, b, ids = tiny_blocks()
     once = assign_initial_blocks(frame, adata, a, b, ids, initial_min_umi=1)
@@ -236,7 +236,7 @@ def _(**_: Any) -> None:
     assert np.isclose(p[0], (1 - np.exp(-2 * 0.01)) / 2), f"1 cM switches at {p[0]:.3f}, Haldane's is 0.0099"
 
 
-@row("Ticket#20", "recomb.assign_centiMorgans", "xfail", "Ticket#20: assign_centiMorgans sorts its caller's list in place")
+@row("Ticket#20", "recomb.assign_centiMorgans", "regression", "Ticket#20: fixed in cnamaste PR-mutation; assign_centiMorgans sorts a copy")
 def _(**_: Any) -> None:
     given = [(1, 300), (1, 100)]
     assign_centiMorgans(given, pd.DataFrame({"chrom": [1, 1], "pos": [0, 1000], "pos_cm": [0.0, 1.0]}))
@@ -339,15 +339,19 @@ def _(**_: Any) -> None:
     assert not np.array_equal(labels, banded(coords, 4)[1]), "banded at once; the planned behaviour redraws the boundaries first (one redraw passes)"
 
 
-@row("Ticket#45", "icm.icm_sweep_deque", "xfail", "Ticket#45: icm_sweep_deque is not reproducible, and mutates its caller's array")
+@row("Ticket#45", "icm.icm_sweep_deque", "regression", "Ticket#45: fixed in cnamaste PR-mutation; icm_sweep_deque copies its input and draws from random_state")
 def _(**_: Any) -> None:
     rng = np.random.default_rng(45)
     llf = rng.normal(size=(9, 2))
     adjacency = sp.csr_matrix(np.ones((9, 9)) - np.eye(9))
     given = np.zeros(9, dtype=np.int64)
     before = given.copy()
-    icm_sweep_deque(llf, adjacency.indptr, adjacency.indices, adjacency.data, given, 0.1, None, min_clone_spots=0)
+    sweeps = []
+    for global_seed in (0, 1):
+        np.random.seed(global_seed)  # noqa: NPY002
+        sweeps.append(icm_sweep_deque(llf, adjacency.indptr, adjacency.indices, adjacency.data, given, 0.1, None, min_clone_spots=0, random_state=45)[2])
     assert np.array_equal(given, before), "the caller's assignment was rewritten in place"
+    assert np.array_equal(*sweeps), "the sweep follows the global generator, not random_state"
 
 
 @row("Ticket#81", "hmrf.run_core_inference", "xfail", "Ticket#81: any clone below 200 spots is merged away, and run_core_inference does not expose the threshold")
@@ -378,8 +382,8 @@ def _(**_: Any) -> None:
     assert np.isclose(field[0, 0], -4.0), f"the field weighs read depth by valid-bin counts: {field[0, 0]}, the paper's -4"
 
 
-@row("new: shallow copy", "hmrf.merge_by_minspots", "xfail",
-     "Ticket#45 (mutates its caller's array), new: merge_by_minspots rewrites the result it is handed through CnaHMRFResult's shallow copy")
+@row("new: shallow copy", "hmrf.merge_by_minspots", "regression",
+     "new: fixed in cnamaste PR-mutation; merge_by_minspots deep-copies the result it is handed")
 def _(sim: Any, **_: Any) -> None:
     res = sim.stored("08_rdr/run_core_inference/out")
     before = np.asarray(res["new_assignment"]).copy()
@@ -567,7 +571,7 @@ def _(**_: Any) -> None:
      "planned departure: refinement mask plus floor merge, smallest-first to the best field (sal FloorPolicy), Ticket#348, planned D5 PR #841")
 def _(**_: Any) -> None:
     body = ast.unparse(function_node(source("icm.py"), "icm_sweep_deque"))
-    assert "np.random.choice(valid_for_spot)" not in body, "a spot of a clone under the floor goes to a random eligible clone"
+    assert "choice(valid_for_spot)" not in body, "a spot of a clone under the floor goes to a random eligible clone"
 
 
 @row("Ticket#348 start", "hmm_initialize.gmm_init", "not reproduced",

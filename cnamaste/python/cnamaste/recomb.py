@@ -75,8 +75,8 @@ def assign_centiMorgans(chr_pos_vector, ref_positions_cM):
     ref_pos = np.array(ref_positions_cM.pos)
     ref_cm = np.array(ref_positions_cM.pos_cm)
 
-    # TODO
-    chr_pos_vector.sort()
+    # NB sort a copy: the caller's list is not reordered, Ticket#20.
+    chr_pos_vector = sorted(chr_pos_vector)
 
     # NB find the centimorgan values (linear interpolation between (k-1)-th and k-th rows of table.
     position_cM = np.ones(len(chr_pos_vector)) * np.nan
@@ -147,9 +147,10 @@ def get_sitewise_transmat(
     )
 
     # NB [(chr1, start1), (chr1, end1), (chr2, start2), (chr2, end2), ...]) construct ...
-    tmp_sorted_chr_pos = [
+    #    sorted here, as assign_centiMorgans returns cM in sorted order, Ticket#20.
+    tmp_sorted_chr_pos = sorted(
         val for pair in zip(sorted_chr_pos_first, sorted_chr_pos_last) for val in pair
-    ]
+    )
 
     # NB positions in cM of [(chr1, start1), (chr1, end1), (chr2, start2), (chr2, end2), ...])
     position_cM = assign_centiMorgans(tmp_sorted_chr_pos, ref_positions_cM)

@@ -607,8 +607,11 @@ def assign_initial_blocks(
     # BUG previously 0, spuriously assigned to the zeroth block - safe as discarded all snps that don't overlap a gene (merged to block).
     df_gene_snp["initial_block_id"] = -1
 
+    # NB by name, not position: a frame already carrying block_id is not re-entrant otherwise, Ticket#189.
+    initial_block_col = df_gene_snp.columns.get_loc("initial_block_id")
+
     for i, x in enumerate(block_ranges):
-        df_gene_snp.iloc[x[0] : x[1], -1] = i
+        df_gene_snp.iloc[x[0] : x[1], initial_block_col] = i
 
     assert (
         np.all(df_gene_snp["initial_block_id"].values) >= 0
@@ -721,8 +724,10 @@ def assign_initial_blocks(
     # NB record the block id in df_gene_snp
     df_gene_snp["block_id"] = 0
 
+    block_col = df_gene_snp.columns.get_loc("block_id")
+
     for i, x in enumerate(block_ranges_new):
-        df_gene_snp.iloc[x[0] : x[1], -1] = i
+        df_gene_snp.iloc[x[0] : x[1], block_col] = i
 
     logger.info(
         f"Updated genome segmentation given (population phased) genotypes and min. snp-covering umi={initial_min_umi} per segment."
