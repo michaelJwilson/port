@@ -59,6 +59,9 @@ ADDED: dict[str, str] = {
     "tests/test_defects.py": "PR2: one row per port issue, a strict xfail where cnamaste has the defect",
     "tests/test_runtime.py": "PR2: the runtime goals port measured, as placeholders",
     "tests/data/rectangular_hang.npz": "PR2: port's tests/data copy, #304/#692's coordinates",
+    "tests/test_config.py": "PR3: the shipped configurations, key by key",
+    "zenodo_sim_config.yaml": "PR3: cnaster 4adad4d's zenodo_sim_config.yaml, unmodified",
+    "config.yaml": "PR3: cnaster 4adad4d's shipped config.yaml, unmodified",
 }
 """File cnamaste owns beyond the copy and its project files, relative to `cnamaste/` -> the T- #836 PR
 that adds it. Only grows. Every file under `OWNED` must be here."""
