@@ -27,78 +27,6 @@ def logsumexp(x):
     return x_max + np.log(np.sum(np.exp(x - x_max)))
 
 
-@njit(parallel=False, cache=True, fastmath=False, error_model="numpy")
-def pool_spatio_genomic_counts(
-    single_X,
-    single_base_nb_mean,
-    single_total_bb_RD,
-    smooth_indices,
-    smooth_indptr,
-    single_tumor_prop=None,
-    is_tumor_mixed=False,
-):
-    """
-    Aggregate X, nb_baseline and bb_read_depth by smooth mat. to downsize for hmrf inference.
-    """
-    # NB no logger comments in jit compiled.
-    n_obs, n_comp, N = single_X.shape
-
-    pooled_X = np.zeros((n_obs, n_comp, N), dtype=single_X.dtype)
-    pooled_base_nb_mean = np.zeros((n_obs, N), dtype=single_base_nb_mean.dtype)
-    pooled_total_bb_RD = np.zeros((n_obs, N), dtype=single_total_bb_RD.dtype)
-
-    mean_tumor_prop, weighted_tp = None, None
-
-    # NB valid neighbors for this spot.
-    for i in prange(N):
-        start_idx, end_idx = smooth_indptr[i], smooth_indptr[i + 1]
-
-        # NB vaild neighbors have finite tumor proportion if is_tumor_mixed.
-        valid_neighbors = []
-
-        # TODO tumor prop. is not currently supported.
-        for k in range(start_idx, end_idx):
-            col = smooth_indices[k]
-
-            if is_tumor_mixed and single_tumor_prop is not None:
-                if not np.isnan(single_tumor_prop[col]):
-                    valid_neighbors.append(col)
-            else:
-                valid_neighbors.append(col)
-
-        num_valid_neighbors = len(valid_neighbors)
-
-        # NB assigned zero to pooled_X, pooled_base_nb_mean, pooled_total_bb_RD
-        #    if no valid neighbors.
-        if num_valid_neighbors == 0:
-            continue
-
-        # NB for all segments, and spots, we aggregate the X, base_nb_mean, and total_bb_RD
-        #    of all valid neighbors.
-        #
-        #    valid as updated the counts and the baseline will be accounted for in the likelihood (TBC).
-        for obs_idx in range(n_obs):
-            for neighbor_idx in valid_neighbors:
-                pooled_X[obs_idx, 0, i] += single_X[obs_idx, 0, neighbor_idx]
-                pooled_X[obs_idx, 1, i] += single_X[obs_idx, 1, neighbor_idx]
-
-                pooled_base_nb_mean[obs_idx, i] += single_base_nb_mean[
-                    obs_idx, neighbor_idx
-                ]
-
-                pooled_total_bb_RD[obs_idx, i] += single_total_bb_RD[
-                    obs_idx, neighbor_idx
-                ]
-
-    return (
-        pooled_X,
-        pooled_base_nb_mean,
-        pooled_total_bb_RD,
-        mean_tumor_prop,
-        weighted_tp,
-    )
-
-
 @njit(parallel=True, cache=True)
 def compute_loglike_spot_assignment(
     n_spots,
@@ -111,8 +39,6 @@ def compute_loglike_spot_assignment(
     pred,
     n_obs,
     n_clones,
-    smooth_indices=None,
-    smooth_indptr=None,
     non_zero_weight=True,  # NB if False, rdr out-weighs the baf signal, which has many zero read_depth segments.
 ):
     """
@@ -124,30 +50,17 @@ def compute_loglike_spot_assignment(
     loglike_spot_clone_assignment = np.zeros((n_spots, n_clones))
     rel_valid_emision_weight = np.ones(n_spots, dtype=np.float64)
 
-    if non_zero_weight and smooth_indices is not None and smooth_indptr is not None:
+    if non_zero_weight:
         for i in prange(n_spots):
-            start_idx, end_idx = smooth_indptr[i], smooth_indptr[i + 1]
-
-            # NB calculate the nb and bb baseline for this spot.
-            pooled_num_valid_nb_spotwise, pooled_num_valid_bb_spotwise = 0.0, 0.0
-
-            # NB loop over pooled neighbors of spot i, skipping those with nan tumor proportion.
-            for k in range(start_idx, end_idx):
-                neighbor = smooth_indices[k]
-
-                if is_tumor_mixed:
-                    if np.isnan(single_tumor_prop[neighbor]):
-                        continue
-
-                # NB num_valid_nb_spotwise, num_valid_bb_spotwise contain the number of valid genomic segments for the given emission type;
-                #    pooled for this across spots.
-                pooled_num_valid_nb_spotwise += num_valid_nb_spotwise[neighbor]
-                pooled_num_valid_bb_spotwise += num_valid_bb_spotwise[neighbor]
+            # NB skipping spots with nan tumor proportion.
+            if is_tumor_mixed:
+                if np.isnan(single_tumor_prop[i]):
+                    continue
 
             # NB both normal and baf signals available.
-            if pooled_num_valid_nb_spotwise > 0 and pooled_num_valid_bb_spotwise > 0:
+            if num_valid_nb_spotwise[i] > 0 and num_valid_bb_spotwise[i] > 0:
                 rel_valid_emision_weight[i] = (
-                    pooled_num_valid_bb_spotwise / pooled_num_valid_nb_spotwise
+                    num_valid_bb_spotwise[i] / num_valid_nb_spotwise[i]
                 )
 
     # NB Numba evaluates .ndim at compile_time. This creates a zero-cost branch.
@@ -170,7 +83,7 @@ def compute_loglike_spot_assignment(
     return loglike_spot_clone_assignment
 
 
-# NB aggregate by smooth mat. with tumor/normal mix, spot reassignment, concatenated by clone?
+# NB with tumor/normal mix, spot reassignment, concatenated by clone?
 def pipeline_clone_assignment(
     single_X,
     single_base_nb_mean,
@@ -181,7 +94,6 @@ def pipeline_clone_assignment(
     prev_assignment,
     sample_ids,
     spatial_weight,
-    smooth_mat=None,
     log_persample_weights=None,
     single_tumor_prop=None,
     hmmclass=None,
@@ -216,41 +128,16 @@ def pipeline_clone_assignment(
         f"Solving (pooled) emission likelihood for X.shape={single_X.shape}, n_states={n_states} and {n_clones} clones with {hmmclass.__name__}, is_tumor_mixed={is_tumor_mixed} and merge={merge}."
     )
 
-    logger.info("Pooling hmrf data by smooth mat. (reduces necessary computation).")
-
-    if smooth_mat is not None:
-        # NB   pool (sum) data according to smooth (adjacency) matrix, for X, nb_baseline, bb read depth and mean tumor proportion:
-        pooled_X, pooled_base_nb_mean, pooled_total_bb_RD, _, _ = (
-            pool_spatio_genomic_counts(
-                single_X,
-                single_base_nb_mean,
-                single_total_bb_RD,
-                smooth_mat.indices,
-                smooth_mat.indptr,
-                single_tumor_prop,
-                is_tumor_mixed,
-            )
-        )
-    else:
-        # TODO copies necessary?
-        pooled_X, pooled_base_nb_mean, pooled_total_bb_RD, _, _ = (
-            single_X.copy(),
-            single_base_nb_mean.copy(),
-            single_total_bb_RD.copy(),
-            None,
-            None,
-        )
-
     # NB emission shape: (n_states, n_obs, n_spots)
     (
         tmp_log_emission_rdr,
         tmp_log_emission_baf,
     ) = hmmclass.compute_emission_probability_nb_betabinom(
-        pooled_X,
-        pooled_base_nb_mean,
+        single_X,
+        single_base_nb_mean,
         res["new_log_mu"],
         res["new_alphas"],
-        pooled_total_bb_RD,
+        single_total_bb_RD,
         res["new_p_binom"],
         res["new_taus"],
     )
@@ -275,8 +162,6 @@ def pipeline_clone_assignment(
         pred,
         n_obs,
         n_clones,
-        smooth_indices=smooth_mat.indices if smooth_mat is not None else None,
-        smooth_indptr=smooth_mat.indptr if smooth_mat is not None else None,
     )
 
     # assert np.allclose(single_llf, new_single_llf), "BUG: single_llf mismatch"
@@ -415,7 +300,6 @@ def run_core_inference(
     log_sitewise_transmat,
     # prefix="clones",
     # coords=None,
-    smooth_mat=None,
     adjacency_mat=None,
     sample_ids=None,
     sample_list=None,
@@ -611,7 +495,6 @@ def run_core_inference(
             adjacency_mat,
             last_assignment,
             sample_ids,
-            smooth_mat=smooth_mat,
             spatial_weight=spatial_weight,
             log_persample_weights=log_persample_weights,
             single_tumor_prop=single_tumor_prop,

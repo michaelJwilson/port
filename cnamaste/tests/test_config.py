@@ -81,7 +81,6 @@ DEFECTS: dict[str, str] = {
     "run.legacy": "overridden by a literal: `if True or config.run.legacy` (reference.py:37)",
     "references.annotation_file": "read only under reference.py:37's dead branch",
     "references.centromeres": "unread",
-    "hmrf.maxspots_pooling": "unread: construct_multislice_lattice_adjacency is passed 1, the identity smooth_mat ignores it (Ticket#180)",
     "hmrf.nodepotential": "unread",
     "hmrf.initialization_method": "unread",
     "hmrf.num_hmrf_initialization_start": "unread",

@@ -35,8 +35,10 @@ OUT = ROOT / "cnamaste" / "python" / "cnamaste"
 ENTRY = "cnaster.scripts.run_cnaster"
 
 DEPARTED: dict[str, str] = {
-    "scripts/run_cnamaste.py": "PR1, #105: a removed bin's genes leave the gene-level output",
-    "spatial.py": "PR1, #692: rectangular clones that admit no assignment are banded",
+    "scripts/run_cnamaste.py": "PR1, #105: a removed bin's genes leave the gene-level output; PR-adjacency, #180: no smooth_mat or maxspots_pooling",
+    "spatial.py": "PR1, #692: rectangular clones that admit no assignment are banded; PR-adjacency, #180, #417: symmetric, guarded adjacency, no smooth_mat",
+    "hmrf.py": "PR-adjacency, #180: no smooth_mat pooling in the clone field",
+    "config.py": "PR-adjacency, #180: hmrf.maxspots_pooling other than 1 raises",
     "utils.py": "PR1, T- #692: write_fig releases each Text's cached renderer",
 }
 """Copied file -> the T- #836 PR that edits it. Only grows."""
@@ -61,7 +63,7 @@ ADDED: dict[str, str] = {
     "tests/data/rectangular_hang.npz": "PR2: port's tests/data copy, #304/#692's coordinates",
     "tests/test_config.py": "PR3: the shipped configurations, key by key",
     "zenodo_sim_config.yaml": "PR3: cnaster 4adad4d's zenodo_sim_config.yaml, unmodified",
-    "config.yaml": "PR3: cnaster 4adad4d's shipped config.yaml, unmodified",
+    "config.yaml": "PR3: cnaster 4adad4d's shipped config.yaml; PR-adjacency: hmrf.maxspots_pooling removed",
     "tests/audit/callgraph.py": "PR4: the functions run_cnamaste reaches, static graph over the live namespace",
     "tests/audit/fn.py": "PR4: the per-function rows, their context and shared inputs",
     "tests/test_fn_inventory.py": "PR4: every reached function has rows or a stated reason",

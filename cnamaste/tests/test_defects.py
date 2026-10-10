@@ -2,7 +2,7 @@
 
 A row whose defect cnamaste still has is a strict xfail, `Ticket#N: <title>`, so
 a fix turns it into XPASS, a failure, and the marker has to go. A row cnamaste
-has fixed (Ticket#105, Ticket#692) is a plain passing regression. A row that
+has fixed (Ticket#105, Ticket#692, Ticket#180) is a plain passing regression. A row that
 does not reproduce on the inputs used here says so and passes. A planned departure is a
 strict xfail asserting the planned behaviour; the runtime goals are
 `test_runtime.py`'s.
@@ -51,7 +51,7 @@ from cnamaste.io import get_aggregated_barcodes, get_spaceranger_counts, load_in
 from cnamaste.normal_spot import determine_normal_candidates, filter_normal_diffexp
 from cnamaste.omics import assign_initial_blocks, summarize_counts_for_bins
 from cnamaste.recomb import assign_centiMorgans, compute_numbat_phase_switch_prob
-from cnamaste.spatial import banded, construct_lattice_adjacency, initialize_rectangular_clones
+from cnamaste.spatial import banded, construct_lattice_adjacency, construct_multislice_lattice_adjacency, initialize_rectangular_clones
 from cnamaste.utils import top_hat_sum
 
 PROJECT = Path(__file__).resolve().parents[1]
@@ -309,19 +309,32 @@ def _(**_: Any) -> None:
 # --- the spatial graph and the clone solver ---------------------------------------
 
 
-@row("Ticket#180", "spatial.construct_lattice_adjacency", "xfail",
-     "Ticket#180: the spot adjacency is k-nearest-neighbour, asymmetric, and discards maxspots_pooling")
+@row("Ticket#180", "spatial.construct_lattice_adjacency", "regression",
+     "Ticket#180: fixed in cnamaste; the kNN adjacency is symmetrized, maxspots_pooling and smooth_mat are removed")
 def _(**_: Any) -> None:
-    smooth, adjacency = construct_lattice_adjacency(lattice(5, 5), maxspots_pooling=7, unit_xsquared=1, unit_ysquared=1)
+    adjacency = construct_lattice_adjacency(lattice(5, 5), unit_xsquared=1, unit_ysquared=1)
     assert (adjacency != adjacency.T).nnz == 0, "a one-way edge"
-    assert smooth.nnz > smooth.shape[0], "maxspots_pooling = 7 pools nothing"
+    assert "maxspots_pooling" not in inspect.signature(construct_lattice_adjacency).parameters
+    with pytest.raises(ValueError, match="maxspots_pooling"):
+        YAMLConfig({"annotation": {"clone_label": None}, "phasing": {"run": True},
+                    "hmrf": {"n_clones_rdr": 2, "fixed_assignment": False, "maxspots_pooling": 7}}).issue_warnings()
 
 
 @row("Ticket#417", "spatial.construct_lattice_adjacency", "xfail",
-     "Ticket#417: cnaster's adjacency is directed, unreinforced at boundaries, and has no guard")
+     "Ticket#417: cnaster's adjacency is unreinforced at boundaries (a corner keeps 8 kNN neighbours, more once symmetrized)")
 def _(**_: Any) -> None:
-    _, adjacency = construct_lattice_adjacency(lattice(5, 5), unit_xsquared=1, unit_ysquared=1)
+    adjacency = construct_lattice_adjacency(lattice(5, 5), unit_xsquared=1, unit_ysquared=1)
     assert np.diff(adjacency.tocsr().indptr)[0] == 3, "a square lattice's corner has 3 king-move neighbours, not 8"
+
+
+@row("Ticket#417", "spatial.construct_multislice_lattice_adjacency", "regression",
+     "Ticket#417: fixed in cnamaste; the adjacency is guarded against self loops and one-way edges")
+def _(**_: Any) -> None:
+    coords, ids = lattice(3, 3), np.zeros(9, dtype=int)
+    one_way, self_loop = sp.csr_matrix(([1.0], ([0], [8])), shape=(9, 9)), sp.csr_matrix(([1.0], ([4], [4])), shape=(9, 9))
+    for across in (one_way, self_loop):
+        with pytest.raises(ValueError, match="symmetric, without self loops"):
+            construct_multislice_lattice_adjacency(ids, ["a"], coords, across, unit_xsquared=1, unit_ysquared=1)
 
 
 @row("Ticket#692", "spatial.initialize_rectangular_clones", "regression", "Ticket#692: fixed in cnamaste PR1; the dev blocks return, banded")
@@ -374,7 +387,7 @@ def _(**_: Any) -> None:
 def _(**_: Any) -> None:
     rdr, baf = -np.ones((1, 2, 1)), -np.ones((1, 2, 1))
     field = compute_loglike_spot_assignment(1, np.array([1]), np.array([2]), np.empty(0), False, rdr, baf,
-                                            np.zeros(2, dtype=np.int64), 2, 1, smooth_indices=np.array([0]), smooth_indptr=np.array([0, 1]))
+                                            np.zeros(2, dtype=np.int64), 2, 1)
     assert np.isclose(field[0, 0], -4.0), f"the field weighs read depth by valid-bin counts: {field[0, 0]}, the paper's -4"
 
 
