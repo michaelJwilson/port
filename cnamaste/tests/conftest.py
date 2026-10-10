@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import random
 import time
 from collections.abc import Iterator
@@ -24,11 +25,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import h5py
 import numpy as np
 import pytest
 import yaml
+from cnamaste.config import YAMLConfig, set_global_config
+from numba import _helperlib
 
-from audit.capture import Capture, digest, unordered, file_sha256, grch38, input_files, stage_inputs
+from audit.capture import Capture, digest, file_sha256, grch38, input_files, stage_inputs, unordered
+from audit.fn import Ctx
 from audit.scoring import Truth, planted
 from audit.segments import DROPPED, Genes, Segmentation
 
@@ -61,8 +66,6 @@ def selected(config: pytest.Config) -> list[str]:
 
 
 def stages_of(sim_hash: str) -> list[str]:
-    import h5py
-
     with h5py.File(PROJECT / SUPPORTED_SIMS[sim_hash][1], "r") as h5:
         return list(json.loads(h5["config"].attrs["stages"]))
 
@@ -86,16 +89,16 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     if not config.pluginmanager.hasplugin("xdist"):
         return
     for item in items:
-        if "replayed" in getattr(item, "fixturenames", ()):
-            sim_hash = getattr(item, "callspec", None) and item.callspec.params.get("sim_hash")
+        params = item.callspec.params if hasattr(item, "callspec") else {}
+        # NB a per-function row (`audit.fn.Row`) that slices a replayed stage asks for `replayed` lazily
+        if "replayed" in getattr(item, "fixturenames", ()) or getattr(params.get("row"), "replay", False):
+            sim_hash = params.get("sim_hash")
             item.add_marker(pytest.mark.xdist_group(f"replay-{sim_hash}"))
 
 
 @pytest.fixture(scope="session", autouse=True)
 def _working_directory(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
     """A scratch working directory: `hmm_emission.flush_perf` appends to `cnamaste.perf` in it, whatever `paths.perf_path` says."""
-    import os
-
     before = Path.cwd()
     os.chdir(tmp_path_factory.mktemp("cwd"))
     yield
@@ -132,8 +135,6 @@ class Staged:
 @pytest.fixture(scope="session")
 def staged(sim: Capture, sample: Path, tmp_path_factory: pytest.TempPathFactory) -> Staged:
     """The committed inputs staged as the capture staged them; refused on a sha256 mismatch."""
-    from cnamaste.config import YAMLConfig
-
     recorded = json.loads(sim.config["inputs"])
     for name, path in input_files(sample).items():
         assert file_sha256(path) == recorded[name]["sha256"], f"{path} is not the input the capture read"
@@ -197,10 +198,6 @@ class Replay:
     def run(self, stage: str) -> Any:
         """`stage`'s function on its recorded input, with the recorded generator states."""
         if stage not in self.outs:
-            from numba import _helperlib
-
-            from cnamaste.config import set_global_config
-
             if stage.split("/")[1] in REPLAY_SKIPPED:
                 raise LookupError(f"{stage} is not replayed")
             given = self._rewritten(copy.deepcopy(self.value(f"{stage}/in")))
@@ -230,6 +227,18 @@ class Replay:
 @pytest.fixture(scope="session")
 def replayed(sim: Capture, staged: Staged) -> Replay:
     return Replay(sim, staged)
+
+
+@pytest.fixture(scope="session")
+def fn_cache(sim: Capture) -> dict[str, Any]:
+    """The per-function rows' heavy recomputations, once per session (per xdist worker)."""
+    return {}
+
+
+@pytest.fixture
+def ctx(sim: Capture, fn_cache: dict[str, Any], request: pytest.FixtureRequest, tmp_path: Path) -> Any:
+    """A per-function row's context (`audit.fn.Ctx`): the staged file, the replay on demand, the cache."""
+    return Ctx(sim, request, fn_cache, tmp_path)
 
 
 # --- lineage ---------------------------------------------------------------
