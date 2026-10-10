@@ -1007,15 +1007,7 @@ def normal_baf_bin_filter(
 
     # NB below constructs single_X, single_base_nb_mean, single_total_bb_RD with segments removed.
     col = np.where(df_gene_snp.columns == "bin_id")[0][0]
-    removed = np.where(df_gene_snp.bin_id.isin(index_removal))[0]
-    df_gene_snp.iloc[removed, col] = None
-
-    # NB a removed bin's genes leave the gene-level output (T- #836 PR1, #105): left
-    #    `is_interval` with a null `bin_id`, `run_cnamaste`'s `int` cast over interval
-    #    genes raises `IndexError` before `clone_labels.tsv` is written.
-    if removed.size and "is_interval" in df_gene_snp.columns:
-        interval = np.where(df_gene_snp.columns == "is_interval")[0][0]
-        df_gene_snp.iloc[removed, interval] = False
+    df_gene_snp.iloc[np.where(df_gene_snp.bin_id.isin(index_removal))[0], col] = None
 
     # NB reassign bin_id to be unique integers in [0, n_bins_remaining) for downstream processing.
     df_gene_snp["bin_id"] = df_gene_snp["bin_id"].map(

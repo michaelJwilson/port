@@ -1472,16 +1472,21 @@ def run_cnamaste(config_path, over_rides=None):
                     )
                 )
 
+            # NB a gene whose bin normal_baf_bin_filter removed has a null bin_id and no call:
+            #    NaN here, dropped by the isnull filter below (T- #836 PR1, #105).
             df_genes = df_gene_snp[df_gene_snp.is_interval]
-            bin_ids = df_genes["bin_id"].to_numpy(dtype=int)
+            called = df_genes["bin_id"].notna().to_numpy()
 
             clone_copies = best_integer_copies[res_combine["pred_cnv"][:, s]]
+
+            copies = np.full((len(df_genes), 2), np.nan)
+            copies[called] = clone_copies[df_genes["bin_id"][called].to_numpy(dtype=int)]
 
             tmpdf = pd.DataFrame(
                 {
                     "gene": df_genes.gene,
-                    f"clone{s} A": clone_copies[bin_ids, 0],
-                    f"clone{s} B": clone_copies[bin_ids, 1],
+                    f"clone{s} A": copies[:, 0],
+                    f"clone{s} B": copies[:, 1],
                 }
             ).set_index("gene")
 
