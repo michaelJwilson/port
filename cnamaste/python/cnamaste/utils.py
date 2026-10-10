@@ -2,7 +2,6 @@ import datetime
 import os
 import pickle
 from collections import namedtuple
-from copyreg import pickle
 from functools import wraps
 from pathlib import Path
 
