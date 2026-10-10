@@ -178,121 +178,120 @@ def get_sitewise_transmat(
     return log_sitewise_transmat
 
 
-"""
-def compute_numbat_phase_switch_prob(
-    position_cM, chr_pos_vector, nu=1.0, min_prob=None
-):
-    if min_prob is None:
-        min_prob = get_global_config().phasing.min_prob
-
-    logger.info_once(f"Computing numbat phase switch probabilities assuming nu={nu}.")
-    logger.info(
-        f"position_cM has {100. * np.mean(np.isnan(position_cM))}% NAN content."
-    )
-    
-    chr_pos_vector = np.asarray(chr_pos_vector)
-
-    phase_switch_prob = np.full(len(position_cM), min_prob)
-
-    cm = position_cM[:-1]
-    cm_next = position_cM[1:]
-    
-    chr_curr = chr_pos_vector[:-1, 0]
-    chr_next = chr_pos_vector[1:, 0]
-
-    valid_mask = ~np.isnan(cm) & ~np.isnan(cm_next) & (chr_curr == chr_next)
-    
-    valid_indices = np.where(valid_mask)[0]
-
-    if len(valid_indices) > 0:
-        d = cm_next[valid_mask] - cm[valid_mask]
-        
-        probs = (1.0 - np.exp(-2.0 * nu * d)) / 2.0
-        phase_switch_prob[valid_indices] = probs
-
-    logger.info_once(f"Solved for max phase switch prob. = {np.max(phase_switch_prob)}")
-
-    under_flowed = phase_switch_prob < min_prob
-    logger.info(
-        f"Reassigning under flowed phase_switch_prob. for {100. * np.mean(under_flowed):.6e}% given {min_prob} threshold."
-    )
-
-    # Clamp the lower bound 
-    phase_switch_prob = np.maximum(phase_switch_prob, min_prob)
-
-    return phase_switch_prob
-
-
-def assign_centiMorgans(chr_pos_vector, ref_positions_cM):
-    logger.info_once("Assigning centiMorgan recombination rates.")
-
-    chr_pos_vector = np.asarray(chr_pos_vector)
-
-    ref_chrom = np.array(ref_positions_cM.chrom).astype(int)
-    ref_pos = np.array(ref_positions_cM.pos)
-    ref_cm = np.array(ref_positions_cM.pos_cm)
-
-    position_cM = np.full(len(chr_pos_vector), np.nan)
-    
-    target_chrom = chr_pos_vector[:, 0]
-    target_pos = chr_pos_vector[:, 1]
-
-    for chrom in np.unique(target_chrom):
-        t_mask = target_chrom == chrom
-        t_pos = target_pos[t_mask]
-        
-        r_mask = ref_chrom == chrom
-        if not np.any(r_mask):
-            continue
-            
-        r_pos_chrom = ref_pos[r_mask]
-        r_cm_chrom = ref_cm[r_mask]
-        
-        if r_pos_chrom[0] > 0:
-            r_pos_chrom = np.insert(r_pos_chrom, 0, 0.0)
-            r_cm_chrom = np.insert(r_cm_chrom, 0, 0.0)
-            
-        position_cM[t_mask] = np.interp(t_pos, r_pos_chrom, r_cm_chrom)
-
-    return position_cM
-
-
-def get_sitewise_transmat(df_gene_snp, geneticmap_file, nu, logphase_shift):
-    logger.info(
-        "Constructing sitewise transition matrix for phasing given recombination rates."
-    )
-
-    ref_positions_cM = get_reference_recomb_rates(geneticmap_file)
-
-    grouped = df_gene_snp.groupby("block_id").agg(
-        first_chr=("CHR", "first"),
-        first_start=("START", "first"),
-        last_chr=("CHR", "last"),
-        last_end=("END", "last")
-    )
-
-    if grouped.index.isna().any():
-        logger.warning("Found ill-defined group with None entries for group.")
-
-    N = len(grouped)
-    
-    tmp_sorted_chr_pos = np.empty((2 * N, 2))
-    tmp_sorted_chr_pos[0::2, 0] = grouped["first_chr"].to_numpy()
-    tmp_sorted_chr_pos[0::2, 1] = grouped["first_start"].to_numpy()
-    tmp_sorted_chr_pos[1::2, 0] = grouped["last_chr"].to_numpy()
-    tmp_sorted_chr_pos[1::2, 1] = grouped["last_end"].to_numpy()
-
-    position_cM = assign_centiMorgans(tmp_sorted_chr_pos, ref_positions_cM)
-
-    phase_switch_prob = compute_numbat_phase_switch_prob(
-        position_cM, tmp_sorted_chr_pos, nu
-    )
-
-    log_sitewise_transmat = np.minimum(
-        np.log(0.5), np.log(phase_switch_prob) - logphase_shift
-    )
-
-    log_sitewise_transmat = log_sitewise_transmat[1::2]
-
-    return log_sitewise_transmat
-"""
+# NB unused copy of compute_numbat_phase_switch_prob, assign_centiMorgans and get_sitewise_transmat, never executed; the live definitions are at lines 18, 71, 114.
+# def compute_numbat_phase_switch_prob(
+#     position_cM, chr_pos_vector, nu=1.0, min_prob=None
+# ):
+#     if min_prob is None:
+#         min_prob = get_global_config().phasing.min_prob
+#
+#     logger.info_once(f"Computing numbat phase switch probabilities assuming nu={nu}.")
+#     logger.info(
+#         f"position_cM has {100. * np.mean(np.isnan(position_cM))}% NAN content."
+#     )
+#
+#     chr_pos_vector = np.asarray(chr_pos_vector)
+#
+#     phase_switch_prob = np.full(len(position_cM), min_prob)
+#
+#     cm = position_cM[:-1]
+#     cm_next = position_cM[1:]
+#
+#     chr_curr = chr_pos_vector[:-1, 0]
+#     chr_next = chr_pos_vector[1:, 0]
+#
+#     valid_mask = ~np.isnan(cm) & ~np.isnan(cm_next) & (chr_curr == chr_next)
+#
+#     valid_indices = np.where(valid_mask)[0]
+#
+#     if len(valid_indices) > 0:
+#         d = cm_next[valid_mask] - cm[valid_mask]
+#
+#         probs = (1.0 - np.exp(-2.0 * nu * d)) / 2.0
+#         phase_switch_prob[valid_indices] = probs
+#
+#     logger.info_once(f"Solved for max phase switch prob. = {np.max(phase_switch_prob)}")
+#
+#     under_flowed = phase_switch_prob < min_prob
+#     logger.info(
+#         f"Reassigning under flowed phase_switch_prob. for {100. * np.mean(under_flowed):.6e}% given {min_prob} threshold."
+#     )
+#
+#     # Clamp the lower bound
+#     phase_switch_prob = np.maximum(phase_switch_prob, min_prob)
+#
+#     return phase_switch_prob
+#
+#
+# def assign_centiMorgans(chr_pos_vector, ref_positions_cM):
+#     logger.info_once("Assigning centiMorgan recombination rates.")
+#
+#     chr_pos_vector = np.asarray(chr_pos_vector)
+#
+#     ref_chrom = np.array(ref_positions_cM.chrom).astype(int)
+#     ref_pos = np.array(ref_positions_cM.pos)
+#     ref_cm = np.array(ref_positions_cM.pos_cm)
+#
+#     position_cM = np.full(len(chr_pos_vector), np.nan)
+#
+#     target_chrom = chr_pos_vector[:, 0]
+#     target_pos = chr_pos_vector[:, 1]
+#
+#     for chrom in np.unique(target_chrom):
+#         t_mask = target_chrom == chrom
+#         t_pos = target_pos[t_mask]
+#
+#         r_mask = ref_chrom == chrom
+#         if not np.any(r_mask):
+#             continue
+#
+#         r_pos_chrom = ref_pos[r_mask]
+#         r_cm_chrom = ref_cm[r_mask]
+#
+#         if r_pos_chrom[0] > 0:
+#             r_pos_chrom = np.insert(r_pos_chrom, 0, 0.0)
+#             r_cm_chrom = np.insert(r_cm_chrom, 0, 0.0)
+#
+#         position_cM[t_mask] = np.interp(t_pos, r_pos_chrom, r_cm_chrom)
+#
+#     return position_cM
+#
+#
+# def get_sitewise_transmat(df_gene_snp, geneticmap_file, nu, logphase_shift):
+#     logger.info(
+#         "Constructing sitewise transition matrix for phasing given recombination rates."
+#     )
+#
+#     ref_positions_cM = get_reference_recomb_rates(geneticmap_file)
+#
+#     grouped = df_gene_snp.groupby("block_id").agg(
+#         first_chr=("CHR", "first"),
+#         first_start=("START", "first"),
+#         last_chr=("CHR", "last"),
+#         last_end=("END", "last")
+#     )
+#
+#     if grouped.index.isna().any():
+#         logger.warning("Found ill-defined group with None entries for group.")
+#
+#     N = len(grouped)
+#
+#     tmp_sorted_chr_pos = np.empty((2 * N, 2))
+#     tmp_sorted_chr_pos[0::2, 0] = grouped["first_chr"].to_numpy()
+#     tmp_sorted_chr_pos[0::2, 1] = grouped["first_start"].to_numpy()
+#     tmp_sorted_chr_pos[1::2, 0] = grouped["last_chr"].to_numpy()
+#     tmp_sorted_chr_pos[1::2, 1] = grouped["last_end"].to_numpy()
+#
+#     position_cM = assign_centiMorgans(tmp_sorted_chr_pos, ref_positions_cM)
+#
+#     phase_switch_prob = compute_numbat_phase_switch_prob(
+#         position_cM, tmp_sorted_chr_pos, nu
+#     )
+#
+#     log_sitewise_transmat = np.minimum(
+#         np.log(0.5), np.log(phase_switch_prob) - logphase_shift
+#     )
+#
+#     log_sitewise_transmat = log_sitewise_transmat[1::2]
+#
+#     return log_sitewise_transmat
