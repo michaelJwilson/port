@@ -35,7 +35,7 @@ ENTRY = "cnaster.scripts.run_cnaster"
 DEPARTED: dict[str, str] = {
     "scripts/run_cnamaste.py": "PR1, #105: a removed bin's genes leave the gene-level output",
     "spatial.py": "PR1, #692: rectangular clones that admit no assignment are banded",
-    "utils.py": "PR1, T- #692: write_fig releases each Text's cached renderer; D-dedup: shadowed `import pickle` commented out",
+    "utils.py": "PR1, T- #692: write_fig releases each Text's cached renderer; D-dedup: `from copyreg import pickle` removed, so the cacher's .pkl mode uses the standard pickle",
     "icm.py": "D-dedup: 3 unused string copies of icm_sweep_deque and the shadowed logsumexp import commented out",
     "hmm_initialize.py": "D-dedup: an unused string copy of gmm_init commented out",
     "hmm_nophasing.py": "D-dedup: an unused string copy of compute_emission_probability_nb_betabinom_coded commented out",

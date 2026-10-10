@@ -1,9 +1,7 @@
 import datetime
 import os
-# NB shadowed by copyreg's pickle at line 6 before any use; never reachable.
-# import pickle
+import pickle
 from collections import namedtuple
-from copyreg import pickle
 from functools import wraps
 from pathlib import Path
 
