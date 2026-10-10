@@ -1006,6 +1006,8 @@ def normal_baf_bin_filter(
     )
 
     # NB below constructs single_X, single_base_nb_mean, single_total_bb_RD with segments removed.
+    #    on a copy: the caller's df_gene_snp is not rewritten.
+    df_gene_snp = df_gene_snp.copy()
     col = np.where(df_gene_snp.columns == "bin_id")[0][0]
     df_gene_snp.iloc[np.where(df_gene_snp.bin_id.isin(index_removal))[0], col] = None
 
