@@ -1,9 +1,9 @@
 """The staged-run file: its codec, its reader, and the staging of a committed sample.
 
-One HDF5 file per sample, written by `cnamaste/scripts/capture.py`, holds one
+One HDF5 file per sample, written by a capture of one run, holds one
 `run_cnamaste` run stage by stage:
 
-    /config                     the YAML text, commit, fixture hash, seeds, threads, input sha256
+    /config                     the YAML text, capture commit, fixture hash, seeds, threads, input sha256
     /NN_group/<stage>/in        the call's arguments, as the pipeline passed them
     /NN_group/<stage>/out       what it returned
     /NN_group/<stage>/rng       numpy's, numba's and `random`'s state at the call
@@ -44,6 +44,7 @@ import h5py
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
+import yaml
 
 GZIP = {"compression": "gzip", "compression_opts": 9, "shuffle": True}
 LINK_BYTES = 256
@@ -65,7 +66,7 @@ RESOURCES = {
     "filtergenelist_file": "ig_gene_list.txt",
     "filterregion_file": "HLA_regions.bed",
 }
-"""`references.*` -> CalicoST's `GRCh38_resources` file, as port's `sim_config` writes them."""
+"""`references.*` -> CalicoST's `GRCh38_resources` file, as the staged configuration names them."""
 
 
 # --- digests ---------------------------------------------------------------
@@ -633,8 +634,8 @@ def checked(value: Any, sha: str, path: str, sets: str | None = None) -> Any:
 
 
 def grch38() -> Path | None:
-    """CalicoST's `GRCh38_resources`: `$CNAMASTE_GRCH38` or `$PORT_GRCH38`, else uv's git checkout."""
-    candidates = [os.environ.get("CNAMASTE_GRCH38", ""), os.environ.get("PORT_GRCH38", "")]
+    """CalicoST's `GRCh38_resources`: `$CNAMASTE_GRCH38`, else uv's git checkout."""
+    candidates = [os.environ.get("CNAMASTE_GRCH38", "")]
     candidates += sorted(str(p) for p in (Path.home() / ".cache/uv/git-v0/checkouts").glob("*/*/GRCh38_resources"))
     for c in candidates:
         if c and all((Path(c) / f).exists() for f in RESOURCES.values()):
@@ -653,9 +654,7 @@ def input_files(sample: Path) -> dict[str, Path]:
 
 def stage_inputs(sample: Path, root: Path, document: dict[str, Any], resources: Path) -> Path:
     """`sample`'s inputs under `root/inputs/<name>` (a `.gz` written plain, the rest linked), the
-    sample sheet, and `document` pointed at them, as port's `write_sim_inputs` stages them."""
-    import yaml
-
+    sample sheet, and `document` pointed at them."""
     target = root / "inputs" / sample.name
     for name, source in input_files(sample).items():
         (target / name).parent.mkdir(parents=True, exist_ok=True)

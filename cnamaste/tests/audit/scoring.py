@@ -1,15 +1,13 @@
-"""A fit against its planted truth: port's `port.qa.scoring`, and the truth reader, copied (T- #836).
+"""A fit against its planted truth: label and copy-state scoring, and the truth reader (Ticket#836).
 
 Labels are compared after relabelling: each planted label is paired with the
 fitted label it shares the most spots with, one to one, by
 `linear_sum_assignment` on the overlap counts. Copy states are compared as
 pairs coded `A * 1_000 + B`; `phase_free` codes `(A, B)` and `(B, A)` alike.
 
-Copied from port `python/port/qa/scoring.py` (`overlap`, `matched`,
-`integer_clones`, `planted_classes`, `phase_free`, `swapped`) and the part
-of `port.sim.fixtures.load_simulated` that reads a CalicoST sample's truth
-(`truth_clone_labels.tsv`, `truth_acn_profile.tsv`, plain or `.gz`), at
-port badfe56. Imports no port.
+`overlap`, `matched`, `integer_clones`, `planted_classes`, `phase_free` and
+`swapped` score a fit; `planted` reads a CalicoST sample's truth
+(`truth_clone_labels.tsv`, `truth_acn_profile.tsv`, plain or `.gz`).
 """
 
 from __future__ import annotations
@@ -112,7 +110,7 @@ class Truth:
 
 
 def planted(sample: Path) -> Truth:
-    """`sample`'s truth files, read as port's `load_simulated` reads them."""
+    """`sample`'s truth files: the planted clone labels and allele-specific copy profile."""
     table = pd.read_csv(_located(sample / "truth_clone_labels.tsv"), sep="\t", index_col=0).reset_index()
     table.columns = ["barcode", "clone", "x", "y", *table.columns[4:]]
     others = sorted((n for n in table["clone"].unique() if n != "normal"), key=lambda n: int(n.removeprefix("clone_")))

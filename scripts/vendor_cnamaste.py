@@ -16,8 +16,8 @@ writes nothing and exits 1 where a file differs from the copy without a
 declaration, where a declared file no longer differs, or where a file is
 missing or extra: the committed tree is this script's output plus the declared
 edits. `ADDED` declares each file cnamaste owns beyond the copy, under
-`cnamaste/tests/` and `cnamaste/scripts/`, and `--check` refuses one there it
-does not declare.
+`cnamaste/tests/`, and `--check` refuses one there it does not declare. The
+capture that writes its staged-run file is port's, `scripts/capture_cnamaste.py`.
 """
 
 from __future__ import annotations
@@ -42,14 +42,14 @@ DEPARTED: dict[str, str] = {
 """Copied file -> the T- #836 PR that edits it. Only grows."""
 
 PROJECT = ROOT / "cnamaste"
-OWNED = ("tests", "scripts")
-"""cnamaste's own directories beside the copy: every file in them is declared in `ADDED`."""
+OWNED = ("tests",)
+"""cnamaste's own directory beside the copy: every file in it is declared in `ADDED`."""
 
 ADDED: dict[str, str] = {
-    "scripts/capture.py": "PR2: stages one run_cnamaste run into tests/data/sim_<hash>.hdf5",
     "tests/conftest.py": "PR2: the session fixtures over a staged run",
     "tests/audit/capture.py": "PR2: the staged-run file's codec and reader",
     "tests/audit/segments.py": "PR2: port's extensions/segments.py, trimmed",
+    "tests/audit/criteria.py": "PR2: each level's units and counts, recomputed from the staged inputs",
     "tests/audit/scoring.py": "PR2: port's qa/scoring.py and the truth reader",
     "tests/data/sim_2d4ce9a9.hdf5": "PR2: CalicoST easy, staged",
     "tests/test_stages.py": "PR2: replay, bookkeeping and science per stage",
