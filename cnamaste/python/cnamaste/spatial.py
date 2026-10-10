@@ -1,5 +1,3 @@
-from collections import namedtuple
-
 import numpy as np
 import scipy.linalg
 import scipy.sparse
@@ -336,7 +334,6 @@ def initialize_rectangular_clones(coords, n_clones, random_state=0):
 
 def construct_lattice_adjacency(
     coords,
-    maxspots_pooling=7,
     unit_xsquared=9,
     unit_ysquared=3,
     coordination_num=8,
@@ -363,11 +360,6 @@ def construct_lattice_adjacency(
 
     logger.info(f"Constructed nearest neighbor indices via KD-tree")
 
-    logger.warning(f"Assuming identity smooth mat.")
-
-    # NB smooth matrix: identity (each spot pools only itself)
-    smooth_mat = scipy.sparse.identity(n_spots, dtype=np.int8, format="csr")
-
     logger.info(f"Constructing adjacency matrix.")
 
     # nearest_indices = np.argpartition(pairwise_squared_dist, coordination_num, axis=1)[:, :coordination_num]
@@ -380,10 +372,13 @@ def construct_lattice_adjacency(
 
     adjacency_mat = csr_matrix((data, (rows, cols)), shape=(n_spots, n_spots))
 
-    log_sparse_matrix_stats(smooth_mat, "smooth_mat")
+    # NB kNN is directed: j among i's k nearest does not put i among j's.  The Potts
+    #    prior is symmetric, so an edge in either direction is kept in both (Ticket#180).
+    adjacency_mat = adjacency_mat.maximum(adjacency_mat.T)
+
     log_sparse_matrix_stats(adjacency_mat, "adjacency_mat")
 
-    return smooth_mat, adjacency_mat
+    return adjacency_mat
 
 
 # @cacher("adjacency.hdf5")
@@ -392,14 +387,12 @@ def construct_multislice_lattice_adjacency(
     sample_list,
     coords,
     across_slice_adjacency_mat,
-    maxspots_pooling,
     unit_xsquared=9,
     unit_ysquared=3,
 ):
-    logger.info("Solving for multi-slice adjacency (and spot-pooling) matrix.")
+    logger.info("Solving for multi-slice adjacency matrix.")
 
-    # NB smooth_mat contains the edges of spots that are directly pooled.
-    adjacency_mat, smooth_mat = [], []
+    adjacency_mat = []
 
     for i, _ in enumerate(sample_list):
         # NB spots per slice.
@@ -408,20 +401,14 @@ def construct_multislice_lattice_adjacency(
         # NB (x,y) for these spots.
         this_coords = np.array(coords[index, :])
 
-        # NB smooth and adjacency matrices for this slice.
-        tmpsmooth_mat, tmpadjacency_mat = construct_lattice_adjacency(
+        # NB adjacency matrix for this slice.
+        tmpadjacency_mat = construct_lattice_adjacency(
             this_coords,
-            maxspots_pooling=maxspots_pooling,
             unit_xsquared=unit_xsquared,
             unit_ysquared=unit_ysquared,
         )
 
         adjacency_mat.append(tmpadjacency_mat.toarray())
-        smooth_mat.append(tmpsmooth_mat.toarray())
-
-    # NB realize as block diagonal for inter-slice pooling.
-    smooth_mat = scipy.linalg.block_diag(*smooth_mat)
-    smooth_mat = scipy.sparse.csr_matrix(smooth_mat)
 
     # NB sets block diagonals corresponding to inter-slice.
     adjacency_mat = scipy.linalg.block_diag(*adjacency_mat)
@@ -431,11 +418,13 @@ def construct_multislice_lattice_adjacency(
     if across_slice_adjacency_mat is not None:
         adjacency_mat += across_slice_adjacency_mat
 
-    logger.info("Solving for multi-slice adjacency (and spot-pooling) matrix.")
+    # NB the Potts prior is written over a symmetric graph without self loops (Ticket#417).
+    if adjacency_mat.diagonal().any() or (adjacency_mat != adjacency_mat.T).nnz > 0:
+        raise ValueError("Adjacency must be symmetric, without self loops.")
 
-    Adjacency = namedtuple("Adjacency", ["adjacency_mat", "smooth_mat"])
+    logger.info("Solving for multi-slice adjacency matrix.")
 
-    return Adjacency(adjacency_mat=adjacency_mat, smooth_mat=smooth_mat)
+    return adjacency_mat
 
 
 def initialize_rdr_clone_refininement(

@@ -1,4 +1,4 @@
-"""Per-function rows for the clone field: pooling, the spot field, ICM, merges, pseudobulks, clone stacks, re-indexing.
+"""Per-function rows for the clone field: the spot field, ICM, merges, pseudobulks, clone stacks, re-indexing.
 
 Inputs: the fitted runs' stored results and inputs (`audit.fn.fitted`), restricted
 to a 300-spot spatial window where a brute force is per spot; else a small
@@ -19,7 +19,7 @@ import scipy.sparse as sp
 import scipy.stats
 from cnamaste.cna_hmrf_result import CloneAssignment, CnaHMRFResult, HMMParams, HMMProfile
 from cnamaste.hmm_nophasing import hmm_nophasing
-from cnamaste.hmrf import compute_loglike_spot_assignment, merge_by_minspots, pipeline_clone_assignment, pool_spatio_genomic_counts, reindex_clones, run_core_inference
+from cnamaste.hmrf import compute_loglike_spot_assignment, merge_by_minspots, pipeline_clone_assignment, reindex_clones, run_core_inference
 from cnamaste.hmrf_utils import cast_csr, clone_stack_obs, get_clone_assignment, get_clone_indices
 from cnamaste.icm import icm_sweep_deque, merge_assignment, unpack_adjacency
 from cnamaste.pseudobulk import merge_pseudobulk_by_index_mix
@@ -64,22 +64,12 @@ def window(ctx: Any) -> dict[str, Any]:
         idx = np.sort(np.argsort(np.sum((coords - coords[0]) ** 2, axis=1))[:300])
         res = f["res"]
         return {"idx": idx, "X": f["single_X"][:, :, idx], "base": f["single_base_nb_mean"][:, idx], "total": f["single_total_bb_RD"][:, idx],
-                "adjacency": f["adjacency_mat"].tocsr()[idx][:, idx].tocsr(), "smooth": sp.identity(idx.size, format="csr", dtype=np.int8),
+                "adjacency": f["adjacency_mat"].tocsr()[idx][:, idx].tocsr(),
                 "res": res, "pred": np.argmax(np.asarray(res["log_gamma"]), axis=0), "labels": np.asarray(res["new_assignment"])[idx]}
     return ctx.once("hmrf/window", make)
 
 
 # --- oracle --------------------------------------------------------------------
-
-
-def _pool(_: Any) -> None:
-    rng = np.random.default_rng(1)
-    x = rng.integers(0, 9, size=(5, 2, 6))
-    base, total = rng.random((5, 6)), rng.integers(0, 9, size=(5, 6))
-    smooth = sp.csr_matrix(((rng.random((6, 6)) < 0.4) | np.eye(6, dtype=bool)).astype(np.int8))  # NB pooling sums neighbours; it reads no weight
-    px, pb, pt, *_ = pool_spatio_genomic_counts(x, base, total, smooth.indices, smooth.indptr)
-    s = smooth.toarray()
-    assert np.array_equal(px, np.einsum("ocj,ij->oci", x, s)) and np.allclose(pb, base @ s.T) and np.array_equal(pt, total @ s.T)
 
 
 def _spot_field(_: Any) -> None:
@@ -88,21 +78,20 @@ def _spot_field(_: Any) -> None:
     rdr, baf = rng.normal(size=(n_states, n_obs, n_spots)), rng.normal(size=(n_states, n_obs, n_spots))
     pred = rng.integers(0, n_states, size=(n_obs, n_clones))
     nb, bb = rng.integers(1, 5, size=n_spots), rng.integers(1, 5, size=n_spots)
-    smooth = sp.identity(n_spots, format="csr")
-    found = compute_loglike_spot_assignment(n_spots, nb, bb, np.empty(0), False, rdr, baf, pred, n_obs, n_clones, smooth.indices, smooth.indptr)
+    found = compute_loglike_spot_assignment(n_spots, nb, bb, np.empty(0), False, rdr, baf, pred, n_obs, n_clones)
     want = np.zeros((n_spots, n_clones))
     for s in range(n_spots):
         for c in range(n_clones):
             want[s, c] = (bb[s] / nb[s]) * rdr[pred[:, c], np.arange(n_obs), s].sum() + baf[pred[:, c], np.arange(n_obs), s].sum()
     assert np.allclose(found, want)
-    concatenated = compute_loglike_spot_assignment(n_spots, nb, bb, np.empty(0), False, rdr, baf, pred.T.ravel(), n_obs, n_clones, smooth.indices, smooth.indptr)
+    concatenated = compute_loglike_spot_assignment(n_spots, nb, bb, np.empty(0), False, rdr, baf, pred.T.ravel(), n_obs, n_clones)
     assert np.allclose(concatenated, want), "a clone-concatenated pred reads as the (bins, clones) one"
 
 
 def _assignment(w: dict[str, Any]) -> None:
     res, n_obs = w["res"], w["X"].shape[0]
     labels, llf, total = unchanged(pipeline_clone_assignment, w["X"], w["base"], w["total"], res, w["pred"], w["adjacency"], w["labels"],
-                                   np.zeros(w["idx"].size, dtype=int), 1.0, smooth_mat=w["smooth"], hmmclass=hmm_nophasing)
+                                   np.zeros(w["idx"].size, dtype=int), 1.0, hmmclass=hmm_nophasing)
     p, taus = np.asarray(res["new_p_binom"]), np.asarray(res["new_taus"])
     n_clones = w["pred"].size // n_obs
     want = np.zeros((w["idx"].size, n_clones))
@@ -172,7 +161,6 @@ def _unpack(_: Any) -> None:
 
 ORACLE: list[Row] = table(
     "oracle",
-    ("hmrf:pool_spatio_genomic_counts", "synthetic: 6 spots, a random smoothing graph", lambda c: None, _pool, "pooled counts are the smoothing matrix times the counts"),
     ("hmrf:compute_loglike_spot_assignment", "synthetic: 5 spots, 2 clones", lambda c: None, _spot_field, "the field is w_s * RDR + BAF summed over each clone's states, w_s = valid BAF / valid RDR bins"),
     ("hmrf:pipeline_clone_assignment", WINDOW, window, _assignment, "the field is scipy's BB log-likelihood under each clone's MAP path; the objective is the Potts energy"),
     ("icm:icm_sweep_deque", "synthetic: 8x8 grid, 3 clones", lambda c: field_case(), _icm_energy, "the reported cost is the Potts energy gained, and every spot ends at its conditional maximum"),
