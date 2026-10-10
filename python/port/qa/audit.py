@@ -468,6 +468,17 @@ def drawn_config(
     return config
 
 
+def sample_config(
+    sample: SimulatedSample, root: Path, settings: dict[str, Any]
+) -> Path:
+    """A run's configuration under `root`: a drawn sample's own (`drawn_config`), a committed CalicoST sample's written (`write_sim_inputs`)."""
+    from port.sim.fixtures import write_sim_inputs
+
+    if (sample.path / "snp").is_dir():
+        return drawn_config(sample, root, settings)
+    return write_sim_inputs(sample, root, settings)
+
+
 def audit_sample(
     sample: SimulatedSample,
     flags: list[str],
@@ -477,7 +488,6 @@ def audit_sample(
 ) -> tuple[SimRecovery, Path]:
     """`run_cnaster_port` with `flags` on `sample`, scored."""
     from port.scripts.run_cnaster import main
-    from port.sim.fixtures import write_sim_inputs
 
     root = Path(tempfile.mkdtemp()) if root is None else root
     known = {
@@ -485,10 +495,7 @@ def audit_sample(
         "hmrf.fixed_assignment": True,
     }
     settings = {**(overrides or {}), **(known if oracle else {})}
-    if (sample.path / "snp").is_dir():
-        config = drawn_config(sample, root, settings)
-    else:
-        config = write_sim_inputs(sample, root, settings)
+    config = sample_config(sample, root, settings)
 
     wall = timed(main, [*flags, str(config)])
 
