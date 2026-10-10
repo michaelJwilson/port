@@ -186,6 +186,7 @@ def pipeline_clone_assignment(
     single_tumor_prop=None,
     hmmclass=None,
     merge=False,
+    min_clone_spots=200,
 ):
     # NB n_obs is the number of genomic segments, N is the number of spots.
     n_obs, _, N = single_X.shape
@@ -316,6 +317,7 @@ def pipeline_clone_assignment(
             # tol=0.1,  # MAGIC TODO
             log_persample_weights=log_persample_weights,
             sample_ids=sample_ids,
+            min_clone_spots=min_clone_spots,
         )
 
         logger.info(f"Ready for potential merging of clones?  {merge}.")
@@ -443,6 +445,7 @@ def run_core_inference(
     tumorprop_threshold=0.5,
     propagate_hmm_param_errors=False,
     deconcatenate_clones=False,
+    min_clone_spots=200,
 ):
     # NB num. of genomic bins, num. pseudobulk (clones, spots, ...)
     n_obs, _, _ = single_X.shape
@@ -617,6 +620,7 @@ def run_core_inference(
             single_tumor_prop=single_tumor_prop,
             hmmclass=hmmclass,
             merge=merge,
+            min_clone_spots=min_clone_spots,
         )
         """
         # NB new assignment did not populate an input clone.
@@ -689,6 +693,9 @@ def run_core_inference(
         ) = clone_stack_obs(
             X, base_nb_mean, total_bb_RD, lengths, log_sitewise_transmat, tumor_prop
         )
+
+        # NB re-indexed clones may have dropped one; per-clone lengths follow the clone stack.
+        clone_lengths = X.shape[0] * np.ones(X.shape[2], dtype=int)
 
         state_counts = np.bincount(pred, minlength=n_states)
         state_usage = state_counts / len(pred)

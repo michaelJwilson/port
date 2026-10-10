@@ -652,6 +652,7 @@ def run_cnamaste(config_path, over_rides=None):
         tumorprop_threshold=config.hmrf.tumorprop_threshold,
         propagate_hmm_param_errors=False,
         deconcatenate_clones=False,
+        min_clone_spots=config.hmrf.min_spots_per_clone,
     )
     # TODO
     # res.lock()
@@ -1105,6 +1106,7 @@ def run_cnamaste(config_path, over_rides=None):
         # onehot_allowed_clones=None,
         propagate_hmm_param_errors=False,
         deconcatenate_clones=True,
+        min_clone_spots=config.hmrf.min_spots_per_clone,
     )
 
     logger.info(f"Solved for res_combine=\n{res_combine}")

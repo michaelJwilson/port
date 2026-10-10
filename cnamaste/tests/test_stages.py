@@ -688,7 +688,7 @@ CRITERIA = [
                                        == len(u.sim.stored("05_baf/merge_by_minspots/out/0")) * v))),
     Criterion("08_rdr", "clones", None, "final clones <= the last iteration's start less its Potts merges, less empties, "
               "less min-spot merges", "<=", "none", lambda u, v: clone_drops(u)),
-    Criterion("08_rdr", "clones", "hmrf.min_spots_per_clone", "spots per final clone (effective floor 200: Ticket#81, Ticket#468)",
+    Criterion("08_rdr", "clones", "hmrf.min_spots_per_clone", "spots per final clone (also the ICM floor: Ticket#81, Ticket#468)",
               ">=", "none", lambda u, v: Check(np.bincount(np.asarray(u.sim.result("08_rdr/reindex_clones/out/0")["new_assignment"])) >= v)),
     Criterion("05_baf, 08_rdr", "clones", "hmrf.spatial_weight", "the HMRF fits' spatial_weight", "==", "none",
               lambda u, v: Check(flags(*(u.replayed.value(f"{run}/run_core_inference/in")["kwargs"]["spatial_weight"] == v

@@ -350,19 +350,19 @@ def _(**_: Any) -> None:
     assert np.array_equal(given, before), "the caller's assignment was rewritten in place"
 
 
-@row("Ticket#81", "hmrf.run_core_inference", "xfail", "Ticket#81: any clone below 200 spots is merged away, and run_core_inference does not expose the threshold")
+@row("Ticket#81", "hmrf.run_core_inference", "regression", "Ticket#81: fixed in cnamaste PR-clone-floor; run_core_inference takes the floor as min_clone_spots")
 def _(**_: Any) -> None:
     assert "min_clone_spots" in inspect.signature(run_core_inference).parameters
 
 
-@row("Ticket#468", "hmrf.pipeline_clone_assignment", "xfail", "Ticket#468: cnaster ignores hmrf.min_spots_per_clone: the ICM floor stays hard-coded at 200")
+@row("Ticket#468", "hmrf.pipeline_clone_assignment", "regression", "Ticket#468: fixed in cnamaste PR-clone-floor; the ICM floor is hmrf.min_spots_per_clone, passed through")
 def _(**_: Any) -> None:
     caller = function_node(source("hmrf.py"), "pipeline_clone_assignment")
     calls = [n for n in ast.walk(caller) if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "icm_sweep_deque"]
     assert calls and all(any(k.arg == "min_clone_spots" for k in c.keywords) for c in calls)
 
 
-@row("Ticket#483", "icm.merge_assignment", "xfail", "Ticket#483: cnaster's merge gain is halved")
+@row("Ticket#483", "icm.merge_assignment", "regression", "Ticket#483: fixed in cnamaste PR-clone-floor; the merge gain counts the whole boundary")
 def _(**_: Any) -> None:
     llf = np.zeros((2, 2))
     spots, neighbours, weights = np.array([0, 1]), np.array([1, 0]), np.array([1.0, 1.0])
@@ -389,8 +389,8 @@ def _(sim: Any, **_: Any) -> None:
     assert np.array_equal(np.asarray(res["new_assignment"]), before), "the caller's result now carries the merged labels"
 
 
-@row("new: stale clone_lengths", "hmrf.run_core_inference", "xfail",
-     "Ticket#267 (the clone axis), new: clone_lengths is computed once (hmrf.py:564) and is stale after a clone drops out")
+@row("new: stale clone_lengths", "hmrf.run_core_inference", "regression",
+     "Ticket#267 (the clone axis), new: fixed in cnamaste PR-clone-floor; clone_lengths is recomputed with the clone stack")
 def _(**_: Any) -> None:
     body = function_node(source("hmrf.py"), "run_core_inference")
     loop = next(n for n in ast.walk(body) if isinstance(n, ast.While))
@@ -563,11 +563,18 @@ def _(**_: Any) -> None:
 # --- planned departures ---------------------------------------------------------
 
 
-@row("Ticket#348 floor", "icm.icm_sweep_deque", "departure",
-     "planned departure: refinement mask plus floor merge, smallest-first to the best field (sal FloorPolicy), Ticket#348, planned D5 PR #841")
+@row("Ticket#348 floor", "icm.icm_sweep_deque", "regression",
+     "Ticket#81 / Ticket#348: fixed in cnamaste PR-clone-floor; the floor merges smallest first, each spot to its best remaining clone")
 def _(**_: Any) -> None:
     body = ast.unparse(function_node(source("icm.py"), "icm_sweep_deque"))
     assert "np.random.choice(valid_for_spot)" not in body, "a spot of a clone under the floor goes to a random eligible clone"
+    # NB clone 0 (2 spots, which the field keeps there) is under the floor of 3: each of its spots goes to
+    #    its best remaining clone by the field, and clones 1 and 2 (3 spots each) clear it. No edges.
+    llf = np.array([[5.0, 1.0, 0.0], [5.0, 0.0, 1.0]] + [[0.0, 2.0, 0.0]] * 3 + [[0.0, 0.0, 2.0]] * 3)
+    labels = np.array([0, 0, 1, 1, 1, 2, 2, 2])
+    empty = sp.csr_matrix((8, 8))
+    icm_sweep_deque(llf, empty.indptr, empty.indices, empty.data, labels, 0.0, None, min_clone_spots=3)
+    assert labels.tolist() == [1, 2, 1, 1, 1, 2, 2, 2], f"floor reassignment: {labels.tolist()}"
 
 
 @row("Ticket#348 start", "hmm_initialize.gmm_init", "not reproduced",

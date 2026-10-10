@@ -89,7 +89,6 @@ DEFECTS: dict[str, str] = {
     "hmrf.construct_adjacency_method": "unread",
     "hmrf.construct_adjacency_w": "unread",
     "hmrf.np_merge": "unread: the Neyman-Pearson merge is commented out (run_cnamaste.py:731)",
-    "hmrf.min_spots_per_clone": "below the floor that merges first: icm_sweep_deque's min_clone_spots=200 (icm.py:820; Ticket#81, Ticket#468)",
     "hmm.params": "unread: run_cnamaste passes 'sp' and 'smp' as literals",
     "hmm.max_workers": "unread",
     "hmm.np_threshold": "unread",
