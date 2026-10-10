@@ -39,6 +39,12 @@ dependencies = [
     "scipy",
 ]
 
+[dependency-groups]
+# NB `cnamaste/tests/`' runner; uv
+#    installs the `dev` group by default, so `uv run --locked --project
+#    cnamaste pytest cnamaste/tests` needs no flag.
+dev = ["pytest>=9.0.3", "pytest-xdist>=3.6"]
+
 [project.scripts]
 # `cnaster`'s `run_cnaster = "cnaster.scripts.run_cnaster:main"`, renamed.
 run_cnamaste = "cnamaste.scripts.run_cnamaste:main"
@@ -52,3 +58,14 @@ packages = ["cnamaste", "cnamaste.scripts"]
 #    an unpinned resolve moves them, so PR1's rows compare like with like
 #    (Ticket#836): unconstrained, polars resolves 2.0.0.
 constraint-dependencies = ["anndata==0.13.3.post0", "numba==0.67.0", "polars==1.44.2"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# NB the one marker: a test that reads the run's input files and its output
+#    files and accounts for one through the other. Every test runs by default.
+markers = ["roundtrip: the run's inputs against its outputs, through the captured intermediates"]
+# NB xdist by default: 141 s at -n 4 against 295 s serial (-n 0) on easy, and the same outcome under 1 or 4
+#    numba threads (the replays are bitwise in both). The replaying tests share one worker
+#    (`xdist_group`, conftest.py), so each stage replays once. `-n 0` runs serially.
+addopts = "--strict-markers -n auto --dist loadgroup"
+pythonpath = ["tests"]
