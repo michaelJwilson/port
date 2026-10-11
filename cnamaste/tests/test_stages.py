@@ -677,7 +677,9 @@ CRITERIA = [
     Criterion("05_baf, 08_rdr", "fit", None, "alphas in [1e-6, 1e3], taus in [1e-4, 5e3] (hmm_nophasing.py:510-557; not passed: "
               "bounds=None, hmm_nophasing.py:1033)", "in", "none",
               lambda u, v: Check(np.concatenate([((f["new_alphas"] >= 1e-6) & (f["new_alphas"] <= 1e3)).ravel() for f in fits(u)]
-                                                + [((f["new_taus"] >= 1e-4) & (f["new_taus"] <= 5e3)).ravel() for f in fits(u)]))),
+                                                + [((f["new_taus"] >= 1e-4) & (f["new_taus"] <= 5e3)).ravel() for f in fits(u)]), known=True),
+              "new: the bounds are not passed (bounds=None, hmm_nophasing.py:1033); under the symmetric adjacency (Ticket#180) "
+              "08_rdr's shared tau reaches 5337"),
     Criterion("03_phasing", "clones", "hmrf.n_clones", "initial BAF clones", "==", "none",
               lambda u, v: Check(flags(len(u.sim.stored("03_phasing/initialize_clones/out")) == v), known=True),
               "new: hmrf.n_clones only names the output directory (utils.py:245); the BAF round starts from "
