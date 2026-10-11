@@ -86,7 +86,12 @@ ADDED: dict[str, str] = {
     "tests/audit/digest.py": "PR4: a return value's canonical digests and summary, and the per-sample pins",
     "tests/data/digests_2d4ce9a9.json": "PR4: easy's pins, each per-function row's returns",
     "tests/test_smoke.py": "PR6: smoke: the figures, the console script, the output tree, logging and perf",
-    "tests/test_truth.py": "PR9: phasing and integer copies per class against the planted truth, easy",
+    "tests/test_truth.py": "PR9: phasing, slices and integer copies per class against the planted truth",
+    "tests/audit/sims.py": "PR10: the staged fixtures, and those test_truth.py alone scores",
+    "tests/data/sim_8797710b.hdf5": "PR10: CalicoST hard, staged at efb2e9e, for test_truth.py",
+    "tests/data/sim_23acef50.hdf5": "PR10: dev_tree_easy_square r0, staged at efb2e9e, for test_truth.py",
+    "tests/data/sim_e4bbe03f.hdf5": "PR10: dev_tree_easy r0, staged at efb2e9e, for test_truth.py",
+    "tests/data/truth_phase_e4bbe03f.npy": "PR10: dev_tree_easy r0's planted phase at the loaded SNPs, square's too",
 }
 """File cnamaste owns beyond the copy and its project files, relative to `cnamaste/` -> the T- #836 PR
 that adds it. Only grows. Every file under `OWNED` must be here."""

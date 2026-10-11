@@ -7,14 +7,18 @@ pairs coded `A * 1_000 + B`; `phase_free` codes `(A, B)` and `(B, A)` alike.
 
 `overlap`, `matched`, `integer_clones`, `planted_classes`, `phase_free` and
 `swapped` score a fit; `at_truth` reads a run's labels at the planted
-barcodes; `planted` reads a CalicoST sample's truth (`truth_clone_labels.tsv`,
-`truth_acn_profile.tsv`, plain or `.gz`).
+barcodes; `planted` reads a sample's truth (`truth_clone_labels.tsv`,
+`truth_acn_profile.tsv`): from a directory, plain or `.gz`, or from the bytes
+a staged file stores under `/truth`.
 """
 
 from __future__ import annotations
 
+import io
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -110,9 +114,14 @@ class Truth:
         return copies
 
 
-def planted(sample: Path) -> Truth:
-    """`sample`'s truth files: the planted clone labels and allele-specific copy profile."""
-    table = pd.read_csv(_located(sample / "truth_clone_labels.tsv"), sep="\t", index_col=0).reset_index()
+def _truth_file(sample: Path | Mapping[str, bytes], name: str) -> Any:
+    """`name` from a sample directory (plain or `.gz`), or its bytes from a mapping of them."""
+    return _located(sample / name) if isinstance(sample, Path) else io.BytesIO(sample[name])
+
+
+def planted(sample: Path | Mapping[str, bytes]) -> Truth:
+    """`sample`'s truth files, a directory or the bytes by name: the planted clone labels and allele-specific copies."""
+    table = pd.read_csv(_truth_file(sample, "truth_clone_labels.tsv"), sep="\t", index_col=0).reset_index()
     table.columns = ["barcode", "clone", "x", "y", *table.columns[4:]]
     others = sorted((n for n in table["clone"].unique() if n != "normal"), key=lambda n: int(n.removeprefix("clone_")))
     clones = ("normal", *others)
@@ -121,7 +130,7 @@ def planted(sample: Path) -> Truth:
         barcodes=table["barcode"].to_numpy().astype(str),
         labels=table["clone"].map(index).to_numpy(dtype=np.int64),
         clones=clones,
-        profile=pd.read_csv(_located(sample / "truth_acn_profile.tsv"), sep="\t"),
+        profile=pd.read_csv(_truth_file(sample, "truth_acn_profile.tsv"), sep="\t"),
     )
 
 
