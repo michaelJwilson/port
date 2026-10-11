@@ -124,7 +124,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 @pytest.fixture(scope="session", autouse=True)
 def _working_directory(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
-    """A scratch working directory: `hmm_emission.flush_perf` appends to `cnamaste.perf` in it, whatever `paths.perf_path` says."""
+    """A scratch working directory, so nothing a replay writes relative to it lands in the checkout."""
     before = Path.cwd()
     os.chdir(tmp_path_factory.mktemp("cwd"))
     yield

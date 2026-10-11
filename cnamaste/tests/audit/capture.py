@@ -680,7 +680,6 @@ def stage_inputs(sample: Path, root: Path, document: dict[str, Any], resources: 
     document["paths"] = {
         "sample_sheet": str(root / "sample_sheet.tsv"),
         "output_dir": str(root / "output"),
-        "perf_path": str(root / "cnaster.perf"),
     }
     document["references"].update({k: str(resources / f) for k, f in RESOURCES.items()})
     document["references"]["annotation_file"] = str(root / "unused.gtf.gz")

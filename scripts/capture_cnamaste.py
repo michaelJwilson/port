@@ -599,7 +599,9 @@ def main(argv: list[str] | None = None) -> int:
         missing = "CalicoST's GRCh38_resources not found; set $CNAMASTE_GRCH38"
         raise SystemExit(missing)
     document = yaml.safe_load(arguments.template.read_text())
-    # NB `hmm_emission.flush_perf` appends to `cnamaste.perf` in the working directory
+    # NB `run_cnamaste` reads `hmrf.np_merge`, which the template predates: off, as cnamaste ships it
+    document["hmrf"].setdefault("np_merge", False)
+    # NB a scratch working directory, for anything the run writes relative to it
     arguments.work.mkdir(parents=True, exist_ok=True)
     os.chdir(arguments.work)
     config = stage_inputs(arguments.sample, RUN_ROOT, document, resources)
