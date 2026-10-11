@@ -87,6 +87,11 @@ ADDED: dict[str, str] = {
     "docs/ledger/ledger.py": "PR7: the ledger writer, one row per capture commit and fixture",
     "docs/ledger/ledger.tsv": "PR7: the ledger, append-only",
     "docs/ledger/README.md": "PR7: the ledger's columns",
+    "docs/fixtures/README.md": "PR8: the drawn fixtures' truth figures and how they are drawn",
+    "docs/fixtures/23acef50/truth_combined.png": "PR8: dev_tree_easy_square r0's planted truth",
+    "docs/fixtures/23acef50/truth_combined_spatial.png": "PR8: dev_tree_easy_square r0's planted truth, clones in place",
+    "docs/fixtures/e4bbe03f/truth_combined.png": "PR8: dev_tree_easy r0's planted truth",
+    "docs/fixtures/e4bbe03f/truth_combined_spatial.png": "PR8: dev_tree_easy r0's planted truth, clones in place",
 }
 """File cnamaste owns beyond the copy and its project files, relative to `cnamaste/` -> the T- #836 PR
 that adds it. Only grows. Every file under `OWNED` must be here."""
