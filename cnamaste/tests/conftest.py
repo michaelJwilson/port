@@ -34,6 +34,7 @@ from numba import _helperlib
 
 from audit.capture import Capture, digest, file_sha256, grch38, input_files, stage_inputs, unordered
 from audit.criteria import Units, units_of
+from audit.digest import Pins, quiet
 from audit.fn import Ctx
 from audit.scoring import Truth, planted
 from audit.segments import DROPPED, Genes, Segmentation
@@ -56,6 +57,29 @@ REPLAY_SKIPPED = {"run_core_inference"}
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption("--sims", default=",".join(DEFAULT_SIMS), help="fixture hashes from SUPPORTED_SIMS, comma separated, or 'all'")
+    parser.addoption("--update-digests", action="store_true", help="rewrite data/digests_<hash>.json from this session's snapshots, deliberately")
+
+
+PINNED: dict[str, dict[str, Any]] = {}
+"""`--update-digests`: sample -> row key -> pin, from the reports (`audit.fn.snapshot`'s `user_properties`)."""
+ROW_KEYS: dict[str, set[str]] = {}
+"""`--update-digests`: sample -> every row's key, where `test_snapshot_pins_are_the_rows` ran: pins of other keys are dropped."""
+
+
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    for name, value in report.user_properties:
+        if name == "digest":
+            sim_hash, key, pin = value
+            PINNED.setdefault(sim_hash, {})[key] = pin
+        elif name == "digest-keys":
+            ROW_KEYS[value[0]] = set(value[1])
+
+
+def pytest_sessionfinish(session: pytest.Session) -> None:
+    """`--update-digests`, on the controller (or the one process): the session's snapshots over the pins on disk."""
+    if session.config.getoption("--update-digests") and not hasattr(session.config, "workerinput"):
+        for sim_hash in sorted(set(PINNED) | set(ROW_KEYS)):
+            Pins.write(sim_hash, PINNED.get(sim_hash, {}), ROW_KEYS.get(sim_hash))
 
 
 def selected(config: pytest.Config) -> list[str]:
@@ -100,7 +124,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 @pytest.fixture(scope="session", autouse=True)
 def _working_directory(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
-    """A scratch working directory: `hmm_emission.flush_perf` appends to `cnamaste.perf` in it, whatever `paths.perf_path` says."""
+    """A scratch working directory, so nothing a replay writes relative to it lands in the checkout."""
     before = Path.cwd()
     os.chdir(tmp_path_factory.mktemp("cwd"))
     yield
@@ -211,7 +235,8 @@ class Replay:
             _helperlib.rnd_set_state(_helperlib.rnd_get_np_state_ptr(), numba_state)
             random.setstate(py_state)
             start = time.perf_counter()
-            self.outs[stage] = self.sim.function(stage)(*given["args"], **given["kwargs"])
+            with quiet():  # NB a replay belongs to no per-function row (`audit.digest.QUIET`)
+                self.outs[stage] = self.sim.function(stage)(*given["args"], **given["kwargs"])
             self.seconds[stage] = time.perf_counter() - start
             if "write_tsv" in stage:
                 self.outs[stage + "#file"] = Path(given["args"][0]).read_bytes()
