@@ -53,7 +53,7 @@ from cnamaste.io import get_aggregated_barcodes, get_sample_list, get_spacerange
 from cnamaste.normal_spot import determine_normal_candidates, filter_normal_diffexp
 from cnamaste.omics import assign_initial_blocks, summarize_counts_for_bins
 from cnamaste.recomb import assign_centiMorgans, compute_numbat_phase_switch_prob
-from cnamaste.spatial import banded, construct_lattice_adjacency, initialize_rectangular_clones
+from cnamaste.spatial import banded, construct_lattice_adjacency, construct_multislice_lattice_adjacency, initialize_rectangular_clones
 from cnamaste.utils import top_hat_sum
 
 PROJECT = Path(__file__).resolve().parents[1]
@@ -339,6 +339,16 @@ def _(**_: Any) -> None:
 def _(**_: Any) -> None:
     adjacency = construct_lattice_adjacency(lattice(5, 5), unit_xsquared=1, unit_ysquared=1)
     assert np.diff(adjacency.tocsr().indptr)[0] == 3, "a square lattice's corner has 3 king-move neighbours, not 8"
+
+
+@row("Ticket#417", "spatial.construct_multislice_lattice_adjacency", "xfail",
+     "Ticket#417: the multi-slice adjacency takes a self loop or a one-way edge without a guard")
+def _(**_: Any) -> None:
+    coords, ids = lattice(3, 3), np.zeros(9, dtype=int)
+    one_way, self_loop = sp.csr_matrix(([1.0], ([0], [8])), shape=(9, 9)), sp.csr_matrix(([1.0], ([4], [4])), shape=(9, 9))
+    for across in (one_way, self_loop):
+        with pytest.raises(ValueError):
+            construct_multislice_lattice_adjacency(ids, ["a"], coords, across, unit_xsquared=1, unit_ysquared=1)
 
 
 @row("Ticket#692", "spatial.initialize_rectangular_clones", "regression", "Ticket#692: fixed in cnamaste PR1; the dev blocks return, banded")

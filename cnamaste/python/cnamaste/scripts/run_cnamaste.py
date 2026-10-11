@@ -70,6 +70,10 @@ def set_numba_seed(value):
 logger = get_logger(__name__, start_time=start_time)
 
 
+DIFFEXP_OPTIONS = ("logfcthreshold_u", "logfcthreshold_t", "quantile_threshold", "use_kmeans")
+"""filter_normal_diffexp's options, each set by quality.diffexp_<name> (Ticket#440)."""
+
+
 def run_cnamaste(config_path, over_rides=None):
     logger.runtime_phase = "prep."
     logger.info("----  Welcome to cna-maste  ----")
@@ -966,12 +970,19 @@ def run_cnamaste(config_path, over_rides=None):
     filtered_out_set = set()
 
     if config.quality.filter_normal_diffexp:
+        # NB quality.diffexp_<name> sets filter_normal_diffexp's <name>; absent, its default (Ticket#440).
+        diffexp_options = {
+            name: getattr(config.quality, f"diffexp_{name}")
+            for name in DIFFEXP_OPTIONS
+            if hasattr(config.quality, f"diffexp_{name}")
+        }
         copy_single_X_rdr, filtered_out_set = filter_normal_diffexp(
             exp_counts,
             df_bin_info,
             normal_candidate,
             sample_list=sample_list,
             sample_ids=sample_ids,
+            **diffexp_options,
         )
     else:
         logger.warning(f"Assuming no filter for normal differential expression.")
