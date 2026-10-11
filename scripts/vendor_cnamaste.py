@@ -36,6 +36,7 @@ ENTRY = "cnaster.scripts.run_cnaster"
 
 DEPARTED: dict[str, str] = {
     "scripts/run_cnamaste.py": "PR1, #105: a removed bin's genes leave the gene-level output",
+    "hmm_emission.py": "PR3: flush_perf writes to <paths.output_dir>/cnamaste.perf; paths.perf_path is gone",
     "spatial.py": "PR1, #692: rectangular clones that admit no assignment are banded",
     "utils.py": "PR1, T- #692: write_fig releases each Text's cached renderer; D-dedup: `from copyreg import pickle` removed, so the cacher's .pkl mode uses the standard pickle",
     "icm.py": "D-dedup: 3 unused string copies of icm_sweep_deque and the shadowed logsumexp import commented out",
@@ -65,6 +66,26 @@ ADDED: dict[str, str] = {
     "tests/test_defects.py": "PR2: one row per port issue, a strict xfail where cnamaste has the defect",
     "tests/test_runtime.py": "PR2: the runtime goals port measured, as placeholders",
     "tests/data/rectangular_hang.npz": "PR2: port's tests/data copy, #304/#692's coordinates",
+    "tests/test_config.py": "PR3: the shipped configurations, key by key",
+    "tests/test_constants.py": "PR7: the hard-coded constants, their values and how often each binds",
+    "zenodo_sim_config.yaml": "PR3: cnaster 4adad4d's zenodo_sim_config.yaml, less paths.perf_path; np_merge False (unread), min_spots_per_clone 200",
+    "config.yaml": "PR3: cnaster 4adad4d's shipped config.yaml, less paths.perf_path and four unread hmrf keys; min_spots_per_clone 200",
+    "tests/audit/callgraph.py": "PR4: the functions run_cnamaste reaches, static graph over the live namespace",
+    "tests/audit/fn.py": "PR4: the per-function rows, their context and shared inputs",
+    "tests/test_fn_inventory.py": "PR4: every reached function has rows or a stated reason",
+    "tests/test_fn_io.py": "PR4: per-function rows, loading, configuration, logging",
+    "tests/test_fn_omics.py": "PR4: per-function rows, the genome segmentation and its counts",
+    "tests/test_fn_phasing.py": "PR4: per-function rows, the phase kernel and the phased HMM",
+    "tests/test_fn_spatial.py": "PR4: per-function rows, partitions and the spot graph",
+    "tests/test_fn_normal.py": "PR4: per-function rows, normal spots and the beta-binomial fit",
+    "tests/test_fn_hmm.py": "PR4: per-function rows, emissions, lattices, M step, initialization",
+    "tests/test_properties.py": "PR5: model properties: normalisation, limits, invariance, monotonicity, phase flip, invalid values",
+    "tests/test_fn_hmrf.py": "PR4: per-function rows, the clone field, ICM, merges, re-indexing",
+    "tests/test_fn_integer.py": "PR4: per-function rows, the integer copy-number decoder",
+    "tests/test_fn_outputs.py": "PR4: per-function rows, the outputs and run_cnamaste's glue",
+    "tests/audit/digest.py": "PR4: a return value's canonical digests and summary, and the per-sample pins",
+    "tests/data/digests_2d4ce9a9.json": "PR4: easy's pins, each per-function row's returns",
+    "tests/test_smoke.py": "PR6: smoke: the figures, the console script, the output tree, logging and perf",
 }
 """File cnamaste owns beyond the copy and its project files, relative to `cnamaste/` -> the T- #836 PR
 that adds it. Only grows. Every file under `OWNED` must be here."""
