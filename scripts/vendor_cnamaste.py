@@ -36,11 +36,16 @@ ENTRY = "cnaster.scripts.run_cnaster"
 
 DEPARTED: dict[str, str] = {
     "hmrf.py": "PR-clone-floor: clone_lengths follows re-indexed clones",
-    "icm.py": "PR-clone-floor: #81 floor merges smallest first, each spot to its best remaining clone; #483 full merge boundary gain",
+    "icm.py": "PR-clone-floor: #81 floor merges smallest first, each spot to its best remaining clone; #483 full merge boundary gain; D-dedup: 3 unused string copies of icm_sweep_deque and the shadowed logsumexp import commented out",
     "scripts/run_cnamaste.py": "PR1, #105: a removed bin's genes leave the gene-level output",
     "hmm_emission.py": "PR3: flush_perf writes to <paths.output_dir>/cnamaste.perf; paths.perf_path is gone",
     "spatial.py": "PR1, #692: rectangular clones that admit no assignment are banded",
-    "utils.py": "PR1, T- #692: write_fig releases each Text's cached renderer",
+    "utils.py": "PR1, T- #692: write_fig releases each Text's cached renderer; D-dedup: `from copyreg import pickle` removed, so the cacher's .pkl mode uses the standard pickle",
+    "hmm_initialize.py": "D-dedup: an unused string copy of gmm_init commented out",
+    "hmm_nophasing.py": "D-dedup: an unused string copy of compute_emission_probability_nb_betabinom_coded commented out",
+    "normal_spot.py": "D-dedup: an unused string copy of filter_normal_diffexp commented out",
+    "plot_genomic.py": "D-dedup: an unused string copy of plot_clones_genomic commented out",
+    "recomb.py": "D-dedup: unused string copies of the three recombination functions commented out",
 }
 """Copied file -> the T- #836 PR that edits it. Only grows."""
 
