@@ -37,7 +37,7 @@ SCORES = ("ari", "ari_integer", "copy_ari_pf", "exact_altered_minor")
 """What a supported row pins, to 4 decimals: `port.qa.audit.SimRecovery`'s fields."""
 
 SUPPORTED: dict[str, tuple[str, str, dict[str, float]]] = {
-    "easy": ("easy", "2d4ce9a9", {"ari": 0.9694, "ari_integer": 0.9694, "copy_ari_pf": 0.8216, "exact_altered_minor": 0.3794}),
+    "easy": ("easy", "2d4ce9a9", {"ari": 0.9741, "ari_integer": 0.9741, "copy_ari_pf": 0.8216, "exact_altered_minor": 0.3794}),
     "hard": ("hard", "8797710b", {"ari": 0.762, "ari_integer": 0.762, "copy_ari_pf": 0.8597, "exact_altered_minor": 0.3395}),
     "dev_tree_r0": ("sim/manifests/baseline/dev_tree.toml", "3381575a", {"ari": 0.9599, "ari_integer": 0.9599, "copy_ari_pf": 0.9717, "exact_altered_minor": 0.7324}),
     "dev_tree_r0_ln": ("sim/manifests/dev_tree.toml", "3339b9a0", {"ari": 0.8243, "ari_integer": 0.8243, "copy_ari_pf": 0.9791, "exact_altered_minor": 0.7587}),
