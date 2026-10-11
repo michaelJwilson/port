@@ -7,7 +7,8 @@ pairs coded `A * 1_000 + B`; `phase_free` codes `(A, B)` and `(B, A)` alike.
 
 `overlap`, `matched`, `integer_clones`, `planted_classes`, `phase_free` and
 `swapped` score a fit; `at_truth` reads a run's labels at the planted
-barcodes; `planted` reads a sample's truth (`truth_clone_labels.tsv`,
+barcodes; `integer_merged`, `copy_rows` and `ledger_scores` give a staged
+run's ledger row (`docs/ledger/`); `planted` reads a sample's truth (`truth_clone_labels.tsv`,
 `truth_acn_profile.tsv`): from a directory, plain or `.gz`, or from the bytes
 a staged file stores under `/truth`.
 """
@@ -23,6 +24,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from scipy.optimize import linear_sum_assignment
+from sklearn.metrics import adjusted_rand_score
 
 NEUTRAL = 1_001
 """The planted pair `(1, 1)`, as `A * 1_000 + B`."""
@@ -137,3 +139,65 @@ def planted(sample: Path | Mapping[str, bytes]) -> Truth:
 def at_truth(barcodes: np.ndarray, labels: np.ndarray, truth: Truth) -> np.ndarray:
     """`labels` (in the run's spot order) read at the truth's barcodes; -1 where the run dropped a spot."""
     return pd.Series(labels, index=np.asarray(barcodes).astype(str)).reindex(truth.barcodes, fill_value=-1).to_numpy()
+
+
+# --- a staged run's ledger row ----------------------------------------------
+
+
+def integer_merged(seglevel: pd.DataFrame, agreement: float) -> np.ndarray:
+    """Each fitted clone's group: in id order, a clone joins the first earlier group whose `(A, B)` agree with its own
+    at no less than `agreement` of `seglevel`'s bins, and names a group otherwise. At 1.0, every bin."""
+    n = sum(1 for c in seglevel.columns if c.startswith("clone") and c.endswith(" A"))
+    named: list[tuple[int, np.ndarray]] = []
+    merged = np.arange(n)
+    for clone in range(n):
+        profile = seglevel[[f"clone{clone} A", f"clone{clone} B"]].to_numpy(dtype=np.int64)
+        match = next((name for name, other in named if float(np.mean(np.all(profile == other, axis=1))) >= agreement), None)
+        if match is None:
+            named.append((clone, profile))
+            match = clone
+        merged[clone] = match
+    return merged
+
+
+def copy_rows(fitted: np.ndarray, seglevel: pd.DataFrame, truth: Truth) -> dict[str, float]:
+    """Planted pairs at each `seglevel` midpoint, per matched clone: the phase-free copy ARI and the phase-free exact
+    rate over altered clone-bins (`fitted` at the truth's barcodes)."""
+    scored = fitted >= 0
+    clone_of = matched(overlap(truth.labels[scored], fitted[scored], truth.n_clones, int(fitted.max()) + 1))
+    middle = ((seglevel["START"] + seglevel["END"]) // 2).to_numpy()
+    copies = truth.copies_at(seglevel["CHR"].astype(str).to_numpy(), middle)
+    covered = copies[:, 0, 0] >= 0
+    t, ab = [], []
+    for clone, fit in clone_of.items():
+        t.append(copies[covered, clone, 0] * 1_000 + copies[covered, clone, 1])
+        ab.append(seglevel[f"clone{fit} A"].to_numpy()[covered] * 1_000 + seglevel[f"clone{fit} B"].to_numpy()[covered])
+    t_all, ab_all = np.concatenate(t), np.concatenate(ab)
+    altered = t_all != NEUTRAL
+    either = (t_all == ab_all) | (t_all == swapped(ab_all))
+    return {
+        "copy_ari_pf": float(adjusted_rand_score(phase_free(t_all), phase_free(ab_all))),
+        "exact_altered_pf": float(np.mean(either[altered])),
+    }
+
+
+def ledger_scores(sim: Any, truth: Truth) -> dict[str, float | int]:
+    """A staged run (`audit.capture.Capture`) scored against `truth`: the ledger's columns but date, commit and names."""
+    barcodes = np.asarray(sim.stored("00_inputs/load_input_data/out/1")).astype(str)
+    final = np.asarray(sim.result("08_rdr/reindex_clones/out/0")["new_assignment"])
+    seglevel = pd.read_csv(io.BytesIO(sim.file("cnv_seglevel.tsv")), sep="\t")
+    fitted = at_truth(barcodes, final, truth)
+    scored = fitted >= 0
+
+    def ari(labels: np.ndarray) -> float:
+        return float(adjusted_rand_score(truth.labels[scored], labels[scored]))
+
+    return {
+        "spots": int(barcodes.size),
+        "bins": len(seglevel),
+        "clone_ari": ari(fitted),
+        "clone_ari_int_099": ari(np.where(scored, integer_merged(seglevel, 0.99)[np.maximum(fitted, 0)], -1)),
+        "clone_ari_int_100": ari(np.where(scored, integer_merged(seglevel, 1.0)[np.maximum(fitted, 0)], -1)),
+        **copy_rows(fitted, seglevel, truth),
+        "run_seconds": float(sim.config["run_seconds"]) if "run_seconds" in sim.config else float("nan"),
+    }

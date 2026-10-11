@@ -18,3 +18,16 @@ TRUTH_SIMS: dict[str, str] = {
 """Fixture hash -> its staged file (captured at efb2e9e, with `/truth`), scored by `test_truth.py` alone: CalicoST
 hard, `dev_tree_easy_square` r0 and `dev_tree_easy` r0. The other files pin values per fixture in tables that hold
 easy's alone; a fixture moves to `SUPPORTED_SIMS` with its tables (PR- #899). Only shrinks."""
+
+NAMES: dict[str, str] = {
+    "2d4ce9a9": "CalicoST easy",
+    "8797710b": "CalicoST hard",
+    "23acef50": "dev_tree_easy_square r0",
+    "e4bbe03f": "dev_tree_easy r0",
+}
+"""Fixture hash -> its readable name, as the ledger writes it."""
+
+
+def staged(sim_hash: str) -> str:
+    """`sim_hash`'s staged file, relative to `cnamaste/`, from `SUPPORTED_SIMS` or `TRUTH_SIMS`."""
+    return SUPPORTED_SIMS[sim_hash][1] if sim_hash in SUPPORTED_SIMS else TRUTH_SIMS[sim_hash]
