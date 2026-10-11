@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import gzip
 import io
-import itertools
 import logging
 from pathlib import Path
 from typing import Any
@@ -42,7 +41,6 @@ from cnamaste.utils import configure_output_dir, get_output_dir, pause
 
 from audit.fn import Replay, Row, run, table
 
-PROBES = itertools.count()
 LOADED = Replay("00_inputs/load_input_data, replayed")
 
 
@@ -225,8 +223,10 @@ def _pause(ctx: Any) -> None:
 
 
 def _once(_: Any) -> None:
-    name = f"cnamaste.probe_once_{next(PROBES)}"
+    name = "cnamaste.probe_once"
     logger = get_logger(name, start_time=0.0)
+    for seen in ("_seen_warnings", "_seen_infos"):
+        vars(logger).pop(seen, None)  # NB one name for every call, so the logger (and its pin) is the same whichever row ran first
     text = captured_log(name, lambda: [logger.warning_once("w"), logger.warning_once("w"), logger.info_once("i"), logger.info_once("i")])
     assert text.count("w\n") == 1 and text.count("i\n") == 1
 
