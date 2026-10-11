@@ -979,8 +979,6 @@ def run_cnamaste(config_path, over_rides=None):
         filtered_out_set = set()
         logger.warning(f"Assuming no filter for normal differential expression.")
 
-    # NB Ticket#177: the filtered rdr sets the bins' umi, and the filtered genes
-    #    leave the umi summed for the new bins.
     single_X[:, 0, :] = copy_single_X_rdr
     adata.layers["count"][:, adata.var.index.isin(filtered_out_set)] = 0
 

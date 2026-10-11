@@ -900,7 +900,6 @@ def filter_normal_diffexp(
     total_counts, retained_counts = 0, 0
 
     for b, genestr in enumerate(df_bininfo.INCLUDED_GENES.values):
-        # NB Ticket#165: binned_gene_snp joins INCLUDED_GENES with ",".
         bin_genes = set(genestr.split(","))
         involved_genes = bin_genes - filtered_out_set
 
