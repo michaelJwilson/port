@@ -38,14 +38,14 @@ SCORES = ("ari", "ari_integer", "copy_ari_pf", "exact_altered_minor")
 
 SUPPORTED: dict[str, tuple[str, str, dict[str, float]]] = {
     "easy": ("easy", "2d4ce9a9", {"ari": 0.9741, "ari_integer": 0.9741, "copy_ari_pf": 0.8216, "exact_altered_minor": 0.3794}),
-    "hard": ("hard", "8797710b", {"ari": 0.762, "ari_integer": 0.762, "copy_ari_pf": 0.8597, "exact_altered_minor": 0.3395}),
-    "dev_tree_r0": ("sim/manifests/baseline/dev_tree.toml", "3381575a", {"ari": 0.9599, "ari_integer": 0.9599, "copy_ari_pf": 0.9717, "exact_altered_minor": 0.7324}),
-    "dev_tree_r0_ln": ("sim/manifests/dev_tree.toml", "3339b9a0", {"ari": 0.8243, "ari_integer": 0.8243, "copy_ari_pf": 0.9791, "exact_altered_minor": 0.7587}),
-    "dev_tree_1s_r0": ("sim/manifests/dev_tree_1s.toml", "df3cc0ab", {"ari": 0.9964, "ari_integer": 0.9964, "copy_ari_pf": 0.9768, "exact_altered_minor": 0.7574}),
-    "dev_tree_1s_easy_r0": ("sim/manifests/dev_tree_1s_easy.toml", "7ba9b01f", {"ari": 0.9127, "ari_integer": 0.9127, "copy_ari_pf": 0.9285, "exact_altered_minor": 0.8678}),
-    "dev_tree_1s_hard_r0": ("sim/manifests/dev_tree_1s_hard.toml", "9ec90dc2", {"ari": 0.5432, "ari_integer": 0.5432, "copy_ari_pf": 0.603, "exact_altered_minor": 0.29}),
-    "dev_tree_1s_dense_r0": ("sim/manifests/dev_tree_1s_dense.toml", "33e3471e", {"ari": 0.9983, "ari_integer": 0.9983, "copy_ari_pf": 0.9135, "exact_altered_minor": 0.8635}),
-    "study15_r0": ("sim/manifests/study15.toml", "784e4ebf", {"ari": 0.5932, "ari_integer": 0.8647, "copy_ari_pf": 0.4694, "exact_altered_minor": 0.1536}),
+    "hard": ("hard", "8797710b", {"ari": 0.8099, "ari_integer": 0.8099, "copy_ari_pf": 0.8287, "exact_altered_minor": 0.2778}),
+    "dev_tree_r0": ("sim/manifests/baseline/dev_tree.toml", "3381575a", {"ari": 1.0, "ari_integer": 1.0, "copy_ari_pf": 0.9698, "exact_altered_minor": 0.7308}),
+    "dev_tree_r0_ln": ("sim/manifests/dev_tree.toml", "3339b9a0", {"ari": 0.9992, "ari_integer": 0.9992, "copy_ari_pf": 0.9833, "exact_altered_minor": 0.813}),
+    "dev_tree_1s_r0": ("sim/manifests/dev_tree_1s.toml", "df3cc0ab", {"ari": 0.8896, "ari_integer": 0.9972, "copy_ari_pf": 0.9651, "exact_altered_minor": 0.7574}),
+    "dev_tree_1s_easy_r0": ("sim/manifests/dev_tree_1s_easy.toml", "7ba9b01f", {"ari": 0.7244, "ari_integer": 0.8315, "copy_ari_pf": 0.9285, "exact_altered_minor": 0.8678}),
+    "dev_tree_1s_hard_r0": ("sim/manifests/dev_tree_1s_hard.toml", "9ec90dc2", {"ari": 0.4561, "ari_integer": 0.4432, "copy_ari_pf": 0.4657, "exact_altered_minor": 0.2024}),
+    "dev_tree_1s_dense_r0": ("sim/manifests/dev_tree_1s_dense.toml", "33e3471e", {"ari": 0.9983, "ari_integer": 0.9983, "copy_ari_pf": 0.9129, "exact_altered_minor": 0.8633}),
+    "study15_r0": ("sim/manifests/study15.toml", "784e4ebf", {"ari": 0.8599, "ari_integer": 0.8599, "copy_ari_pf": 0.5258, "exact_altered_minor": 0.198}),
 }  # fmt: skip
 """Fixture -> (source, hash, `SCORES`): a committed CalicoST sample's short name, or a manifest's r0."""
 
