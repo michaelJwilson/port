@@ -1,11 +1,11 @@
-# `cnamaste`, its own project (T- #836 PR1): its own build, lock and
-# environment, sharing nothing with `port`'s. From this directory:
+# `cnamaste`, its own project (Ticket#836 PR1): its own build, lock and
+# environment, sharing nothing with any other project. From this directory:
 #
 #   uv sync --locked && uv run run_cnamaste CONFIG
 #   uv build --wheel
 #
-# `python/cnamaste/` is the package, laid out as `port`'s is so that
-# `oxicnamaste` (K0) binds beside it.
+# `python/cnamaste/` is the package, laid out so that `oxicnamaste` (K0)
+# binds beside it.
 #
 # The dependencies are `cnaster`'s at its locked pin `4adad4d`, so the copy
 # runs wherever `cnaster` does.
@@ -16,7 +16,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cnamaste"
 version = "0.1.0"
-description = "cnaster's run path at its pin, renamed, fixed and patched (T- #836)"
+description = "cnaster's run path at its pin, renamed, fixed and patched (Ticket#836)"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "M. J. Wilson" }]
@@ -39,6 +39,12 @@ dependencies = [
     "scipy",
 ]
 
+[dependency-groups]
+# NB `cnamaste/tests/`' runner; uv
+#    installs the `dev` group by default, so `uv run --locked --project
+#    cnamaste pytest cnamaste/tests` needs no flag.
+dev = ["pytest>=9.0.3", "pytest-xdist>=3.6"]
+
 [project.scripts]
 # `cnaster`'s `run_cnaster = "cnaster.scripts.run_cnaster:main"`, renamed.
 run_cnamaste = "cnamaste.scripts.run_cnamaste:main"
@@ -48,7 +54,18 @@ package-dir = { "" = "python" }
 packages = ["cnamaste", "cnamaste.scripts"]
 
 [tool.uv]
-# NB the versions `port`'s uv.lock (a7ff616) runs `cnaster` 4adad4d under, where
+# NB the versions `cnaster` 4adad4d's reference rows were measured under, where
 #    an unpinned resolve moves them, so PR1's rows compare like with like
-#    (T- #836): unconstrained, polars resolves 2.0.0.
+#    (Ticket#836): unconstrained, polars resolves 2.0.0.
 constraint-dependencies = ["anndata==0.13.3.post0", "numba==0.67.0", "polars==1.44.2"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# NB the one marker: a test that reads the run's input files and its output
+#    files and accounts for one through the other. Every test runs by default.
+markers = ["roundtrip: the run's inputs against its outputs, through the captured intermediates"]
+# NB xdist by default: 141 s at -n 4 against 295 s serial (-n 0) on easy, and the same outcome under 1 or 4
+#    numba threads (the replays are bitwise in both). The replaying tests share one worker
+#    (`xdist_group`, conftest.py), so each stage replays once. `-n 0` runs serially.
+addopts = "--strict-markers -n auto --dist loadgroup"
+pythonpath = ["tests"]

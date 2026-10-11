@@ -1473,7 +1473,7 @@ def run_cnamaste(config_path, over_rides=None):
                 )
 
             # NB a gene whose bin normal_baf_bin_filter removed has a null bin_id and no call:
-            #    NaN here, dropped by the isnull filter below (T- #836 PR1, #105).
+            #    NaN here, dropped by the isnull filter below (Ticket#836 PR1, Ticket#105).
             df_genes = df_gene_snp[df_gene_snp.is_interval]
             called = df_genes["bin_id"].notna().to_numpy()
 

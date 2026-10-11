@@ -190,9 +190,8 @@ def admits_assignment(block_sizes, n_clones, floor):
     """Whether some assignment of blocks to clones gives every clone more than `floor` spots.
 
     The loop in `initialize_rectangular_clones` reaches every surjective block-to-clone map,
-    so it returns, with probability one, exactly when this is `True` (T- #836 PR1, #692).
+    so it returns, with probability one, exactly when this is `True` (Ticket#836 PR1, Ticket#692).
     A depth-first search, largest block first; clones of equal total are interchangeable.
-    Copied from port a7ff616 `python/port/patch/spatial.py:384`.
     """
     sizes = sorted((int(size) for size in block_sizes), reverse=True)
     need = int(np.floor(floor)) + 1
@@ -224,11 +223,10 @@ def admits_assignment(block_sizes, n_clones, floor):
 
 
 def banded(coords, n_clones):
-    """`n_clones` equal-count bands along the axis with the most distinct values (T- #836 PR1).
+    """`n_clones` equal-count bands along the axis with the most distinct values (Ticket#836 PR1).
 
     Ordered along that axis, ties by the other axis then by index, so deterministic; every
-    band passes the 20% test whenever `n_spots >= n_clones`. Copied from port a7ff616
-    `python/port/patch/spatial.py:428`.
+    band passes the 20% test whenever `n_spots >= n_clones`.
     """
     n_spots = len(coords)
     axis = int(np.argmax([np.unique(coords[:, a]).size for a in (0, 1)]))
@@ -290,7 +288,7 @@ def initialize_rectangular_clones(coords, n_clones, random_state=0):
 
     # NB the loop below returns only if some assignment of blocks passes its 20% test; on dev
     #    (`07b82e92`) blocks of [194, 3, 77, 23] spots at 4 clones admit none and it never
-    #    returns (T- #836 PR1, #692). Such a partition is replaced by equal-count bands.
+    #    returns (Ticket#836 PR1, Ticket#692). Such a partition is replaced by equal-count bands.
     floor = 0.2 * coords.shape[0] / n_clones  # MAGIC, the test below.
     if not admits_assignment(np.bincount(block_id, minlength=p**2), n_clones, floor):
         logger.info(f"Rectangular blocks admit no {n_clones} clones above {floor:.2f} spots; banded.")
