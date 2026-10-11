@@ -659,7 +659,7 @@ def _(**_: Any) -> None:
     assert "compute_emission_probability_nb_betabinom_coded" in called, "the field's emission is dense over every spot and bin"
 
 
-@row("Ticket#518", "run_cnamaste outputs", "departure", "planned departure: integer clones merged at 0.99 agreement, Ticket#817 / Ticket#518, planned K2")
+@row("Ticket#518", "run_cnamaste outputs", "departure", "planned departure: integer clones merged at 0.99 agreement, Ticket#817 / Ticket#518 / Ticket#883")
 def _(sim: Any, **_: Any) -> None:
     assert "clone_labels_integer.tsv" in json.loads(sim.config["files"])
 
