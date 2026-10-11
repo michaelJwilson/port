@@ -1,6 +1,6 @@
 r"""What a realization planted, on one page at `combined.pdf`'s size and type.
 
-    python -m port.sim.truth_figure sim/generated/<name>/r<k> [OUT.pdf]
+    python -m port.sim.truth_figure sim/generated/<name>/r<k> [OUT.pdf] [--spatial]
 
 Top to bottom, at the paper's text width and its height less `CAPTION_ROOM`
 (T- #733, T- #740), at `FONT_SIZE` throughout, as
@@ -471,13 +471,14 @@ def simulated_tree_figure(r: Realization, width: float | None = None) -> Any:
     return figure
 
 
-def write_truth_combined(r: Realization, out: Path) -> Path:
-    """`truth_combined_figure` to `out` as a PDF with no creation date, so it reproduces byte for byte."""
+def write_truth_combined(r: Realization, out: Path, *, spatial: bool = False) -> Path:
+    """`truth_combined_figure` (`spatial` passed through) to `out` as a PDF with no creation date, so it reproduces
+    byte for byte."""
     import matplotlib.pyplot as plt
 
     from port.extensions.combined_figure import page_style
 
-    figure = truth_combined_figure(r)
+    figure = truth_combined_figure(r, spatial=spatial)
     out.parent.mkdir(parents=True, exist_ok=True)
     with page_style():
         figure.savefig(out, dpi=300, facecolor="white",
@@ -490,10 +491,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("realization", type=Path)
     parser.add_argument("out", type=Path, nargs="?")
+    parser.add_argument(
+        "--spatial", action="store_true", help="each spot's true clone per slice in (c)"
+    )
     arguments = parser.parse_args(argv)
     r = read(arguments.realization)
-    out = arguments.out or r.path / "qa" / "truth_combined.pdf"
-    print(write_truth_combined(r, out))
+    name = "truth_combined_spatial.pdf" if arguments.spatial else "truth_combined.pdf"
+    out = arguments.out or r.path / "qa" / name
+    print(write_truth_combined(r, out, spatial=arguments.spatial))
     return 0
 
 

@@ -33,10 +33,10 @@ from typing import Any, ClassVar
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
+from cnamaste.audit import DATA
 
 DIGITS = 10
 SUMMARY_LEAVES = 12
-DATA = Path(__file__).resolve().parents[1] / "data"
 
 QUIET: ContextVar[bool] = ContextVar("QUIET", default=False)
 """Set while a replay computes: a replay belongs to no row (which row replays a stage first depends on the

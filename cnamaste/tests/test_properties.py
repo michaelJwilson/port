@@ -2,7 +2,7 @@
 
 Inputs: the fitted parameters stored in the staged run (`run_core_inference`'s
 outputs, no replay) with few-element synthetic counts, or a synthetic case.
-`audit.fn` defines the row; a row whose property cnamaste breaks is a strict
+`cnamaste.audit.fn` defines the row; a row whose property cnamaste breaks is a strict
 xfail citing its ticket, so a fix turns it into XPASS and the marker goes.
 """
 
@@ -31,7 +31,7 @@ from cnamaste.hmrf_utils import cast_csr
 from cnamaste.icm import icm_sweep_deque, merge_assignment, unpack_adjacency
 from cnamaste.integer_copy import hill_climbing_integer_copynumber_fixdiploid_milp
 
-from audit.fn import Row, run, table
+from fn import Row, run, table
 from test_fn_hmm import close
 from test_fn_hmrf import field_case
 from test_fn_integer import recorded

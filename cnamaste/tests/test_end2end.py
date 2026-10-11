@@ -26,8 +26,8 @@ import pytest
 import scipy.sparse as sp
 from scipy import stats
 
-from audit.capture import input_files
-from audit.segments import DROPPED
+from cnamaste.audit.capture import input_files
+from cnamaste.audit.segments import DROPPED
 from cnamaste.utils import write_tsv
 
 pytestmark = pytest.mark.end2end

@@ -6,7 +6,7 @@
 port owns the capture; cnamaste holds the result. The script runs in
 cnamaste's own environment (`--project cnamaste`), where port is not
 installed, so it imports neither port nor `cnaster`: it reads cnamaste's file
-codec from `cnamaste/tests/audit/capture.py` and port's
+codec from `cnamaste.audit.capture` and port's
 `[tool.port] max_file_bytes` from `pyproject.toml`. CalicoST's
 `GRCh38_resources` are found as cnamaste's tests find them
 (`$CNAMASTE_GRCH38`, else uv's git checkout); `$PORT_GRCH38` is read as a
@@ -43,7 +43,7 @@ and that re-indexing. `/lineage` is built from the recorded frames.
 (`capture_seconds`: deep copies, encoding, writing) and their difference
 (`run_seconds`). The written file is rewritten once more with every repeated
 dataset (a frame column carried from stage to stage, an unchanged generator
-state) a hard link to its first copy (`audit.capture.deduplicated`).
+state) a hard link to its first copy (`cnamaste.audit.capture.deduplicated`).
 
 On 4 threads, a capture's wall (run plus recording) is 496 s (388 + 108) on
 easy (`2d4ce9a9`, 3,000 spots) and 1,663 s (1,375 + 287) on `23acef50`
@@ -78,12 +78,7 @@ from sklearn.metrics import adjusted_rand_score
 
 import cnamaste.hmrf as hmrf  # type: ignore[import-not-found]  # noqa: PLR0402
 import cnamaste.scripts.run_cnamaste as rc  # type: ignore[import-not-found]
-
-REPOSITORY = Path(__file__).resolve().parents[1]
-PROJECT = REPOSITORY / "cnamaste"
-sys.path.insert(0, str(PROJECT / "tests"))
-
-from audit.capture import (  # type: ignore[import-not-found]  # noqa: E402
+from cnamaste.audit.capture import (  # type: ignore[import-not-found]
     Capture,
     Writer,
     deduplicated,
@@ -95,6 +90,9 @@ from audit.capture import (  # type: ignore[import-not-found]  # noqa: E402
     stage_inputs,
     truth_files,
 )
+
+REPOSITORY = Path(__file__).resolve().parents[1]
+PROJECT = REPOSITORY / "cnamaste"
 
 ENTRY_POINT_SEED = 0
 """port's `port.sim.run_config.ENTRY_POINT_SEED`: numpy's legacy generator, seeded before the entry point."""

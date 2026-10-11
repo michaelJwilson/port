@@ -1,6 +1,6 @@
 """Per-function rows for the clone field: the spot field, ICM, merges, pseudobulks, clone stacks, re-indexing.
 
-Inputs: the fitted runs' stored results and inputs (`audit.fn.fitted`), restricted
+Inputs: the fitted runs' stored results and inputs (`fn.fitted`), restricted
 to a 300-spot spatial window where a brute force is per spot; else a small
 synthetic lattice with a closed-form energy. Every lattice here is symmetric,
 so a directed edge pair is one undirected edge of weight one.
@@ -24,7 +24,7 @@ from cnamaste.hmrf_utils import cast_csr, clone_stack_obs, get_clone_assignment,
 from cnamaste.icm import icm_sweep_deque, merge_assignment, unpack_adjacency
 from cnamaste.pseudobulk import merge_pseudobulk_by_index_mix
 
-from audit.fn import Replay, Row, fitted, run, table, unchanged
+from fn import Replay, Row, fitted, run, table, unchanged
 
 BAF, RDR = "05_baf", "08_rdr"
 WINDOW = Replay("05_baf/run_core_inference in and out, the 300 spots nearest spot 0")
