@@ -1,4 +1,53 @@
 {
+ "annotation:assign_clone_ranges | each item's range of greatest overlap, by brute force, after collapsing equal neighbours and splitting at max_length; none: NA": {
+  "stable": "f630746a2d042d85d34d7296de261dfe527155cba7f1a39d6bed07a3fc76ecf7",
+  "exact": "f630746a2d042d85d34d7296de261dfe527155cba7f1a39d6bed07a3fc76ecf7",
+  "summary": {
+   "call0[CHR]": "int64 (7,) min=1 max=3 sum=11",
+   "call0[START]": "int64 (7,) min=0 max=2400 sum=3895",
+   "call0[END]": "int64 (7,) min=10 max=2600 sum=4730",
+   "call0[known_id]": "object (7,)",
+   "call1[CHR]": "int64 (7,) min=1 max=3 sum=11",
+   "call1[START]": "int64 (7,) min=0 max=2400 sum=3895",
+   "call1[END]": "int64 (7,) min=10 max=2600 sum=4730",
+   "call1[known_id]": "object (7,)"
+  },
+  "calls": 2
+ },
+ "annotation:load_clone_labels | clone indices by label (normal 0, clone_k k+1); base = the normal spots' gene profile x each clone's coverage, recomputed": {
+  "stable": "ac0726e5ea673379b0ef49bfc5401e3d35267c4c7473afcca5a9089018d34042",
+  "exact": "e0fad1ee88a792ba02482f24275b18b6b0663909f16544f921cbee0961cb40e4",
+  "summary": {
+   "call0[0][0]": "int64 (2,) min=1 max=3 sum=4",
+   "call0[0][1]": "int64 (1,) min=2 max=2 sum=2",
+   "call0[0][2]": "int64 (2,) min=0 max=4 sum=4",
+   "call1[0][0]": "int64 (2,) min=1 max=3 sum=4",
+   "call1[0][1]": "int64 (1,) min=2 max=2 sum=2",
+   "call1[0][2]": "int64 (2,) min=0 max=4 sum=4",
+   "call1[1]": "float64 (3, 3) min=2 max=44 mean=20 sum=180"
+  },
+  "calls": 2
+ },
+ "annotation:load_clone_ranges | a missing column warns, and the file still loads": {
+  "stable": "f212a06b3e7e39c532af39d3b59037bf13aa4b6e474defad59ab33938ababaff",
+  "exact": "f212a06b3e7e39c532af39d3b59037bf13aa4b6e474defad59ab33938ababaff",
+  "summary": {
+   "call0": "raised KeyError"
+  },
+  "calls": 1
+ },
+ "annotation:load_clone_ranges | contigs as text, coordinates as integers; a missing file raises": {
+  "stable": "1acacf724cc12ec82ea42be432073480a86e6730665af8f13ef038818809fe20",
+  "exact": "1acacf724cc12ec82ea42be432073480a86e6730665af8f13ef038818809fe20",
+  "summary": {
+   "call0[chr]": "str (2,)",
+   "call0[start]": "int64 (2,) min=0 max=5 sum=5",
+   "call0[end]": "int64 (2,) min=10 max=20 sum=30",
+   "call0[state]": "int64 (2,) min=1 max=2 sum=3",
+   "call1": "raised FileNotFoundError"
+  },
+  "calls": 2
+ },
  "cna_hmrf_result:CloneAssignment.num_clones | the number of distinct labels; None without labels": {
   "stable": "aea1ddbcfcf72f27bab09d8b21c3c21f7f2b4ba40f981aa57e3c4ed05e68bd7c",
   "exact": "90907bd5e9575fe9d7ae985fd862ef4678d73511fd486423286f1f4d25147af1",
@@ -413,6 +462,26 @@
    "call0[y]": "float64 (1,) min=0 max=0 mean=0 sum=0"
   },
   "calls": 1
+ },
+ "he:join_tables_xy | each row of first takes its nearest row of second and the distance, by brute force (Ticket#113, Ticket#311 for the image path)": {
+  "stable": "2968dda631b7291ebef650c94694997c77c152d17b5e16025b3d3c2b9c1d46f9",
+  "exact": "cb95cc709550fc68bcbbbce57c0355c9123977b0921180389d71bbb31fb1419a",
+  "summary": {
+   "call0.columns[0]": "str len=1",
+   "call0.columns[1]": "str len=1",
+   "call0.columns[2]": "str len=2",
+   "call0.columns[3]": "str len=3",
+   "call0.columns[4]": "str len=1",
+   "call0.columns[5]": "str len=4",
+   "call0[x]": "float64 (3,) min=0 max=9 mean=4.66667 sum=14",
+   "call0[y]": "float64 (3,) min=0 max=5 mean=2 sum=6",
+   "call0[id]": "int64 (3,) min=1 max=3 sum=6",
+   "call0[lab]": "str (3,)",
+   "call0[v]": "float64 (3,) min=1 max=4 mean=2.33333 sum=7",
+   "call0[dist]": "float64 (3,) min=1 max=3.16228 mean=1.85883 sum=5.57649",
+   "...": "10 more leaves"
+  },
+  "calls": 2
  },
  "hmm:compute_copy_state_posterior | alpha + beta normalized is the enumerated marginal; forward sums to log P(obs)": {
   "stable": "7ebc17cd00214060b539be5d58d11ff99efe5a8112c3f91a07e4e7a3f2924576",
@@ -1392,6 +1461,62 @@
   "summary": {},
   "calls": 0
  },
+ "integer_copy:hill_climbing_integer_copynumber_oneclone | copies within the caps, ploidy in 1..3, and no one-state move lowers the cost (a coordinate-wise minimum); no input mutation": {
+  "stable": "f52d0a309ff99569a277ba7b0cdbb3ac964e64284705126b2da4f5c777e0b8cb",
+  "exact": "6dbc06db5772d3e1cfefaf05898c1258384f6efcdc0262ff97e023f938ea8653",
+  "summary": {
+   "call0[0]": "int64 (3, 2) min=0 max=3 sum=6",
+   "call0[1]": "float64 18.9283",
+   "call0[2]": "int 2",
+   "call1[0]": "int64 (3, 2) min=0 max=3 sum=7",
+   "call1[1]": "float64 25.1884",
+   "call1[2]": "int 3",
+   "call2[0]": "int64 (3, 2) min=0 max=2 sum=10",
+   "call2[1]": "float64 8.66483",
+   "call2[2]": "int 3",
+   "call3[0]": "int64 (3, 2) min=0 max=3 sum=9",
+   "call3[1]": "float64 18.2116",
+   "call3[2]": "int 3",
+   "...": "108 more leaves"
+  },
+  "calls": 40
+ },
+ "integer_copy:hill_climbing_integer_copynumber_oneclone | planted copy states: the brute-force minimum, cost 0, and its least ploidy": {
+  "stable": "318d9c42dd874b79f92ca1a6d83774f41e06bcf382cb522a177adf12762a8b29",
+  "exact": "1508ceec43034ce0ff57b4fed7f4ac239deaef30775ab928794b2f28ef4590ea",
+  "summary": {
+   "call0[0]": "int64 (3, 2) min=0 max=2 sum=6",
+   "call0[1]": "float64 0",
+   "call0[2]": "int 3",
+   "call1[0]": "int64 (3, 2) min=1 max=3 sum=10",
+   "call1[1]": "float64 0",
+   "call1[2]": "int 4",
+   "call2[0]": "int64 (4, 2) min=1 max=3 sum=13",
+   "call2[1]": "float64 0",
+   "call2[2]": "int 4"
+  },
+  "calls": 3
+ },
+ "integer_copy:hill_climbing_integer_copynumber_oneclone | the cost is the copies' objective, never below the brute force over 13^3 tuples x 3 ploidies; equal to it on 36 of 40": {
+  "stable": "f52d0a309ff99569a277ba7b0cdbb3ac964e64284705126b2da4f5c777e0b8cb",
+  "exact": "6dbc06db5772d3e1cfefaf05898c1258384f6efcdc0262ff97e023f938ea8653",
+  "summary": {
+   "call0[0]": "int64 (3, 2) min=0 max=3 sum=6",
+   "call0[1]": "float64 18.9283",
+   "call0[2]": "int 2",
+   "call1[0]": "int64 (3, 2) min=0 max=3 sum=7",
+   "call1[1]": "float64 25.1884",
+   "call1[2]": "int 3",
+   "call2[0]": "int64 (3, 2) min=0 max=2 sum=10",
+   "call2[1]": "float64 8.66483",
+   "call2[2]": "int 3",
+   "call3[0]": "int64 (3, 2) min=0 max=3 sum=9",
+   "call3[1]": "float64 18.2116",
+   "call3[2]": "int 3",
+   "...": "108 more leaves"
+  },
+  "calls": 40
+ },
  "io:construct_df_clone_label | one row per barcode with its label, sorted by (sample, x, y); no input mutation": {
   "stable": "7222a1617a31cc2deb36e66c822b431ec6b74d6801f6e3c87f25872aba594bc5",
   "exact": "7222a1617a31cc2deb36e66c822b431ec6b74d6801f6e3c87f25872aba594bc5",
@@ -1863,12 +1988,26 @@
   "calls": 0
  },
  "pseudobulk:merge_pseudobulk_by_index_mix | each clone's pseudobulk is its spots' sum; an empty clone is zero; no input mutation": {
-  "stable": "96d2f9b6d5f3a5267c393b6a4b297c7204ef3c4e5f50b7affc50b57ab9ee0a49",
-  "exact": "a949e3b7817de86e135e91274a236a6839af9f210149218ebd536b688e1efb06",
+  "stable": "2dd8926cf3339cae4b87cf36acd4c676b783ef5d9a98155a59aba0778963beac",
+  "exact": "7bdf0dda62b125f78fb8977a2aaf024b81d66b1e5af576b1991b34753f41f03a",
   "summary": {
-   "call0[0]": "float64 (5, 2, 3) min=0 max=31 mean=12 sum=360",
-   "call0[1]": "float64 (5, 3) min=0 max=3.57467 mean=1.41218 sum=21.1827",
-   "call0[2]": "float64 (5, 3) min=0 max=27 mean=10.5333 sum=158"
+   "call0[0]": "float64 (2, 2, 2) min=0 max=14 mean=5.25 sum=42",
+   "call0[1]": "float64 (2, 2) min=0.4 max=1.4 mean=0.9 sum=3.6",
+   "call0[2]": "float64 (2, 2) min=3 max=7 mean=5 sum=20",
+   "call1[0]": "float64 (5, 2, 3) min=0 max=31 mean=12 sum=360",
+   "call1[1]": "float64 (5, 3) min=0 max=3.57467 mean=1.41218 sum=21.1827",
+   "call1[2]": "float64 (5, 3) min=0 max=27 mean=10.5333 sum=158"
+  },
+  "calls": 2
+ },
+ "pseudobulk:merge_pseudobulk_by_index_mix | with tumor proportions: sums over spots strictly above the threshold, tumor the kept mean; a clone with none is zero; no input mutation": {
+  "stable": "e3e0644d22ea3903fad825d3328fb601e19de08c170c0afe19154d42fd6d1f72",
+  "exact": "234121e6b11d6d9e5d3c1a7d1e6f234c9e46f60113312ec95852590147eb4b90",
+  "summary": {
+   "call0[0]": "float64 (2, 2, 2) min=0 max=14 mean=2.5 sum=20",
+   "call0[1]": "float64 (2, 2) min=0 max=7 mean=2.25 sum=9",
+   "call0[2]": "float64 (2, 2) min=0 max=4 mean=1.5 sum=6",
+   "call0[3]": "float64 (2,) min=0 max=0.8 mean=0.4 sum=0.8"
   },
   "calls": 1
  },
@@ -2055,6 +2194,60 @@
   },
   "calls": 40
  },
+ "spatial:banded | hand-computed bands: the axis with more distinct values, ties by the other axis then index": {
+  "stable": "fdb7b14304e880a049edbf2dcaf2917c520560ab5145a7849dbceb8a993aa997",
+  "exact": "fdb7b14304e880a049edbf2dcaf2917c520560ab5145a7849dbceb8a993aa997",
+  "summary": {
+   "call0[0][0]": "int64 (3,) min=2 max=4 sum=9",
+   "call0[0][1]": "int64 (3,) min=0 max=5 sum=6",
+   "call0[1]": "int64 (6,) min=0 max=1 sum=3",
+   "call1[0][0]": "int64 (4,) min=6 max=9 sum=30",
+   "call1[0][1]": "int64 (3,) min=3 max=5 sum=12",
+   "call1[0][2]": "int64 (3,) min=0 max=2 sum=3",
+   "call1[1]": "int64 (10,) min=0 max=2 sum=9"
+  },
+  "calls": 2
+ },
+ "spatial:banded | sizes within one of n/k, each above 20% of n/k, contiguous in the (axis, other axis, index) order; no input mutation": {
+  "stable": "b0eb554fd5c50530fae9210723605ae61662240b1fb651b80ac751297ff709ff",
+  "exact": "b0eb554fd5c50530fae9210723605ae61662240b1fb651b80ac751297ff709ff",
+  "summary": {
+   "call0[0][0]": "int64 (1,) min=1 max=1 sum=1",
+   "call0[0][1]": "int64 (1,) min=5 max=5 sum=5",
+   "call0[0][2]": "int64 (1,) min=2 max=2 sum=2",
+   "call0[0][3]": "int64 (1,) min=3 max=3 sum=3",
+   "call0[0][4]": "int64 (1,) min=6 max=6 sum=6",
+   "call0[0][5]": "int64 (1,) min=0 max=0 sum=0",
+   "call0[0][6]": "int64 (1,) min=4 max=4 sum=4",
+   "call0[1]": "int64 (7,) min=0 max=6 sum=21",
+   "call1[0][0]": "int64 (8,) min=0 max=25 sum=93",
+   "call1[0][1]": "int64 (7,) min=3 max=29 sum=95",
+   "call1[0][2]": "int64 (8,) min=10 max=28 sum=137",
+   "call1[0][3]": "int64 (7,) min=4 max=27 sum=110",
+   "...": "7 more leaves"
+  },
+  "calls": 3
+ },
+ "spatial:best_equal_partition | the first least-variance partition over the trials (exhaustive); at 200 trials the 6x6 grid's quadrants, variance 0, the global optimum": {
+  "stable": "bb69696b751129d56f477bf6c23ce89b774e246325f2d853d341f617404444d5",
+  "exact": "bb69696b751129d56f477bf6c23ce89b774e246325f2d853d341f617404444d5",
+  "summary": {
+   "call0[0][0]": "int64 (6,) min=0 max=8 sum=24",
+   "call0[0][1]": "int64 (6,) min=3 max=11 sum=42",
+   "call0[0][2]": "int64 (12,) min=12 max=32 sum=264",
+   "call0[0][3]": "int64 (12,) min=15 max=35 sum=300",
+   "call0[1]": "int64 (36,) min=0 max=3 sum=66",
+   "call1[0][0]": "int64 (9,) min=0 max=14 sum=63",
+   "call1[0][1]": "int64 (9,) min=3 max=17 sum=90",
+   "call1[0][2]": "int64 (9,) min=18 max=32 sum=225",
+   "call1[0][3]": "int64 (9,) min=21 max=35 sum=252",
+   "call1[1]": "int64 (36,) min=0 max=3 sum=54",
+   "call2[0][0]": "int64 (4,) min=0 max=5 sum=10",
+   "call2[0][1]": "int64 (4,) min=2 max=7 sum=18",
+   "...": "5 more leaves"
+  },
+  "calls": 3
+ },
  "spatial:construct_lattice_adjacency | each spot's out-edges are its 8 nearest neighbours in the scaled metric; smooth is the identity": {
   "stable": "17ec5ad6f1376cde52005dc6e0ca7e7d028bc56ad0be562eabd6e6981359ef6d",
   "exact": "86a6fad1919dd570cc5c896ffe6c3551f75eb4d14fc393ddc59342ff6f094c3c",
@@ -2181,6 +2374,27 @@
   },
   "calls": 1
  },
+ "spatio_genomic_counts:LockableMixin.lock | a locked container refuses attribute and item writes and freezes its arrays; unlock restores both": {
+  "stable": "a3f87e1859a3371f4358495d763dbe2be3c9f4d71239c771f386cb7848abe4d0",
+  "exact": "83adb7424e262ed1dc300124de58a253c48ebec740679b94a66b05fb93e6e330",
+  "summary": {
+   "call0['mutated'][0][0].lengths": "int64 (2,) min=1 max=1 sum=2",
+   "call0['mutated'][0][0].X": "int64 (2, 2, 3) min=-1 max=11 sum=65",
+   "call0['mutated'][0][0].base_nb_mean": "float64 (2, 3) min=2 max=2 mean=2 sum=12",
+   "call0['mutated'][0][0].total_bb_RD": "float64 (2, 4) min=0 max=0 mean=0 sum=0"
+  },
+  "calls": 1
+ },
+ "spatio_genomic_counts:SpatioGenomicCounts.__getitem__ | a field or property by name, by identity; an unknown name raises KeyError": {
+  "stable": "bd26c25a377d07feb4cd05720808bfda41c813b6927b5a15cd717e3eb828c26a",
+  "exact": "bd26c25a377d07feb4cd05720808bfda41c813b6927b5a15cd717e3eb828c26a",
+  "summary": {
+   "call0": "int64 (2, 2, 3) min=0 max=11 sum=66",
+   "call1": "int 3",
+   "call2": "raised KeyError"
+  },
+  "calls": 3
+ },
  "spatio_genomic_counts:SpatioGenomicCounts.__iter__ | unpacks as (lengths, X, base, depth), by identity": {
   "stable": "cbabf09897aabbc5bf79a5146c3a1b9a479684fe1b7796f5d234da5dadda2967",
   "exact": "cbabf09897aabbc5bf79a5146c3a1b9a479684fe1b7796f5d234da5dadda2967",
@@ -2202,6 +2416,22 @@
   },
   "calls": 3
  },
+ "spatio_genomic_counts:SpatioGenomicCounts.__setitem__ | a valid set takes; a shape validate() refuses raises ValueError; an unknown name KeyError; a locked container RuntimeError": {
+  "stable": "1e0bf9f7ca810fd01bcceb251debf3808390d1aeb2f38ed71358408d5bd01e9f",
+  "exact": "144ed3b97ccd524efcb75620c58c277117f2474bc8c17db47bed0c7e4ddd9411",
+  "summary": {
+   "call0['mutated'][0][0].lengths": "int64 (2,) min=1 max=1 sum=2",
+   "call0['mutated'][0][0].X": "int64 (2, 2, 3) min=0 max=11 sum=66",
+   "call0['mutated'][0][0].base_nb_mean": "float64 (2, 3) min=2 max=2 mean=2 sum=12",
+   "call0['mutated'][0][0].total_bb_RD": "int64 (2, 3) min=20 max=20 sum=120",
+   "call0['mutated'][0][1]": "str len=12",
+   "call0['mutated'][0][2]": "float64 (2, 3) min=2 max=2 mean=2 sum=12",
+   "call1": "raised ValueError",
+   "call2": "raised KeyError",
+   "call3": "raised RuntimeError"
+  },
+  "calls": 4
+ },
  "spatio_genomic_counts:SpatioGenomicCounts.__str__ | names each field": {
   "stable": "5d023951d80ecb824dd46375d79fac9875fa95db5b92714159923d2d5b1b5119",
   "exact": "5d023951d80ecb824dd46375d79fac9875fa95db5b92714159923d2d5b1b5119",
@@ -2211,6 +2441,41 @@
    "call2": "str len=384"
   },
   "calls": 3
+ },
+ "spatio_genomic_counts:SpatioGenomicCounts.copy | shallow shares the arrays; deep holds equal, separate ones": {
+  "stable": "9ad5b6685df7b640589ebfb0fc6bc659bce5389f6c618e131047f28d4e65957f",
+  "exact": "4e1a88a39fdfb6270bd490721afba72c0ccfaeb61e21a6481bf465e3091af492",
+  "summary": {
+   "call0.lengths": "int64 (2,) min=1 max=1 sum=2",
+   "call0.X": "int64 (2, 2, 3) min=0 max=11 sum=66",
+   "call0.base_nb_mean": "float64 (2, 3) min=2 max=2 mean=2 sum=12",
+   "call0.total_bb_RD": "float64 (2, 4) min=0 max=0 mean=0 sum=0",
+   "call1.lengths": "int64 (2,) min=1 max=1 sum=2",
+   "call1.X": "int64 (2, 2, 3) min=0 max=11 sum=66",
+   "call1.base_nb_mean": "float64 (2, 3) min=2 max=2 mean=2 sum=12",
+   "call1.total_bb_RD": "float64 (2, 4) min=0 max=0 mean=0 sum=0"
+  },
+  "calls": 2
+ },
+ "spatio_genomic_counts:SpatioGenomicCounts.items | (key, field) pairs in keys() order, by identity": {
+  "stable": "9ce81f2fb950ec8ae7baabcea041b3d2d973fadd276e8a53fd827aff6287cfa2",
+  "exact": "7971b68d121f6f69e85d47cce4c56fcc1a3a576ca02c5d0ca09a5296d1b6e676",
+  "summary": {
+   "call0[0][0]": "str len=7",
+   "call0[0][1]": "int64 (2,) min=1 max=1 sum=2",
+   "call0[1][0]": "str len=1",
+   "call0[1][1]": "int64 (2, 2, 3) min=0 max=11 sum=66",
+   "call0[2][0]": "str len=12",
+   "call0[2][1]": "float64 (2, 3) min=1 max=1 mean=1 sum=6",
+   "call0[3][0]": "str len=11",
+   "call0[3][1]": "int64 (2, 3) min=20 max=20 sum=120",
+   "call1[0][0]": "str len=7",
+   "call1[0][1]": "int64 (2,) min=1 max=1 sum=2",
+   "call1[1][0]": "str len=1",
+   "call1[1][1]": "int64 (2, 2, 3) min=0 max=11 sum=66",
+   "...": "4 more leaves"
+  },
+  "calls": 2
  },
  "spatio_genomic_counts:SpatioGenomicCounts.keys | the four field names in order": {
   "stable": "17789e748f918cb3a47aa720a1e641b4d896494d6b9c12ec426df311bdb751b5",

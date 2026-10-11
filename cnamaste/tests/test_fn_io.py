@@ -42,6 +42,7 @@ from cnamaste.reference import exp_cancer_gene
 from cnamaste.scripts.run_cnamaste import set_numba_seed
 from cnamaste.utils import configure_output_dir, get_output_dir, pause
 
+from audit.capture import RESOURCES, grch38
 from audit.fn import Replay, Row, run, table, unchanged
 
 LOADED = Replay("00_inputs/load_input_data, replayed")
@@ -229,7 +230,10 @@ def _loader_filters_hold(d: dict[str, Any]) -> None:
     assert np.all(a.sum(axis=1) + b.sum(axis=1) >= q.spot_min_snp_umis), "every spot keeps the SNP-UMI floor"
     expressed = np.asarray((adata.X > 0).sum(axis=0)).ravel()
     assert np.all(expressed >= q.min_percent_expressed_spots * n), "every gene is expressed in the kept fraction of spots"
-    genes = set(get_filter_genes(d["config"].references.filtergenelist_file).iloc[:, 0])
+    # NB the staged YAML names the capture host's resources; read the same file from this host's (`audit.capture.grch38`)
+    resources = grch38()
+    assert resources is not None, "load_input_data replayed without GRCh38_resources"
+    genes = set(get_filter_genes(resources / RESOURCES["filtergenelist_file"]).iloc[:, 0])
     assert not genes & set(adata.var.index), "filtered genes are gone"
     assert np.array_equal(exp.sparse.to_dense().to_numpy(), counts) and across is None
     assert np.array_equal(np.asarray(adata.obsm["X_pos"]), coords) and list(adata.obs.index) == list(barcodes)
