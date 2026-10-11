@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 import sys
+from typing import Any
 
 import pytest
 
@@ -26,7 +27,8 @@ import test_fn_outputs
 import test_fn_phasing
 import test_fn_spatial
 from audit.callgraph import Graph, dead_copies, reached
-from audit.fn import Row
+from audit.digest import Pins
+from audit.fn import Row, snapshot
 
 MODULES = (test_fn_io, test_fn_omics, test_fn_phasing, test_fn_spatial, test_fn_normal, test_fn_hmm, test_fn_hmrf, test_fn_integer, test_fn_outputs)
 
@@ -38,6 +40,8 @@ NOT_EXECUTED: dict[str, str] = {
     "cna_hmrf_result:CnaHMRFResult.values": "reached only by name (`.values` on a frame elsewhere); no caller",
     "he:join_tables_xy": "the staged sample has no H&E image; get_he_image returns before the join",
     "hmm_nophasing:hmm_nophasing.unpack_param_errors": "propagate_hmm_param_errors is False in both fits",
+    "hmrf:maximal_cliques": "hmrf.np_merge is False in the staged configuration; test_config.py runs the merge on planted clones",
+    "hmrf:neyman_pearson_similarity": "hmrf.np_merge is False in the staged configuration; test_config.py runs the merge on planted clones",
     "integer_copy:hill_climbing_integer_copynumber_oneclone": "only for a stated ploidy; run_cnamaste breaks after the first (None) ploidy",
     "spatial:banded": "admits_assignment holds for every RDR split on easy",
     "spatial:best_equal_partition": "initial_clone_index_baf is never None (initialize_clones sets it)",
@@ -102,6 +106,34 @@ def test_every_placed_issue_has_a_row() -> None:
     defects = " ".join(r.issue for r in test_defects.ROWS)
     missing = [n for n in ISSUES if not re.search(rf"#{n}(?!\d)", cited + " " + defects)]
     assert not missing, f"issues with no row: {missing}"
+
+
+ROWS = rows()
+
+
+@pytest.mark.snapshot
+@pytest.mark.parametrize("row", ROWS, ids=[r.id for r in ROWS])
+def test_snapshot_returns(row: Row, ctx: Any, request: pytest.FixtureRequest) -> None:
+    """Every row's function returns what its pin records, on every input the row gives it (`audit.fn.snapshot`).
+
+    A snapshot is not validation: the pin is what the function returns today, defects included, with no
+    judgement attached. A change means "state why", not "wrong": the PR that moves a pin says why the output
+    moved, and re-pins with `--update-digests`. A strict xfail's fix shows as its pin moving and the xfail flipping.
+    """
+    snapshot(row, ctx, request)
+
+
+@pytest.mark.snapshot
+def test_snapshot_pins_are_the_rows(sim_hash: str, request: pytest.FixtureRequest) -> None:
+    """The pins are exactly the rows': none missing, none for a row that no longer exists."""
+    keys = {r.id for r in ROWS}
+    assert len(keys) == len(ROWS), "row keys repeat"
+    if request.config.getoption("--update-digests"):
+        request.node.user_properties.append(("digest-keys", [sim_hash, sorted(keys)]))
+        return
+    pins = set(Pins.of(sim_hash))
+    assert not keys - pins, f"rows without a pin (--update-digests): {sorted(keys - pins)}"
+    assert not pins - keys, f"stale pins: {sorted(pins - keys)}"
 
 
 def inventory(graph: Graph) -> list[tuple[str, ...]]:

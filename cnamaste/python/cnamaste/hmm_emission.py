@@ -100,7 +100,8 @@ def flush_perf(
     mle_settings = getattr(result, "mle_settings", {})
 
     # Read existing file to get next row index
-    perf_file = Path(config.paths.perf_path)
+    # NB alongside the run's other outputs.
+    perf_file = Path(config.paths.output_dir) / "cnamaste.perf"
     row_index = 1
     if perf_file.exists():
         try:
@@ -127,7 +128,7 @@ def flush_perf(
 
     file_exists = perf_file.exists()
 
-    with open("cnamaste.perf", "a", newline="") as f:
+    with open(perf_file, "a", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=asdict(metrics).keys(), delimiter="\t")
 
         if not file_exists:

@@ -184,15 +184,16 @@ def _result(_: Any) -> None:
 
 
 def _perf(d: dict[str, Any]) -> None:
-    configured = d["tmp"] / "configured.perf"
-    d["config"].paths.perf_path = str(configured)
+    configured = d["tmp"] / "output" / "cnamaste.perf"
+    configured.parent.mkdir()
+    d["config"].paths.output_dir = str(configured.parent)
     cwd = os.getcwd()
     os.chdir(d["tmp"])
     try:
         model_of(beta_draws(100)).fit(**get_em_solver_params())
     finally:
         os.chdir(cwd)
-    assert configured.exists() and not (d["tmp"] / "cnamaste.perf").exists(), "the timing row goes to paths.perf_path"
+    assert configured.exists() and not (d["tmp"] / "cnamaste.perf").exists(), "the timing row goes to <paths.output_dir>/cnamaste.perf"
 
 
 def _options(_: Any) -> None:
@@ -219,8 +220,8 @@ INVARIANT: list[Row] = table(
     ("hmm_emission:Weighted_BetaBinom_mix.get_bounds", "synthetic", lambda c: None, _defaults, "one bound per parameter"),
     ("hmm_emission:Weighted_BetaBinom_mix.__init__", "synthetic", lambda c: None, _defaults, "a 1-d exog is one state column"),
     ("hmm_emission:OptimizationResult.__post_init__", "synthetic", lambda c: None, _result, "statsmodels-style mle_retvals and mle_settings"),
-    ("hmm_emission:flush_perf", "synthetic fit in a scratch directory", lambda c: {"tmp": c.tmp_path, "config": c.config}, _perf, "the fit's timing row goes to paths.perf_path",
-     "Ticket#46: Weighted_BetaBinom_mix.fit writes to the working directory, and sends scipy an option it rejects"),
+    ("hmm_emission:flush_perf", "synthetic fit in a scratch directory", lambda c: {"tmp": c.tmp_path, "config": c.config}, _perf,
+     "the fit's timing row goes to <paths.output_dir>/cnamaste.perf"),
     ("hmm_emission:Weighted_BetaBinom_mix.fit", "synthetic: 100 draws", lambda c: None, _options, "every option sent to scipy is one it takes",
      "Ticket#46: Weighted_BetaBinom_mix.fit writes to the working directory, and sends scipy an option it rejects"),
     ("normal_spot:normal_baf_bin_filter", "synthetic: 6 bins", lambda c: None, _bin_filter_pure, "the caller's gene table is not rewritten"),
