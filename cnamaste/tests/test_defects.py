@@ -538,7 +538,7 @@ def _(sim: Any, **_: Any) -> None:
 
 
 @row("Ticket#136", "run_cnamaste (integer copies)", "xfail",
-     "Ticket#136: run_cnaster logs that it normalized log_mu, and does not; the integer copy decoder reads the unnormalized value (run_cnamaste.py:1381)")
+     "Ticket#136: run_cnaster logs that it normalized log_mu, and does not; the integer copy decoder reads the unnormalized value (run_cnamaste.py:1378)")
 def _(sim: Any, **_: Any) -> None:
     given = sim.stored("09_outputs/integer_copy_0/in")
     log_mu, base, pred = (np.asarray(given["args"][i]) for i in (0, 1, 3))
