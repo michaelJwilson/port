@@ -55,8 +55,6 @@ ISSUES = (20, 30, 45, 46, 58, 80, 81, 84, 105, 113, 115, 122, 135, 136, 143, 146
           267, 269, 293, 311, 320, 417, 440, 446, 449, 466, 468, 479, 483, 560, 561, 788, 799, 860, 869, 871)
 """Issues the per-function work places: each has a row here or in test_defects.py."""
 
-DEDUP = ("dead copies of reached functions remain in the source (shadowed definitions and definitions inside string literals): "
-         "the deduplication change comments out the differing unreachable copies and deletes the exact ones")
 
 
 def rows() -> list[Row]:
@@ -85,14 +83,12 @@ def test_every_row_kind_is_known_and_paired(graph: Graph) -> None:
 
 def test_live_definitions_are_the_reached_ones(graph: Graph) -> None:
     """Where a name is defined more than once, the graph entered the live definition, never a dead copy."""
-    assert graph.shadowed, "the source has dead copies of reached functions"
     for key, dead in graph.shadowed.items():
         live = graph.find(key)
         assert live.line not in dead, f"{key}: the reached definition is a dead copy"
         assert sorted(dead + [live.line]) == dead_copies(live.module)[live.qualname], f"{key}: every copy is either live or dead"
 
 
-@pytest.mark.xfail(strict=True, reason=DEDUP)
 def test_no_dead_copies_remain(graph: Graph) -> None:
     """No reached function has a shadowed or string-literal copy."""
     assert not graph.shadowed, {k: v for k, v in graph.shadowed.items()}

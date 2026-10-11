@@ -102,6 +102,7 @@ def flush_perf(
     # Read existing file to get next row index
     # NB alongside the run's other outputs.
     perf_file = Path(config.paths.output_dir) / "cnamaste.perf"
+    perf_file.parent.mkdir(parents=True, exist_ok=True)
     row_index = 1
     if perf_file.exists():
         try:
