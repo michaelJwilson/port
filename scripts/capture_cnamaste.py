@@ -1,7 +1,8 @@
 """Stage one `run_cnamaste` run into `cnamaste/tests/data/sim_<hash>.hdf5` (T- #836).
 
     uv run --locked --project cnamaste python scripts/capture_cnamaste.py \
-        --work DIR [--sample sim/numcnas1.2_cnasize5e7_ploidy2_random0] [--out FILE]
+        --work DIR [--sample sim/numcnas1.2_cnasize5e7_ploidy2_random0] [--out FILE] \
+        [--from-stage NN_group/stage --base FILE]
 
 port owns the capture; cnamaste holds the result. The script runs in
 cnamaste's own environment (`--project cnamaste`), where port is not
@@ -33,6 +34,32 @@ what `hmrf` computes and discards: the ICM labels, each Potts merge
 `merge_assignment` applied, the labels before the empty-clone re-indexing,
 and that re-indexing. `/lineage` is built from the recorded frames.
 
+**Resume.** `--from-stage NN_group/stage --base FILE` copies every stage
+FILE recorded before the named one, unchanged, and records the rest as a
+full capture does; `/config` `resumed_from` and `base_sha256` say so. The
+granularity is any recorded stage. `run_cnamaste` cannot be entered
+mid-pipeline, so it runs from the start, and each earlier stage's call
+returns FILE's value instead of computing it (a value FILE holds only as a
+digest is recomputed, at FILE's generator states, and checked against it).
+Every call's inputs must hash to FILE's, and the named stage starts from
+FILE's generator states. FILE is refused unless its fixture hash, template,
+inputs and staged configuration are this run's. Copied stages are only as
+current as FILE: resume from the first stage a change reaches.
+
+**numba.** `$NUMBA_CACHE_DIR` defaults to `$XDG_CACHE_HOME/cnamaste-numba`
+(else `~/.cache/cnamaste-numba`); set it to override. numba keys its own
+cache by the source file's absolute path and mtime, so every fresh worktree
+recompiled; here a kernel is cached by module and source sha256, so
+checkouts of the same source share one cache. `/config` records the
+directory, the seconds spent compiling or loading kernels, and the cache's
+hits and misses.
+
+**Threads.** The capture sets no thread limit (`NUMBA_NUM_THREADS`,
+`OMP_NUM_THREADS`, `MKL_NUM_THREADS`, `OPENBLAS_NUM_THREADS`); it records
+them in `/config` `thread_env`, as found. A capture should hold the host
+lock alone. Run concurrently, easy and square peak at about 3 GB and 7.6 GB,
+which fits in about 14 GB.
+
 On easy (`2d4ce9a9`) the run takes 562 s on 4 threads.
 """
 
@@ -41,6 +68,7 @@ from __future__ import annotations
 import argparse
 import copy
 import gzip
+import hashlib
 import json
 import os
 import random
@@ -51,16 +79,76 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-import cnamaste.hmrf as hmrf  # type: ignore[import-not-found]  # noqa: PLR0402
-import cnamaste.scripts.run_cnamaste as rc  # type: ignore[import-not-found]
-import h5py
-import numba
-import numpy as np
-import pandas as pd
-import scipy.optimize
-import yaml
-from numba import _helperlib
-from sklearn.metrics import adjusted_rand_score
+NUMBA_CACHE_DIR = os.environ.setdefault(
+    "NUMBA_CACHE_DIR",
+    str(
+        Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+        / "cnamaste-numba"
+    ),
+)
+"""numba's cache, shared by every checkout: set before numba is imported, which reads it once."""
+
+from numba.core import caching, dispatcher  # noqa: E402
+
+
+class SharedCacheLocator(caching._SourceFileBackedLocatorMixin, caching._CacheLocator):  # type: ignore[misc,name-defined]
+    """`$NUMBA_CACHE_DIR/<module>`, stamped by the source file's sha256.
+
+    numba's own locators key the cache by the source file's absolute path and
+    its mtime, so a fresh worktree misses on every kernel. Keyed by module and
+    content instead, one cache serves every checkout of the same source.
+    """
+
+    def __init__(self, py_func: Any, py_file: str) -> None:
+        self._py_file = py_file
+        self._lineno = py_func.__code__.co_firstlineno
+        self._cache_path = str(Path(NUMBA_CACHE_DIR) / py_func.__module__)
+
+    def get_cache_path(self) -> str:
+        return self._cache_path
+
+    def get_source_stamp(self) -> str:
+        return hashlib.sha256(Path(self._py_file).read_bytes()).hexdigest()
+
+    @classmethod
+    def from_function(cls, py_func: Any, py_file: str) -> Any:
+        if not getattr(py_func, "__module__", None):
+            return None
+        return super().from_function(py_func, py_file)
+
+
+caching.CacheImpl._locator_classes.insert(0, SharedCacheLocator)
+
+COMPILE: dict[str, Any] = {"seconds": 0.0, "depth": 0, "dispatchers": set()}
+"""Wall time inside numba's `Dispatcher.compile`, outermost calls only: compiling, or loading from the cache."""
+_compile = dispatcher.Dispatcher.compile
+
+
+def timed_compile(self: Any, sig: Any) -> Any:
+    COMPILE["dispatchers"].add(self)
+    COMPILE["depth"] += 1
+    start = time.perf_counter()
+    try:
+        return _compile(self, sig)
+    finally:
+        COMPILE["depth"] -= 1
+        if COMPILE["depth"] == 0:
+            COMPILE["seconds"] += time.perf_counter() - start
+
+
+dispatcher.Dispatcher.compile = timed_compile
+
+import h5py  # noqa: E402
+import numba  # noqa: E402
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+import scipy.optimize  # noqa: E402
+import yaml  # noqa: E402
+from numba import _helperlib  # noqa: E402
+from sklearn.metrics import adjusted_rand_score  # noqa: E402
+
+import cnamaste.hmrf as hmrf  # type: ignore[import-not-found]  # noqa: E402, PLR0402
+import cnamaste.scripts.run_cnamaste as rc  # type: ignore[import-not-found]  # noqa: E402
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 PROJECT = REPOSITORY / "cnamaste"
@@ -74,6 +162,7 @@ from audit.capture import (  # type: ignore[import-not-found]  # noqa: E402
     grch38,
     input_files,
     stage_inputs,
+    unordered,
 )
 
 ENTRY_POINT_SEED = 0
@@ -214,6 +303,88 @@ class Recorder:
         self.current = ""
         self.internal: dict[str, dict[str, Any]] = {}
         self.files: dict[str, str] = {}
+        self.base: Capture | None = None
+        self.resume = ""
+        self.copied: set[str] = set()
+        """Resuming: the base's stages before `resume`, each copied from it unchanged."""
+        self.scratch: h5py.File | None = None
+
+    def resume_from(self, base: Capture, stage: str) -> None:
+        """Copy every stage `base` recorded before `stage`, and restart the run at `stage`.
+
+        A copied stage's call still happens, so `run_cnamaste`'s glue runs as it did:
+        its inputs must hash to the base's, or the base is not this run's. Its return
+        is the base's stored value, decoded; where the base stores only a digest (the
+        counts, the AnnData), the function runs, at the base's generator states, and
+        must return that digest. Its group is copied from the base unchanged, and its
+        values are encoded into a scratch file so that later stages link to them and
+        `/lineage` reads them as a full capture does.
+        """
+        self.base, self.resume = base, stage
+        self.copied = set(base.stages[: base.stages.index(stage)])
+
+    def based(self) -> Capture:
+        if self.base is None:
+            message = "not resuming"
+            raise RuntimeError(message)
+        return self.base
+
+    def set_rng(self, label: str) -> None:
+        np_state, numba_state, py_state = self.based().rng(label)
+        np.random.set_state(np_state)  # noqa: NPY002
+        _helperlib.rnd_set_state(_helperlib.rnd_get_np_state_ptr(), numba_state)  # type: ignore[attr-defined]
+        random.setstate(py_state)
+
+    def check_inputs(self, label: str, sha: str) -> None:
+        recorded = self.based().digest_of(f"{label}/in")
+        if sha != recorded:
+            message = (
+                f"--base: {label} was called with inputs other than the base recorded "
+                f"(sha256 {sha[:12]} against {recorded[:12]}): "
+                "the base is not this run's, or the code before --from-stage changed"
+            )
+            raise SystemExit(message)
+
+    def copy_stage(self, f: Any, name: str, label: str, args: Any, kwargs: Any) -> Any:
+        """A stage before `resume`: the base's record, copied; its return, the base's."""
+        base = self.based()
+        if self.scratch is None:
+            self.scratch = h5py.File(
+                f"scratch-{os.getpid()}.h5", "w", driver="core", backing_store=False
+            )
+        self.set_rng(label)
+        given = copy.deepcopy((args, kwargs))
+        items = {"args": list(given[0]), "kwargs": dict(given[1])}
+        sha = digest(items)
+        self.check_inputs(label, sha)
+        if name == "run_core_inference":
+            self.current = label.split("/")[0]
+            self.internal[self.current] = base.internal(self.current)
+        try:
+            if name == "write_tsv":
+                raise LookupError(label)  # NB the file, written where the run reads it
+            out = base.stored(f"{label}/out")
+        except LookupError:
+            out = f(*args, **kwargs)
+            found, sets = digest(out), base.sets_of(f"{label}/out")
+            if found != base.digest_of(f"{label}/out") and not (
+                sets is not None and digest(unordered(out)) == sets
+            ):
+                message = f"--base: {label} returned other than the base recorded"
+                raise SystemExit(message) from None
+
+        g = self.scratch.create_group(label)
+        self.writer._items(g, "in", "call", f"{label}/in", sha, items, {})
+        self.writer.put(g, "out", copy.deepcopy(out), f"{label}/out")
+        parent, _, child = label.rpartition("/")
+        base.h5.copy(base.h5[label], self.h5.require_group(parent), name=child)
+        if name == "write_tsv":
+            written = base.h5[label].attrs["file"]
+            self.files[written] = label
+            base.h5.copy(base.h5[f"files/{written}"], self.h5.require_group("files"))
+        self.order.append(label)
+        print(f"{label} copied", flush=True)
+        return out
 
     def digest_only(self, path: str, value: Any) -> bool:
         """A large output of a replayed stage: the replay re-derives it."""
@@ -239,6 +410,10 @@ class Recorder:
 
         def wrapped(*args: Any, **kwargs: Any) -> Any:
             label = self.label(name)
+            if label in self.copied:
+                return self.copy_stage(f, name, label, args, kwargs)
+            if label == self.resume:
+                self.set_rng(label)
             state = rng_state()
             given = copy.deepcopy((args, kwargs))
             if name == "run_core_inference":
@@ -255,7 +430,10 @@ class Recorder:
             )
             write_rng(g, state)
             items = {"args": list(given[0]), "kwargs": dict(given[1])}
-            self.writer._items(g, "in", "call", f"{label}/in", digest(items), items, {})
+            sha = digest(items)
+            if label == self.resume:
+                self.check_inputs(label, sha)
+            self.writer._items(g, "in", "call", f"{label}/in", sha, items, {})
             entry = self.writer.put(g, "out", returned, f"{label}/out")
             g.attrs["out"] = json.dumps(entry)
             g.attrs["meta"] = json.dumps({} if entry is None else {"out": entry})
@@ -492,6 +670,11 @@ def lineage(rec: Recorder, h5: h5py.File) -> None:
         )
 
     for inference, record in rec.internal.items():
+        if rec.base is not None and f"{inference}/run_core_inference" in rec.copied:
+            rec.base.h5.copy(
+                rec.base.h5[f"internal/{inference}"], h5.require_group("internal")
+            )
+            continue
         g = h5.create_group(f"internal/{inference}")
         for k in ("icm", "raw", "prev"):
             g.create_dataset(
@@ -553,6 +736,24 @@ def report(path: Path) -> None:
         print(f"{size:>10_} {key}")
 
 
+def refusals(base: Capture, arguments: argparse.Namespace) -> list[str]:
+    """Why `base` is not a run of this sample and template, at this stage; none where it is."""
+    found = []
+    if base.config["fixture_hash"] != arguments.hash:
+        found.append(
+            f"fixture hash {base.config['fixture_hash']}, not {arguments.hash}"
+        )
+    if base.config["template_sha256"] != file_sha256(arguments.template):
+        found.append(f"template sha256 differs from {arguments.template.name}'s")
+    recorded = json.loads(base.config["inputs"])
+    for name, path in input_files(arguments.sample).items():
+        if name not in recorded or recorded[name]["sha256"] != file_sha256(path):
+            found.append(f"input {name} differs from {path}")
+    if arguments.from_stage not in base.stages:
+        found.append(f"{arguments.from_stage} is not a stage it recorded")
+    return found
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument(
@@ -577,10 +778,31 @@ def main(argv: list[str] | None = None) -> int:
         required=True,
         help="a scratch directory for the staged run",
     )
+    parser.add_argument(
+        "--from-stage",
+        default=None,
+        metavar="NN_group/stage",
+        help="resume: copy the stages --base recorded before this one, and run from it",
+    )
+    parser.add_argument(
+        "--base",
+        type=Path,
+        default=None,
+        help="resume: the staged-run file to copy from",
+    )
     arguments = parser.parse_args(argv)
+    if (arguments.from_stage is None) != (arguments.base is None):
+        parser.error("--from-stage and --base go together")
     arguments.work, arguments.sample, arguments.template = (
         p.resolve() for p in (arguments.work, arguments.sample, arguments.template)
     )
+    base = None
+    if arguments.base is not None:
+        base = Capture(arguments.base.resolve())
+        refused = refusals(base, arguments)
+        if refused:
+            base.close()
+            raise SystemExit("--base refused: " + "; ".join(refused))
     out = (
         arguments.out.resolve()
         if arguments.out
@@ -598,6 +820,9 @@ def main(argv: list[str] | None = None) -> int:
     arguments.work.mkdir(parents=True, exist_ok=True)
     os.chdir(arguments.work)
     config = stage_inputs(arguments.sample, RUN_ROOT, document, resources)
+    if base is not None and config.read_text() != base.config["yaml"]:
+        message = "--base refused: its configuration is not the one staged"
+        raise SystemExit(message)
 
     out.parent.mkdir(parents=True, exist_ok=True)
     partial = out.with_suffix(".partial")
@@ -606,6 +831,8 @@ def main(argv: list[str] | None = None) -> int:
     for name in SCHEDULE:
         rec.wrap(rc, name)
     rec.wrap_internal(hmrf)
+    if base is not None:
+        rec.resume_from(base, arguments.from_stage)
     for name in PLOTS:
         setattr(rc, name, lambda *_, **__: None)
 
@@ -647,11 +874,28 @@ def main(argv: list[str] | None = None) -> int:
             ),
             "plots": "stubbed",
             "wall_seconds": wall,
+            "resumed_from": arguments.from_stage or "",
+            "base_sha256": "" if base is None else file_sha256(base.path),
+            "numba_cache_dir": numba.config.CACHE_DIR,
+            "numba_compile_seconds": COMPILE["seconds"],
+            "numba_cache": json.dumps(
+                {
+                    "hits": sum(
+                        sum(d.stats.cache_hits.values()) for d in COMPILE["dispatchers"]
+                    ),
+                    "misses": sum(
+                        sum(d.stats.cache_misses.values())
+                        for d in COMPILE["dispatchers"]
+                    ),
+                }
+            ),
             "stages": json.dumps(rec.order),
             "files": json.dumps(rec.files),
         }
     )
     h5.close()
+    if base is not None:
+        base.close()
     partial.replace(out)
     size = out.stat().st_size
     report(out)
