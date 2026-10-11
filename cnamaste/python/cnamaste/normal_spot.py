@@ -548,180 +548,179 @@ def determine_local_normal_baseline(
     return rdr_normal, single_X_rdr, single_base_nb_mean, local_normal_mask
 
 
-'''
-def filter_normal_diffexp(
-    exp_counts,
-    df_bininfo,
-    normal_candidate,
-    sample_list=None,
-    sample_ids=None,
-    logfcthreshold_u=2, # LogFC threshold for dropping a gene between Unsure and Normal spots.
-    logfcthreshold_t=4, # LogFC threshold for dropping a gene between the Tumor and Normal spots
-    quantile_threshold=80, # percentile of total UMI counts a gene must exceed to be considered for dropping.
-):
-    """
-    Cluster input transcripts per slice into "normal" vs "tumor" spots based on pca + kmeans,
-    utilizing pre-labeled "normal" candidates to identify the "normal" cluster.
-
-    Drop gene transcripts that are differentially expressed between this "normal" cluster
-˚   and the "tumor" spots based on log fold change.
-
-    Returns new counts structure of (genomic bins x spots) after filtering genes with estimated
-    differential expression, namely new_single_X_rdr.
-    """
-    adata = anndata.AnnData(exp_counts)
-    adata.layers["count"] = exp_counts.values
-    adata.obs["normal_candidate"] = normal_candidate
-
-    map_gene_adatavar, map_gene_umi = {}, {}
-
-    # NB gene_umis summed over spots.
-    list_gene_umi = np.sum(adata.layers["count"], axis=0)
-
-    # NB map of unique integer per gene.
-    for i, x in enumerate(adata.var.index):
-        map_gene_adatavar[x] = i
-        map_gene_umi[x] = list_gene_umi[i]
-
-    if sample_list is None:
-        sample_list = [None]
-
-    filtered_out_set = set()
-
-    # NB loop over slices.
-    for s, sname in enumerate(sample_list):
-        if sname is None:
-            index = np.arange(adata.shape[0])
-        else:
-            index = np.where(sample_ids == s)[0]
-
-        # NB adata for this slice.
-        tmpadata = adata[index, :].copy()
-
-        # NB insufficient normal spot umis for this slice.
-        if (
-            np.sum(tmpadata.layers["count"][tmpadata.obs["normal_candidate"], :])
-            < tmpadata.shape[1] * 10  # MAGIC
-        ):
-            logger.warning(f"TODO!")
-            continue
-
-        umi_threshold = np.percentile(
-            np.sum(tmpadata.layers["count"], axis=0), quantile_threshold
-        )
-
-        # NB  filter genes based on number of cells or counts.
-        #     see https://scanpy.readthedocs.io/en/stable/generated/scanpy.pp.filter_genes.html
-        sc.pp.filter_genes(tmpadata, min_cells=10)
-
-        # NB median number of umis per spot?
-        med = np.median(np.sum(tmpadata.layers["count"], axis=1))
-
-        # NB normalize such that every spot has the same total count after normalization.
-        #    see https://scanpy.readthedocs.io/en/1.9.x/generated/scanpy.pp.normalize_total.html
-        sc.pp.normalize_total(tmpadata, target_sum=med)
-
-        # NB log(1 + x) transform.
-        #    see https://scanpy.readthedocs.io/en/stable/generated/scanpy.pp.log1p.html
-        sc.pp.log1p(tmpadata)
-
-        # NB adds PCA representation of data: adata.obsm['X_pca' with shape (adata.n_obs, n_comps)
-        #    see https://scanpy.readthedocs.io/en/stable/generated/scanpy.pp.pca.html
-        sc.pp.pca(tmpadata, n_comps=4)
-
-        # NB fit two clusters to PCA representation of data.
-        kmeans = KMeans(n_clusters=2, random_state=0).fit(tmpadata.obsm["X_pca"])
-        kmeans_labels = kmeans.predict(tmpadata.obsm["X_pca"])
-
-        # NB determine which cluster corresponds to normal candidates.
-        idx_kmeans_label = np.argmax(
-            np.bincount(kmeans_labels[tmpadata.obs["normal_candidate"]], minlength=2)
-        )
-
-        # NB all normal candidates are "normal".
-        clone = np.array(["normal"] * tmpadata.shape[0])
-        clone[
-            (kmeans_labels != idx_kmeans_label) & (~tmpadata.obs["normal_candidate"])
-        ] = "tumor"
-
-        # NB spots that are in the same kmeans cluster as normal candidates but not pre-labeled as "normal candidates"
-        clone[
-            (kmeans_labels == idx_kmeans_label) & (~tmpadata.obs["normal_candidate"])
-        ] = "unsure"
-
-        tmpadata.obs["clone"] = clone
-
-        # NB aggregate counts per normal/tumor designation.
-        agg_counts = np.vstack(
-            [
-                np.sum(
-                    tmpadata.layers["count"][tmpadata.obs["clone"] == label, :], axis=0
-                )
-                for label in ["normal", "unsure", "tumor"]
-            ]
-        )
-        agg_counts = agg_counts / np.sum(agg_counts, axis=1, keepdims=True) * 1e6
-
-        # NB total umis per gene for genes corresponding to adata.var.index
-        geneumis = np.array([map_gene_umi[x] for x in tmpadata.var.index])
-
-        # TODO divide-by-zero errors >>>>
-        # NB log fold change normal vs unsure
-        logfc_u = np.where(
-            ((agg_counts[1, :] == 0) | (agg_counts[0, :] == 0)),
-            10,
-            np.log2(agg_counts[1, :] / agg_counts[0, :]),
-        )
-
-        # NB log fold change normal vs tumor
-        logfc_t = np.where(
-            ((agg_counts[2, :] == 0) | (agg_counts[0, :] == 0)),
-            10,
-            np.log2(agg_counts[2, :] / agg_counts[0, :]),
-        )
-        # <<<<<
-        this_filtered_out_set = set(
-            list(
-                tmpadata.var.index[
-                    (np.abs(logfc_u) > logfcthreshold_u) & (geneumis > umi_threshold)
-                ]
-            )
-        ) | set(
-            list(
-                tmpadata.var.index[
-                    (np.abs(logfc_t) > logfcthreshold_t) & (geneumis > umi_threshold)
-                ]
-            )
-        )
-        filtered_out_set = filtered_out_set | this_filtered_out_set
-
-        logger.info(
-            f"Removed {len(filtered_out_set)} genes with differential expression based on normal spots."
-        )
-
-    new_single_X_rdr = np.zeros((df_bininfo.shape[0], adata.shape[0]))
-    total_counts, retained_counts = 0, 0
-
-    for b, genestr in enumerate(df_bininfo.INCLUDED_GENES.values):
-        # RDR (genes)
-        bin_genes = set(genestr.split(" "))
-        involved_genes = bin_genes - filtered_out_set
-
-        total_counts += np.sum(
-            adata.layers["count"][:, adata.var.index.isin(bin_genes)]
-        )
-        retained_counts += np.sum(
-            adata.layers["count"][:, adata.var.index.isin(involved_genes)]
-        )
-
-        new_single_X_rdr[b, :] = np.sum(
-            adata.layers["count"][:, adata.var.index.isin(involved_genes)], axis=1
-        )
-
-    logger.info(f"Retained {100. * retained_counts / total_counts:.3f}% of bin UMIs.")
-
-    return new_single_X_rdr, filtered_out_set
-'''
+# NB unused copy of filter_normal_diffexp, never executed; the live definition is at line 726.
+# def filter_normal_diffexp(
+#     exp_counts,
+#     df_bininfo,
+#     normal_candidate,
+#     sample_list=None,
+#     sample_ids=None,
+#     logfcthreshold_u=2, # LogFC threshold for dropping a gene between Unsure and Normal spots.
+#     logfcthreshold_t=4, # LogFC threshold for dropping a gene between the Tumor and Normal spots
+#     quantile_threshold=80, # percentile of total UMI counts a gene must exceed to be considered for dropping.
+# ):
+#     """
+#     Cluster input transcripts per slice into "normal" vs "tumor" spots based on pca + kmeans,
+#     utilizing pre-labeled "normal" candidates to identify the "normal" cluster.
+#
+#     Drop gene transcripts that are differentially expressed between this "normal" cluster
+# ˚   and the "tumor" spots based on log fold change.
+#
+#     Returns new counts structure of (genomic bins x spots) after filtering genes with estimated
+#     differential expression, namely new_single_X_rdr.
+#     """
+#     adata = anndata.AnnData(exp_counts)
+#     adata.layers["count"] = exp_counts.values
+#     adata.obs["normal_candidate"] = normal_candidate
+#
+#     map_gene_adatavar, map_gene_umi = {}, {}
+#
+#     # NB gene_umis summed over spots.
+#     list_gene_umi = np.sum(adata.layers["count"], axis=0)
+#
+#     # NB map of unique integer per gene.
+#     for i, x in enumerate(adata.var.index):
+#         map_gene_adatavar[x] = i
+#         map_gene_umi[x] = list_gene_umi[i]
+#
+#     if sample_list is None:
+#         sample_list = [None]
+#
+#     filtered_out_set = set()
+#
+#     # NB loop over slices.
+#     for s, sname in enumerate(sample_list):
+#         if sname is None:
+#             index = np.arange(adata.shape[0])
+#         else:
+#             index = np.where(sample_ids == s)[0]
+#
+#         # NB adata for this slice.
+#         tmpadata = adata[index, :].copy()
+#
+#         # NB insufficient normal spot umis for this slice.
+#         if (
+#             np.sum(tmpadata.layers["count"][tmpadata.obs["normal_candidate"], :])
+#             < tmpadata.shape[1] * 10  # MAGIC
+#         ):
+#             logger.warning(f"TODO!")
+#             continue
+#
+#         umi_threshold = np.percentile(
+#             np.sum(tmpadata.layers["count"], axis=0), quantile_threshold
+#         )
+#
+#         # NB  filter genes based on number of cells or counts.
+#         #     see https://scanpy.readthedocs.io/en/stable/generated/scanpy.pp.filter_genes.html
+#         sc.pp.filter_genes(tmpadata, min_cells=10)
+#
+#         # NB median number of umis per spot?
+#         med = np.median(np.sum(tmpadata.layers["count"], axis=1))
+#
+#         # NB normalize such that every spot has the same total count after normalization.
+#         #    see https://scanpy.readthedocs.io/en/1.9.x/generated/scanpy.pp.normalize_total.html
+#         sc.pp.normalize_total(tmpadata, target_sum=med)
+#
+#         # NB log(1 + x) transform.
+#         #    see https://scanpy.readthedocs.io/en/stable/generated/scanpy.pp.log1p.html
+#         sc.pp.log1p(tmpadata)
+#
+#         # NB adds PCA representation of data: adata.obsm['X_pca' with shape (adata.n_obs, n_comps)
+#         #    see https://scanpy.readthedocs.io/en/stable/generated/scanpy.pp.pca.html
+#         sc.pp.pca(tmpadata, n_comps=4)
+#
+#         # NB fit two clusters to PCA representation of data.
+#         kmeans = KMeans(n_clusters=2, random_state=0).fit(tmpadata.obsm["X_pca"])
+#         kmeans_labels = kmeans.predict(tmpadata.obsm["X_pca"])
+#
+#         # NB determine which cluster corresponds to normal candidates.
+#         idx_kmeans_label = np.argmax(
+#             np.bincount(kmeans_labels[tmpadata.obs["normal_candidate"]], minlength=2)
+#         )
+#
+#         # NB all normal candidates are "normal".
+#         clone = np.array(["normal"] * tmpadata.shape[0])
+#         clone[
+#             (kmeans_labels != idx_kmeans_label) & (~tmpadata.obs["normal_candidate"])
+#         ] = "tumor"
+#
+#         # NB spots that are in the same kmeans cluster as normal candidates but not pre-labeled as "normal candidates"
+#         clone[
+#             (kmeans_labels == idx_kmeans_label) & (~tmpadata.obs["normal_candidate"])
+#         ] = "unsure"
+#
+#         tmpadata.obs["clone"] = clone
+#
+#         # NB aggregate counts per normal/tumor designation.
+#         agg_counts = np.vstack(
+#             [
+#                 np.sum(
+#                     tmpadata.layers["count"][tmpadata.obs["clone"] == label, :], axis=0
+#                 )
+#                 for label in ["normal", "unsure", "tumor"]
+#             ]
+#         )
+#         agg_counts = agg_counts / np.sum(agg_counts, axis=1, keepdims=True) * 1e6
+#
+#         # NB total umis per gene for genes corresponding to adata.var.index
+#         geneumis = np.array([map_gene_umi[x] for x in tmpadata.var.index])
+#
+#         # TODO divide-by-zero errors >>>>
+#         # NB log fold change normal vs unsure
+#         logfc_u = np.where(
+#             ((agg_counts[1, :] == 0) | (agg_counts[0, :] == 0)),
+#             10,
+#             np.log2(agg_counts[1, :] / agg_counts[0, :]),
+#         )
+#
+#         # NB log fold change normal vs tumor
+#         logfc_t = np.where(
+#             ((agg_counts[2, :] == 0) | (agg_counts[0, :] == 0)),
+#             10,
+#             np.log2(agg_counts[2, :] / agg_counts[0, :]),
+#         )
+#         # <<<<<
+#         this_filtered_out_set = set(
+#             list(
+#                 tmpadata.var.index[
+#                     (np.abs(logfc_u) > logfcthreshold_u) & (geneumis > umi_threshold)
+#                 ]
+#             )
+#         ) | set(
+#             list(
+#                 tmpadata.var.index[
+#                     (np.abs(logfc_t) > logfcthreshold_t) & (geneumis > umi_threshold)
+#                 ]
+#             )
+#         )
+#         filtered_out_set = filtered_out_set | this_filtered_out_set
+#
+#         logger.info(
+#             f"Removed {len(filtered_out_set)} genes with differential expression based on normal spots."
+#         )
+#
+#     new_single_X_rdr = np.zeros((df_bininfo.shape[0], adata.shape[0]))
+#     total_counts, retained_counts = 0, 0
+#
+#     for b, genestr in enumerate(df_bininfo.INCLUDED_GENES.values):
+#         # RDR (genes)
+#         bin_genes = set(genestr.split(" "))
+#         involved_genes = bin_genes - filtered_out_set
+#
+#         total_counts += np.sum(
+#             adata.layers["count"][:, adata.var.index.isin(bin_genes)]
+#         )
+#         retained_counts += np.sum(
+#             adata.layers["count"][:, adata.var.index.isin(involved_genes)]
+#         )
+#
+#         new_single_X_rdr[b, :] = np.sum(
+#             adata.layers["count"][:, adata.var.index.isin(involved_genes)], axis=1
+#         )
+#
+#     logger.info(f"Retained {100. * retained_counts / total_counts:.3f}% of bin UMIs.")
+#
+#     return new_single_X_rdr, filtered_out_set
 
 
 def filter_normal_diffexp(

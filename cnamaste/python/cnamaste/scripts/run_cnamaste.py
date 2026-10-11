@@ -13,12 +13,7 @@ from cnamaste.he import get_he_image
 from cnamaste.hmm_nophasing import hmm_nophasing, get_log_transmat
 # from cnamaste.sandbox.hmm_nophasing_jax_v2 import hmm_nophasing_jax
 
-from cnamaste.hmrf import (
-    merge_by_minspots,
-    neyman_pearson_similarity,
-    reindex_clones,
-    run_core_inference,
-)
+from cnamaste.hmrf import merge_by_minspots, reindex_clones, run_core_inference
 from cnamaste.hmrf_utils import get_clone_assignment, get_clone_indices
 from cnamaste.integer_copy import (
     hill_climbing_integer_copynumber_fixdiploid_milp,
@@ -670,7 +665,7 @@ def run_cnamaste(config_path, over_rides=None):
     )
 
     # NB new pseduo-bulk given new assignment of spots to clones.
-    X, base_nb_mean, total_bb_RD, tumor_prop = merge_pseudobulk_by_index_mix(
+    X, base_nb_mean, _, tumor_prop = merge_pseudobulk_by_index_mix(
         single_X,
         single_base_nb_mean,
         single_total_bb_RD,
@@ -744,6 +739,8 @@ def run_cnamaste(config_path, over_rides=None):
     merged_res = res.copy()
 
     # NB merge similar clones based on Neyman-Pearson statistic.
+
+    """
     if config.hmrf.np_merge:
         _, merged_res = neyman_pearson_similarity(
             X,
@@ -758,6 +755,7 @@ def run_cnamaste(config_path, over_rides=None):
         )
     else:
         logger.warning(f"No Neyman-Pearson merging applied to baf-identified clones.")
+    """
 
     logger.info(
         f"Inferred {len(np.unique(merged_res['new_assignment']))} clones given baf data after neyman-pearson merge."
@@ -1118,7 +1116,7 @@ def run_cnamaste(config_path, over_rides=None):
 
     logger.info(f"Solved for res_combine=\n{res_combine}")
 
-    X, base_nb_mean, total_bb_RD, tumor_prop = merge_pseudobulk_by_index_mix(
+    X, base_nb_mean, _, tumor_prop = merge_pseudobulk_by_index_mix(
         single_X,
         single_base_nb_mean,
         single_total_bb_RD,
@@ -1177,6 +1175,7 @@ def run_cnamaste(config_path, over_rides=None):
     # NB a shallow copy.
     merged_res_combine = res_combine.copy()
 
+    """
     # NB merge similar clones based on Neyman-Pearson statistic.
     if config.hmrf.np_merge:
         _, merged_res_combine = neyman_pearson_similarity(
@@ -1190,6 +1189,7 @@ def run_cnamaste(config_path, over_rides=None):
             tumor_prop=tumor_prop,
             hmmclass=hmm_nophasing,
         )
+    """
 
     logger.info(
         f"Inferred {len(np.unique(merged_res_combine['new_assignment']))} clones given rdr-baf data after neyman-pearson merge."

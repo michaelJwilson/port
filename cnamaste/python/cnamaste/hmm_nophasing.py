@@ -203,36 +203,35 @@ class hmm_nophasing:
 
         return log_emit_rdr, log_emit_baf
 
-    """
-    @staticmethod
-    def compute_emission_probability_nb_betabinom_coded(
-        nbEncoder, bbEncoder, log_mu, alphas, p_binom, taus
-    ):
-        # TODO assumes called on each clone independently.
-        n_states = log_mu.shape[0]
-
-        nb_endog = nbEncoder.get_unique_obs(0)
-        nb_exposure = nbEncoder.get_unique_total(0)
-
-        bb_endog = bbEncoder.get_unique_obs(0)
-        bb_exposure = bbEncoder.get_unique_total(0)
-
-        log_emit_rdr_uniq = np.zeros((n_states, len(nb_endog)))
-        log_emit_baf_uniq = np.zeros((n_states, len(bb_endog)))
-
-        for i in range(n_states):
-            log_emit_rdr_uniq[i, :] = _nb_logpmf_1d(
-                nb_endog, nb_exposure, exp(log_mu[i, 0]), alphas[i, 0]
-            )
-            log_emit_baf_uniq[i, :] = _bb_logpmf_1d(
-                bb_endog, bb_exposure, p_binom[i, 0], taus[i, 0]
-            )
-
-        log_emit_rdr = nbEncoder.decode_array(log_emit_rdr_uniq, 0)
-        log_emit_baf = bbEncoder.decode_array(log_emit_baf_uniq, 0)
-
-        return log_emit_rdr, log_emit_baf
-    """
+    # NB unused copy of compute_emission_probability_nb_betabinom_coded, never executed; the live definition is at line 236.
+    # @staticmethod
+    # def compute_emission_probability_nb_betabinom_coded(
+    #     nbEncoder, bbEncoder, log_mu, alphas, p_binom, taus
+    # ):
+    #     # TODO assumes called on each clone independently.
+    #     n_states = log_mu.shape[0]
+    #
+    #     nb_endog = nbEncoder.get_unique_obs(0)
+    #     nb_exposure = nbEncoder.get_unique_total(0)
+    #
+    #     bb_endog = bbEncoder.get_unique_obs(0)
+    #     bb_exposure = bbEncoder.get_unique_total(0)
+    #
+    #     log_emit_rdr_uniq = np.zeros((n_states, len(nb_endog)))
+    #     log_emit_baf_uniq = np.zeros((n_states, len(bb_endog)))
+    #
+    #     for i in range(n_states):
+    #         log_emit_rdr_uniq[i, :] = _nb_logpmf_1d(
+    #             nb_endog, nb_exposure, exp(log_mu[i, 0]), alphas[i, 0]
+    #         )
+    #         log_emit_baf_uniq[i, :] = _bb_logpmf_1d(
+    #             bb_endog, bb_exposure, p_binom[i, 0], taus[i, 0]
+    #         )
+    #
+    #     log_emit_rdr = nbEncoder.decode_array(log_emit_rdr_uniq, 0)
+    #     log_emit_baf = bbEncoder.decode_array(log_emit_baf_uniq, 0)
+    #
+    #     return log_emit_rdr, log_emit_baf
 
     def compute_emission_probability_nb_betabinom_coded(
         self,
