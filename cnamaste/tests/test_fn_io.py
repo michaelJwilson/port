@@ -210,7 +210,9 @@ def _output_dirs(ctx: Any) -> None:
     config.paths.output_dir = str(ctx.tmp_path / "out")
     (ctx.tmp_path / "out").mkdir()
     out, plots = configure_output_dir(config)
-    assert out == get_output_dir(config) == f"{ctx.tmp_path}/out/clone3_rectangle0_w1.0/"
+    hmrf = yaml.safe_load(ctx.sim.config["yaml"])["hmrf"]  # NB 3 clones, seed 0, weight 1.0 on easy
+    stated = f"clone{hmrf['n_clones']}_rectangle{hmrf['random_state']}_w{float(hmrf['spatial_weight']):.1f}"
+    assert out == get_output_dir(config) == f"{ctx.tmp_path}/out/{stated}/"
     assert Path(out).is_dir() and Path(plots).is_dir()
 
 

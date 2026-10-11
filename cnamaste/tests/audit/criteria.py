@@ -15,6 +15,7 @@ by the mechanism that let it miss a floor or pass `max_binlength`.
 from __future__ import annotations
 
 from ast import literal_eval
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -41,17 +42,32 @@ class RuleBroken(AssertionError):
     """The code departs from a rule as stated, by a mechanism the check names: what a strict xfail expects."""
 
 
-@dataclass
 class Units:
-    sim: Any
-    replayed: Any
-    lineage: Any
-    config: dict[str, Any]
-    gene_counts: np.ndarray
-    normal: np.ndarray
-    rows: dict[str, np.ndarray]
-    """Per row of `df_gene_snp`, 0 on a gene row: `snp_umi` (A+B over all spots), and over the normal candidates
-    `normal_b` (the phased B count) and `normal_total` (A+B)."""
+    """One run's units and counts. The counts recomputed from the inputs (`gene_counts`, `rows`) are computed on first
+    use, so a row that reads only the staged file runs without the inputs."""
+
+    def __init__(self, sim: Any, replayed: Any, lineage: Any, counts: Callable[[], np.ndarray]) -> None:
+        self.sim, self.replayed, self.lineage = sim, replayed, lineage
+        self.config: dict[str, Any] = yaml.safe_load(sim.config["yaml"])
+        self.normal = np.asarray(sim.stored("06_normal/determine_normal_candidates/out"), dtype=bool)
+        self._counts = counts
+        self._gene_counts: np.ndarray | None = None
+        self._rows: dict[str, np.ndarray] | None = None
+
+    @property
+    def gene_counts(self) -> np.ndarray:
+        """(genes, spots) UMI counts in the lineage's gene order (the `gene_counts` fixture)."""
+        if self._gene_counts is None:
+            self._gene_counts = self._counts()
+        return self._gene_counts
+
+    @property
+    def rows(self) -> dict[str, np.ndarray]:
+        """Per row of `df_gene_snp`, 0 on a gene row: `snp_umi` (A+B over all spots), and over the normal candidates
+        `normal_b` (the phased B count) and `normal_total` (A+B)."""
+        if self._rows is None:
+            self._rows = snp_rows(self.sim, self.replayed, self.normal)
+        return self._rows
 
     def setting(self, key: str) -> Any:
         """`/config`'s value at a dotted key."""
@@ -82,7 +98,8 @@ class Units:
         return (grouped["END"] - grouped["START"]).to_numpy()
 
 
-def units_of(sim: Any, replayed: Any, lineage: Any, gene_counts: np.ndarray) -> Units:
+def snp_rows(sim: Any, replayed: Any, normal: np.ndarray) -> dict[str, np.ndarray]:
+    """`Units.rows`, from the loaded A and B counts (replayed)."""
     load = "00_inputs/load_input_data/out"
     a, b = (np.asarray(replayed.value(f"{load}/{k}")) for k in (4, 5))
     snp_ids = pd.Index(np.asarray(replayed.value(f"{load}/6")).astype(str))
@@ -90,14 +107,17 @@ def units_of(sim: Any, replayed: Any, lineage: Any, gene_counts: np.ndarray) -> 
     snp = frame["snp_id"].notna().to_numpy()
     column = snp_ids.get_indexer(frame["snp_id"][snp].astype(str))
     assert np.all(column >= 0)
-    normal = np.asarray(sim.stored("06_normal/determine_normal_candidates/out"), dtype=bool)
     a_normal, b_normal = a[normal][:, column].sum(axis=0), b[normal][:, column].sum(axis=0)
     phase = frame["phase"][snp].astype(bool).to_numpy()
     rows = {name: np.zeros(len(frame)) for name in ("snp_umi", "normal_b", "normal_total")}
     rows["snp_umi"][snp] = a[:, column].sum(axis=0) + b[:, column].sum(axis=0)
     rows["normal_b"][snp] = np.where(phase, a_normal, b_normal)
     rows["normal_total"][snp] = a_normal + b_normal
-    return Units(sim, replayed, lineage, yaml.safe_load(sim.config["yaml"]), gene_counts, normal, rows)
+    return rows
+
+
+def units_of(sim: Any, replayed: Any, lineage: Any, counts: Callable[[], np.ndarray]) -> Units:
+    return Units(sim, replayed, lineage, counts)
 
 
 @dataclass

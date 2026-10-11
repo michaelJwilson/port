@@ -51,7 +51,7 @@ def snp_rows(frame: pd.DataFrame, ids: np.ndarray, key: str) -> tuple[np.ndarray
 
 def test_the_loaded_inputs_are_the_files(sample: Path, loaded: dict[str, Any]) -> None:
     """Every loaded barcode is one of `barcodes.txt`'s, and the allele totals are the files' over the loaded spots and SNPs."""
-    files = input_files(sample)
+    files = {Path(name).name: path for name, path in input_files(sample).items()}  # NB a drawn sample's under snp/
 
     raw = files["barcodes.txt"].read_bytes()
     barcodes = (gzip.decompress(raw) if files["barcodes.txt"].name.endswith(".gz") else raw).decode().split()
@@ -124,12 +124,18 @@ def test_parameters_to_the_written_seglevel(sim: Any) -> None:
 
 
 INTERVAL = 0.95
-SHARES = {"umi": 0.8861, "baf": 0.9446}
-"""The least share of clone-bins whose observed count lies in the central `INTERVAL` predicted: the recorded share
-(UMIs 0.9061, B alleles 0.9646, of 6,728 and 6,744 clone-bins on easy) less 0.02."""
+RECORDED_SHARES: dict[str, dict[str, float]] = {
+    "2d4ce9a9": {"umi": 0.9061, "baf": 0.9646},  # NB of 6,728 and 6,744 clone-bins
+    "23acef50": {"umi": 0.9295, "baf": 0.9655},  # NB of 13,985 and 13,985
+    "8797710b": {"umi": 0.9044, "baf": 0.9594},  # NB of 6,760 and 6,772
+    "e4bbe03f": {"umi": 0.9356, "baf": 0.9639},  # NB of 19,691 and 19,698
+}
+"""Fixture hash -> the share of clone-bins whose observed count lies in the central `INTERVAL` predicted, UMIs and
+B alleles, as its capture records it. The least share a test accepts is that less `MARGIN`."""
+MARGIN = 0.02
 
 
-def test_observed_counts_fall_inside_the_predicted_intervals(sim: Any, replayed: Any) -> None:
+def test_observed_counts_fall_inside_the_predicted_intervals(sim: Any, replayed: Any, sim_hash: str) -> None:
     """UMIs ~ NB(mean = base * mu[state], dispersion alpha); B ~ BetaBinom(depth, p[state] tau, (1 - p) tau)."""
     res = sim.result("08_rdr/reindex_clones/out/0")
     pred = np.asarray(res["pred_cnv"])
@@ -147,7 +153,8 @@ def test_observed_counts_fall_inside_the_predicted_intervals(sim: Any, replayed:
     inside_baf = ((b >= lo_b) & (b <= hi_b))[covered]
     shares = {"umi": float(inside_umi.mean()), "baf": float(inside_baf.mean())}
     print(f"inside the central {INTERVAL}: {shares} of {usable.sum()} / {covered.sum()} clone-bins")
-    assert shares["umi"] >= SHARES["umi"] and shares["baf"] >= SHARES["baf"]
+    least = {k: v - MARGIN for k, v in RECORDED_SHARES[sim_hash].items()}
+    assert shares["umi"] >= least["umi"] and shares["baf"] >= least["baf"]
 
 
 def test_a_removed_bins_genes_are_absent(sim: Any, lineage: Any) -> None:

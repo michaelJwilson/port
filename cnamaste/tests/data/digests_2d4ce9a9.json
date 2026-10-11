@@ -1193,8 +1193,8 @@
   "calls": 1
  },
  "hmrf:run_core_inference | labels 0..M-1, the last ICM labels re-indexed; prev the last input labels": {
-  "stable": "60f518b6083b07e11d645cc8fbe798889e6e19efb0c4c3bd1445de4c7eb36b73",
-  "exact": "21fd29b15e53da4c7d459b76da27227424f07c00b349b4647371b70973fe1408",
+  "stable": "c245d9238a02c6e5c22bd6180ec2b4728924fcbb7f700d7995357b8985b99531",
+  "exact": "c6fb2315b8845420434d7cfb313d1a3c0785bdaec6121477f9ea7611a7aac622",
   "summary": {
    "['judged'][0].params.new_log_mu": "float64 (7, 1) min=-0.1 max=0.1 mean=-3.96508e-18 sum=-2.77556e-17",
    "['judged'][0].params.new_alphas": "float64 (7, 1) min=0.5 max=0.5 mean=0.5 sum=3.5",
@@ -1208,7 +1208,7 @@
    "['judged'][0].n_states": "int 7",
    "['judged'][0].assignment.prev_assignment": "int64 (3000,) min=0 max=3 sum=3999",
    "['judged'][0].assignment.new_assignment": "int64 (3000,) min=0 max=3 sum=3999",
-   "...": "30 more leaves"
+   "...": "210 more leaves"
   },
   "calls": 0
  },
@@ -1302,22 +1302,22 @@
   "calls": 1
  },
  "icm:merge_assignment | the recorded merges map the ICM labels to the raw labels the run kept": {
-  "stable": "31eda98025ef849a1c99ba07da02ae5d810ee3b18eb7d4eecd8a9ead060257c6",
-  "exact": "ab1f573edfe5071e10a16ce15cf9014225c0392691de939b2bcdaec26df8bf89",
+  "stable": "ff9661a770b68f85ee049397732ed6e56f5637b80938bd13d0e7dcbc2d3afb05",
+  "exact": "8c38c7e73530a966060364baa7562cdac3c5ea9134cea70c855030915d4492bf",
   "summary": {
-   "['judged']['internal']['icm']": "int16 (3000,) min=0 max=3 sum=4467",
-   "['judged']['internal']['iterations']": "int 12",
-   "['judged']['internal']['prev']": "int16 (3000,) min=0 max=3 sum=4465",
-   "['judged']['internal']['raw']": "int16 (3000,) min=0 max=3 sum=4467",
-   "['judged']['internal']['re_indexing']['0']": "int 0",
-   "['judged']['internal']['re_indexing']['1']": "int 1",
-   "['judged']['internal']['re_indexing']['2']": "int 2",
-   "['judged']['internal']['re_indexing']['3']": "int 3",
-   "['judged']['res'].params.new_log_mu": "float64 (7, 1) min=-1.65621 max=0.268449 mean=-0.299667 sum=-2.09767",
-   "['judged']['res'].params.new_alphas": "float64 (7, 1) min=0.70935 max=0.70935 mean=0.70935 sum=4.96545",
-   "['judged']['res'].params.new_p_binom": "float64 (7, 1) min=0.0823708 max=0.639775 mean=0.433669 sum=3.03568",
-   "['judged']['res'].params.new_taus": "float64 (7, 1) min=3553.26 max=3553.26 mean=3553.26 sum=24872.8",
-   "...": "9 more leaves"
+   "['judged']['internal']['ari'][0]": "float 0.757448",
+   "['judged']['internal']['ari'][1]": "float 0.910253",
+   "['judged']['internal']['ari'][2]": "float 0.933852",
+   "['judged']['internal']['ari'][3]": "float 0.925412",
+   "['judged']['internal']['ari'][4]": "float 0.985468",
+   "['judged']['internal']['ari'][5]": "float 0.989635",
+   "['judged']['internal']['ari'][6]": "float 0.997952",
+   "['judged']['internal']['ari'][7]": "float 0.969494",
+   "['judged']['internal']['ari'][8]": "float 0.993357",
+   "['judged']['internal']['ari'][9]": "float 1",
+   "['judged']['internal']['ari'][10]": "float 0.884919",
+   "['judged']['internal']['ari'][11]": "float 0.998209",
+   "...": "111 more leaves"
   },
   "calls": 0
  },
@@ -1367,13 +1367,14 @@
   ]
  },
  "integer_copy:hill_climbing_integer_copynumber_fixdiploid_milp | on each recorded call: the per-state argmin, its cost and its ploidy (the ploidy row does not bind)": {
-  "stable": "ccc42711e141ed4f13a04102eb7fc081e5b7f607c5e8fab554bb06275121ee68",
-  "exact": "0b2508d63a356a5bfd144193517f7d0041380d76f6e4513f2376f75fdff7f259",
+  "stable": "11344b7f126343f99a9c521f55ff8fdd0df2036dcd606f013cfb508e6ec4b9d2",
+  "exact": "294d3c776ba92d24b758bad14bc2906f6d6866ac6ffacaef8175c63cd402fc65",
   "summary": {
    "['judged'][0]['args'][0]": "float64 (7,) min=-1.65621 max=0.268449 mean=-0.299667 sum=-2.09767",
    "['judged'][0]['args'][1]": "float64 (1686,) min=0 max=7514.92 mean=940.961 sum=1.58646e+06",
    "['judged'][0]['args'][2]": "float64 (7,) min=0.0823708 max=0.639775 mean=0.433669 sum=3.03568",
    "['judged'][0]['args'][3]": "int64 (1686,) min=1 max=4 sum=3192",
+   "['judged'][0]['fixture']": "str len=8",
    "['judged'][0]['kwargs']['nonbalance_bafdist']": "float 1",
    "['judged'][0]['kwargs']['nondiploid_rdrdist']": "float 10",
    "['judged'][0]['out'][0]": "int64 (7, 2) min=0 max=2 sum=15",
@@ -1381,8 +1382,7 @@
    "['judged'][0]['out'][2]": "int 2",
    "['judged'][1]['args'][0]": "float64 (7,) min=-1.65621 max=0.268449 mean=-0.299667 sum=-2.09767",
    "['judged'][1]['args'][1]": "float64 (1686,) min=0 max=3539.56 mean=443.198 sum=747231",
-   "['judged'][1]['args'][2]": "float64 (7,) min=0.0823708 max=0.639775 mean=0.433669 sum=3.03568",
-   "...": "24 more leaves"
+   "...": "28 more leaves"
   },
   "calls": 0
  },

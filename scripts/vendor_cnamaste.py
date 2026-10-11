@@ -51,7 +51,7 @@ ADDED: dict[str, str] = {
     "tests/audit/segments.py": "PR2: port's extensions/segments.py, trimmed",
     "tests/audit/criteria.py": "PR2: each level's units and counts, recomputed from the staged inputs",
     "tests/audit/scoring.py": "PR2: port's qa/scoring.py and the truth reader",
-    "tests/data/sim_2d4ce9a9.hdf5": "PR2: CalicoST easy, staged",
+    "tests/data/sim_2d4ce9a9.hdf5": "PR2: CalicoST easy, staged (PR6: re-captured with the fit trace and /truth; default)",
     "tests/test_stages.py": "PR2: replay, bookkeeping and science per stage",
     "tests/test_lineage.py": "PR2: the segment and clone hierarchies",
     "tests/test_lookups.py": "PR2: index lookups through merges, reindexing and filtering",
@@ -76,6 +76,13 @@ ADDED: dict[str, str] = {
     "tests/test_fn_outputs.py": "PR4: per-function rows, the outputs and run_cnamaste's glue",
     "tests/audit/digest.py": "PR4: a return value's canonical digests and summary, and the per-sample pins",
     "tests/data/digests_2d4ce9a9.json": "PR4: easy's pins, each per-function row's returns",
+    "tests/audit/sims.py": "PR6: the staged fixtures and the default selection",
+    "tests/data/sim_23acef50.hdf5": "PR6: dev_tree_easy_square r0, staged (default)",
+    "tests/data/sim_e4bbe03f.hdf5": "PR6: dev_tree_easy r0, staged (opt-in)",
+    "tests/data/sim_8797710b.hdf5": "PR6: CalicoST hard, staged (opt-in)",
+    "tests/data/digests_23acef50.json": "PR6: dev_tree_easy_square r0's pins, each per-function row's returns",
+    "tests/data/digests_e4bbe03f.json": "PR6: dev_tree_easy r0's pins, each per-function row's returns",
+    "tests/data/digests_8797710b.json": "PR6: CalicoST hard's pins, each per-function row's returns",
 }
 """File cnamaste owns beyond the copy and its project files, relative to `cnamaste/` -> the T- #836 PR
 that adds it. Only grows. Every file under `OWNED` must be here."""

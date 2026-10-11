@@ -6,18 +6,26 @@ fitted label it shares the most spots with, one to one, by
 pairs coded `A * 1_000 + B`; `phase_free` codes `(A, B)` and `(B, A)` alike.
 
 `overlap`, `matched`, `integer_clones`, `planted_classes`, `phase_free` and
-`swapped` score a fit; `planted` reads a CalicoST sample's truth
-(`truth_clone_labels.tsv`, `truth_acn_profile.tsv`, plain or `.gz`).
+`swapped` score a fit; `planted` reads a sample's truth
+(`truth_clone_labels.tsv`, `truth_acn_profile.tsv`): from a directory, plain
+or `.gz`, or from the bytes a staged file stores under `/truth`.
+
+`at_truth` and `copy_rows` read a run's labels at the truth's barcodes and
+score its copy pairs: the phase-free copy ARI and exact altered rate.
 """
 
 from __future__ import annotations
 
+import io
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
 from scipy.optimize import linear_sum_assignment
+from sklearn.metrics import adjusted_rand_score
 
 NEUTRAL = 1_001
 """The planted pair `(1, 1)`, as `A * 1_000 + B`."""
@@ -109,9 +117,14 @@ class Truth:
         return copies
 
 
-def planted(sample: Path) -> Truth:
-    """`sample`'s truth files: the planted clone labels and allele-specific copy profile."""
-    table = pd.read_csv(_located(sample / "truth_clone_labels.tsv"), sep="\t", index_col=0).reset_index()
+def _truth_file(sample: Path | Mapping[str, bytes], name: str) -> Any:
+    """`name` from a sample directory (plain or `.gz`), or its bytes from a mapping of them."""
+    return _located(sample / name) if isinstance(sample, Path) else io.BytesIO(sample[name])
+
+
+def planted(sample: Path | Mapping[str, bytes]) -> Truth:
+    """`sample`'s truth files, a directory or the bytes by name: the planted clone labels and allele-specific copies."""
+    table = pd.read_csv(_truth_file(sample, "truth_clone_labels.tsv"), sep="\t", index_col=0).reset_index()
     table.columns = ["barcode", "clone", "x", "y", *table.columns[4:]]
     others = sorted((n for n in table["clone"].unique() if n != "normal"), key=lambda n: int(n.removeprefix("clone_")))
     clones = ("normal", *others)
@@ -120,5 +133,34 @@ def planted(sample: Path) -> Truth:
         barcodes=table["barcode"].to_numpy().astype(str),
         labels=table["clone"].map(index).to_numpy(dtype=np.int64),
         clones=clones,
-        profile=pd.read_csv(_located(sample / "truth_acn_profile.tsv"), sep="\t"),
+        profile=pd.read_csv(_truth_file(sample, "truth_acn_profile.tsv"), sep="\t"),
     )
+
+
+# --- a staged run's copy rows ------------------------------------------------
+
+
+def at_truth(barcodes: np.ndarray, labels: np.ndarray, truth: Truth) -> np.ndarray:
+    """`labels` (in the run's spot order) read at the truth's barcodes; -1 where the run dropped a spot."""
+    return pd.Series(labels, index=np.asarray(barcodes).astype(str)).reindex(truth.barcodes, fill_value=-1).to_numpy()
+
+
+def copy_rows(fitted: np.ndarray, seglevel: pd.DataFrame, truth: Truth) -> dict[str, float]:
+    """Planted pairs at each `seglevel` midpoint, per matched clone: the phase-free copy ARI and the phase-free exact
+    rate over altered clone-bins (`fitted` at the truth's barcodes)."""
+    scored = fitted >= 0
+    clone_of = matched(overlap(truth.labels[scored], fitted[scored], truth.n_clones, int(fitted.max()) + 1))
+    middle = ((seglevel["START"] + seglevel["END"]) // 2).to_numpy()
+    copies = truth.copies_at(seglevel["CHR"].astype(str).to_numpy(), middle)
+    covered = copies[:, 0, 0] >= 0
+    t, ab = [], []
+    for clone, fit in clone_of.items():
+        t.append(copies[covered, clone, 0] * 1_000 + copies[covered, clone, 1])
+        ab.append(seglevel[f"clone{fit} A"].to_numpy()[covered] * 1_000 + seglevel[f"clone{fit} B"].to_numpy()[covered])
+    t_all, ab_all = np.concatenate(t), np.concatenate(ab)
+    altered = t_all != NEUTRAL
+    either = (t_all == ab_all) | (t_all == swapped(ab_all))
+    return {
+        "copy_ari_pf": float(adjusted_rand_score(phase_free(t_all), phase_free(ab_all))),
+        "exact_altered_pf": float(np.mean(either[altered])),
+    }

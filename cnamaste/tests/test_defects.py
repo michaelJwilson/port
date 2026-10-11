@@ -7,8 +7,9 @@ does not reproduce on the inputs used here says so and passes. A planned departu
 strict xfail asserting the planned behaviour; the runtime goals are
 `test_runtime.py`'s.
 
-Inputs: the staged CalicoST easy run where it holds the case, else a few-element
-synthetic input built in the row. Issues that concern no code or data
+Inputs: the staged run where it holds the case, else a few-element synthetic
+input built in the row. A row states CalicoST easy's observation; `OBSERVED`
+states where another fixture's differs. Issues that concern no code or data
 cnamaste holds (Ticket#593, Ticket#614, Ticket#788, Ticket#598, Ticket#803)
 and Ticket#161 (`cnaster.wolff`, which `run_cnamaste` does not reach, so
 cnamaste does not copy it) have no row.
@@ -604,12 +605,19 @@ def _(**_: Any) -> None:
 
 MARKS = {"xfail": True, "departure": True}
 
+OBSERVED: dict[str, dict[str, tuple[str, str]]] = {}
+"""Fixture hash -> row id (`<issue> <function>`) -> (status, reason), where that fixture's capture observes the row
+otherwise than the row states (which is CalicoST easy's observation): a defect easy does not reproduce that another
+fixture does, or the reverse. Empty: at this capture CalicoST hard, `dev_tree_easy` r0 and `dev_tree_easy_square` r0
+observe every row as easy does."""
+
 
 @pytest.mark.parametrize("entry", ROWS, ids=[f"{r.issue} {r.function}" for r in ROWS])
 def test_defect(sim_hash: str, entry: Row, request: pytest.FixtureRequest, tmp_path: Path) -> None:
     """One issue: its reproduction, asserting the correct behaviour."""
-    if MARKS.get(entry.status):
-        request.applymarker(pytest.mark.xfail(strict=True, reason=entry.reason, raises=entry.raises))
+    status, reason = OBSERVED.get(sim_hash, {}).get(f"{entry.issue} {entry.function}", (entry.status, entry.reason))
+    if MARKS.get(status):
+        request.applymarker(pytest.mark.xfail(strict=True, reason=reason, raises=entry.raises))
     wanted = inspect.signature(entry.check).parameters
     fixtures = {name: request.getfixturevalue(name) for name in ("sim", "replayed", "lineage") if name in wanted}
     entry.check(tmp_path=tmp_path, **fixtures)

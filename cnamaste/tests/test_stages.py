@@ -46,7 +46,7 @@ from sklearn.neighbors import LocalOutlierFactor
 import cnamaste.hmm_nophasing as nophasing
 from audit.capture import digest
 from audit.criteria import FRAMES, Bins, RuleBroken, Units, bins_of, minor_baf, normal_baf_outside
-from audit.scoring import NEUTRAL, matched, overlap, phase_free, swapped
+from audit.scoring import copy_rows, matched, overlap
 from audit.segments import DROPPED
 from cnamaste.config import set_global_config
 from cnamaste.hmm_nophasing import get_log_transmat
@@ -363,29 +363,13 @@ def fitted_at_truth(run: Run, truth: Any, labels: np.ndarray) -> np.ndarray:
 
 
 def final_labels(run: Run) -> np.ndarray:
-    return np.asarray(run("08_rdr/reindex_clones/out/0")["new_assignment"])
+    return np.asarray(run.sim.result("08_rdr/reindex_clones/out/0")["new_assignment"])
 
 
 def copy_scores(run: Run, truth: Any) -> dict[str, float]:
-    """score_sample's copy rows: planted pairs at each seglevel midpoint, per matched clone."""
+    """score_sample's copy rows: planted pairs at each seglevel midpoint, per matched clone (`audit.scoring.copy_rows`)."""
     seglevel = pd.read_csv(pd.io.common.BytesIO(run.sim.file("cnv_seglevel.tsv")), sep="\t")
-    fitted = fitted_at_truth(run, truth, final_labels(run))
-    scored = fitted >= 0
-    clone_of = matched(overlap(truth.labels[scored], fitted[scored], truth.n_clones, int(fitted.max()) + 1))
-    middle = ((seglevel["START"] + seglevel["END"]) // 2).to_numpy()
-    planted = truth.copies_at(seglevel["CHR"].astype(str).to_numpy(), middle)
-    covered = planted[:, 0, 0] >= 0
-    t, ab = [], []
-    for clone, fit in clone_of.items():
-        t.append(planted[covered, clone, 0] * 1_000 + planted[covered, clone, 1])
-        ab.append(seglevel[f"clone{fit} A"].to_numpy()[covered] * 1_000 + seglevel[f"clone{fit} B"].to_numpy()[covered])
-    t_all, ab_all = np.concatenate(t), np.concatenate(ab)
-    altered = t_all != NEUTRAL
-    either = (t_all == ab_all) | (t_all == swapped(ab_all))
-    return {
-        "copy_ari_pf": float(adjusted_rand_score(phase_free(t_all), phase_free(ab_all))),
-        "exact_altered_minor": float(np.mean(either[altered])),
-    }
+    return copy_rows(fitted_at_truth(run, truth, final_labels(run)), seglevel, truth)
 
 
 def baf_ari(run: Run, truth: Any) -> float:
@@ -409,7 +393,7 @@ def normal_purity(run: Run, truth: Any) -> float:
 
 def state_recovery(run: Run, truth: Any) -> dict[str, float]:
     """|fitted - planted| per clone-bin, mean: BAF p against B/(A+B), mu against (A+B)/2, at matched clones."""
-    res = run("08_rdr/reindex_clones/out/0")
+    res = run.sim.result("08_rdr/reindex_clones/out/0")
     seglevel = pd.read_csv(pd.io.common.BytesIO(run.sim.file("cnv_seglevel.tsv")), sep="\t")
     fitted = fitted_at_truth(run, truth, final_labels(run))
     scored = fitted >= 0
@@ -430,30 +414,76 @@ def state_recovery(run: Run, truth: Any) -> dict[str, float]:
     return {"p_error": float(np.mean(np.concatenate(dp))), "mu_error": float(np.mean(np.concatenate(dmu)))}
 
 
-SCIENCE: dict[str, tuple[Callable[[Run, Any], float], str, float, Any]] = {
-    "BAF clone ARI (recorded 0.7225)": (baf_ari, ">=", 0.7025, None),
-    "RDR clone ARI (recorded 0.9694, the ledger's)": (rdr_ari, ">=", 0.9494, None),
-    "copy ARI, phase-free (recorded 0.8216, the ledger's)": (lambda r, t: copy_scores(r, t)["copy_ari_pf"], ">=", 0.8016, None),
-    "exact altered, phase-free (recorded 0.3794, the ledger's)": (lambda r, t: copy_scores(r, t)["exact_altered_minor"], ">=", 0.3594, None),
-    "normal-candidate purity (recorded 1.0000)": (normal_purity, ">=", 0.98, None),
-    "BAF p recovery, mean |minor p - planted| (recorded 0.0037)": (lambda r, t: state_recovery(r, t)["p_error"], "<=", 0.0237, None),
-    "mu recovery, mean |mu - (A+B)/2| (recorded 0.0664)": (lambda r, t: state_recovery(r, t)["mu_error"], "<=", 0.0864, None),
+SCIENCE: dict[str, tuple[Callable[[Run, Any], float], str]] = {
+    "BAF clone ARI": (baf_ari, ">="),
+    "RDR clone ARI (the ledger's clone_ari)": (rdr_ari, ">="),
+    "copy ARI, phase-free (the ledger's)": (lambda r, t: copy_scores(r, t)["copy_ari_pf"], ">="),
+    "exact altered, phase-free (the ledger's)": (lambda r, t: copy_scores(r, t)["exact_altered_pf"], ">="),
+    "normal-candidate purity": (normal_purity, ">="),
+    "BAF p recovery, mean |minor p - planted|": (lambda r, t: state_recovery(r, t)["p_error"], "<="),
+    "mu recovery, mean |mu - (A+B)/2|": (lambda r, t: state_recovery(r, t)["mu_error"], "<="),
 }
-"""Name -> (score, direction, bound, xfail reason or None). Each bound is the recorded value less (or plus) `MARGIN`.
-The planted defects these scores would show on other fixtures (Ticket#320's impure normal candidates) are `test_defects.py`'s."""
+"""Name -> (score, direction). The planted defects these scores would show on other fixtures (Ticket#320's impure
+normal candidates) are `test_defects.py`'s."""
+
+RECORDED: dict[str, dict[str, float]] = {
+    "2d4ce9a9": {
+        "BAF clone ARI": 0.7225,
+        "RDR clone ARI (the ledger's clone_ari)": 0.9694,
+        "copy ARI, phase-free (the ledger's)": 0.8216,
+        "exact altered, phase-free (the ledger's)": 0.3794,
+        "normal-candidate purity": 1.0,
+        "BAF p recovery, mean |minor p - planted|": 0.0037,
+        "mu recovery, mean |mu - (A+B)/2|": 0.0664,
+    },
+    "23acef50": {
+        "BAF clone ARI": 0.3167,
+        "RDR clone ARI (the ledger's clone_ari)": 0.6064,
+        "copy ARI, phase-free (the ledger's)": 0.7650,
+        "exact altered, phase-free (the ledger's)": 0.7459,
+        "normal-candidate purity": 0.8742,
+        "BAF p recovery, mean |minor p - planted|": 0.0079,
+        "mu recovery, mean |mu - (A+B)/2|": 0.0409,
+    },
+    "8797710b": {
+        "BAF clone ARI": 0.6904,
+        "RDR clone ARI (the ledger's clone_ari)": 0.7620,
+        "copy ARI, phase-free (the ledger's)": 0.8597,
+        "exact altered, phase-free (the ledger's)": 0.3395,
+        "normal-candidate purity": 0.9733,
+        "BAF p recovery, mean |minor p - planted|": 0.0047,
+        "mu recovery, mean |mu - (A+B)/2|": 0.0914,
+    },
+    "e4bbe03f": {
+        "BAF clone ARI": 0.3202,
+        "RDR clone ARI (the ledger's clone_ari)": 0.3531,
+        "copy ARI, phase-free (the ledger's)": 0.8912,
+        "exact altered, phase-free (the ledger's)": 0.5620,
+        "normal-candidate purity": 0.8571,
+        "BAF p recovery, mean |minor p - planted|": 0.0054,
+        "mu recovery, mean |mu - (A+B)/2|": 0.0411,
+    },
+}
+"""Fixture hash -> each score as its capture records it, 4 decimals. A row's bound is the recorded value less (or, for
+an error, plus) `MARGIN`. The `dev_tree_easy` fixtures' normal-candidate purity (0.86-0.87) is Ticket#320's impure
+candidates, pinned at what the capture records."""
 
 MARGIN = 0.02
 
 
+def bound(sim_hash: str, name: str) -> float:
+    recorded = RECORDED[sim_hash][name]
+    return recorded - MARGIN if SCIENCE[name][1] == ">=" else recorded + MARGIN
+
+
 @pytest.mark.parametrize("name", list(SCIENCE))
-def test_science(run: Run, truth: Any, name: str, request: pytest.FixtureRequest) -> None:
-    """A recovery of the planted truth, against its floor (or ceiling)."""
-    score, direction, bound, defect = SCIENCE[name]
-    if defect is not None:
-        request.applymarker(pytest.mark.xfail(strict=True, reason=defect))
+def test_science(run: Run, truth: Any, sim_hash: str, name: str) -> None:
+    """A recovery of the planted truth, against its floor (or ceiling) for this fixture."""
+    score, direction = SCIENCE[name]
     value = score(run, truth)
-    print(f"{name}: {value:.4f}")
-    assert value >= bound if direction == ">=" else value <= bound
+    limit = bound(sim_hash, name)
+    print(f"{sim_hash} {name}: {value:.4f} (recorded {RECORDED[sim_hash][name]:.4f}, bound {limit:.4f})")
+    assert value >= limit if direction == ">=" else value <= limit
 
 
 # --- config criteria -----------------------------------------------------------
@@ -508,9 +538,15 @@ def length(binning: Callable[[Units], Bins]) -> Callable[[Units, Any], Check]:
 
 
 def raw_inputs(u: Units) -> tuple[Any, np.ndarray, np.ndarray]:
-    """The committed sample as the loader reads it: the AnnData, and A and B (spots, SNPs) in its barcode order."""
-    sample = u.replayed.staged.root / "inputs" / Path(u.sim.config["sample"]).name
-    adata = anndata.read_h5ad(sample / "filtered_feature_bc_matrix.h5ad")
+    """The staged sample as the loader reads it: the AnnData (a drawn sample's slices concatenated in sample-sheet
+    order), and A and B (spots, SNPs) in its barcode order."""
+    (sample,) = (u.replayed.staged.root / "inputs").iterdir()
+    if u.sim.config.get("drawn"):
+        ids = pd.read_csv(u.replayed.staged.root / "sample_sheet.tsv", sep="\t")["sample_id"].astype(str)
+        adata = anndata.concat([anndata.read_h5ad(sample / s / "filtered_feature_bc_matrix.h5ad") for s in ids])
+        sample = sample / "snp"
+    else:
+        adata = anndata.read_h5ad(sample / "filtered_feature_bc_matrix.h5ad")
     barcodes = (sample / "barcodes.txt").read_text().split()
     order = pd.Index(barcodes).get_indexer(adata.obs_names)
     assert np.all(order >= 0)
@@ -597,7 +633,10 @@ class Criterion(NamedTuple):
 
 BACKED = "new: greedy_binning_nobreak backs off one unit when a bin meeting its floors reaches max_binlength, leaving it under a floor (omics.py:66-73)"
 TAIL = "new: a short run tail merged into the bin before it takes that bin past max_binlength (omics.py:85-98)"
-CAPTURE = "the capture holds no fit trace: needs scripts/capture_cnamaste.py's fit-trace extension (scratchpad/s872), re-captured"
+PRECISION_LOSS = ("Ticket#895: every M-step BFGS returns success False, 'Desired error not necessarily achieved due to "
+                  "precision loss', after at most 28 of max_iter's 100 iterations, on every fixture (hmm_nophasing.py:1028-1035)")
+LLF_FALLS = "Ticket#896: total_llf falls between outer iterations on every fixture (hmrf.py:706-720)"
+CAPTURE = "the staged file holds no fit trace (/internal/<run> ari, total_llf, optimizer): re-capture it"
 
 
 def traced(u: Units, key: str, *, split: bool = False) -> list[Any]:
@@ -619,7 +658,7 @@ def llf_rises(u: Units) -> Check:
     for llf in traced(u, "total_llf", split=True):
         before = np.asarray(llf[:-2])
         ok += list(np.diff(before) >= -1e-6 * np.abs(before[1:]))
-    return Check(flags(*ok))
+    return Check(flags(*ok), known=True)
 
 CRITERIA = [
     Criterion("02_blocks", "blocks", "quality.phasing_min_snp_umis", "SNP-covering UMI", ">=", "a contig's last block",
@@ -653,7 +692,8 @@ CRITERIA = [
               "new: hmm.tol only enters a log line (hmm_nophasing.py:1120); scipy.optimize.minimize stops on its literal "
               "gtol 1e-5 or max_iter (hmm_nophasing.py:1005-1010)"),
     Criterion("05_baf, 08_rdr", "fit", "hmm.max_iter", "each M-step optimizer converged, or ran max_iter iterations", "==", "none",
-              lambda u, v: Check(flags(*(o["success"] or o["nit"] >= v for o in traced(u, "optimizer"))))),
+              lambda u, v: Check(flags(*(o["success"] or o["nit"] >= v for o in traced(u, "optimizer"))), known=True),
+              PRECISION_LOSS),
     Criterion("05_baf, 08_rdr", "fit", "hmrf.ari_tolerance", "ARI of consecutive assignments reaches it before the merge rounds "
               "(hmrf.py:706-720), or the loop ran max_iter_outer + 1 iterations", ">=", "none", lambda u, v: outer_stop(u, v)),
     Criterion("05_baf, 08_rdr", "M step", "hmm.em_ftol", "the M-step optimizer's ftol is hmm.em_ftol", "==", "none",
@@ -662,7 +702,7 @@ CRITERIA = [
     Criterion("05_baf, 08_rdr", "M step", "hmm.em_ftol", "the last M step's final relative objective change", "<=", "none",
               lambda u, v: Check(flags(*(o[-1]["last_relative_change"] <= float(v) for o in traced(u, "optimizer", split=True))))),
     Criterion("05_baf, 08_rdr", "fit", None, "total_llf non-decreasing over the outer iterations before the merge rounds, "
-              "to 1e-6 relative (Ticket#30, Ticket#146)", ">=", "none", lambda u, v: llf_rises(u)),
+              "to 1e-6 relative (Ticket#30, Ticket#146)", ">=", "none", lambda u, v: llf_rises(u), LLF_FALLS),
     Criterion("06_normal", "M step", "hmm.solver", "em_xtol and em_xrtol reach the solver (hmm_utils.py:23-40)", "==", "none",
               lambda u, v: (set_global_config(u.replayed.staged.config),
                             Check(flags(*(k in get_em_solver_params() for k in ("xtol", "xrtol"))), known=True))[1],
@@ -792,17 +832,76 @@ def clone_columns(u: Units) -> Check:
     return Check(flags(found[0] == found[1] == found[2], len(set(found[0])) == len(found[0])))
 
 
+def criterion_id(c: Criterion) -> str:
+    """A row's key in the per-fixture tables: stage, level, key and quantity."""
+    return f"{c.stage} {c.level}: {c.key or '-'}: {c.quantity}"
+
+
+assert len({criterion_id(c) for c in CRITERIA}) == len(CRITERIA)
+
+
+def named(stage: str, quantity: str) -> str:
+    """The criterion id of the one row at `stage` whose quantity starts with `quantity`."""
+    (found,) = [criterion_id(c) for c in CRITERIA if c.stage == stage and c.quantity.startswith(quantity)]
+    return found
+
+
+FIT = "05_baf, 08_rdr"
+BINS_SNP = named("04_bins", "SNP-covering UMI")
+REBIN_SNP = named("07_rebin", "SNP-covering UMI")
+REBIN_NORMAL = named("07_rebin", "normal-candidate UMI")
+BINS_SPAN = named("04_bins", "summed block span")
+REBIN_SPAN = named("07_rebin", "summed kept-bin span")
+M_STEP_ITERATIONS = named(FIT, "each M-step optimizer converged")
+LLF = named(FIT, "total_llf non-decreasing")
+DISPERSIONS = named(FIT, "alphas in")
+MAX_RDR = named(FIT, "exp(log_mu) <= max_rdr")
+SLICES = named("09_outputs", "barcodes unique, sample_id")
+
+TAUS_UNBOUNDED = ("new: taus pass hmm_nophasing's 5e3 bound, which the M step does not pass to the optimizer "
+                  "(bounds=None, hmm_nophasing.py:1033)")
+MU_UNBOUNDED = ("new: a state's exp(log_mu) passes max_rdr 5.0, a bound the M step does not pass to the optimizer "
+                "(bounds=None, hmm_nophasing.py:1033)")
+
+EXCEPTIONS: dict[str, dict[str, int]] = {
+    "2d4ce9a9": {BINS_SNP: 27, REBIN_SNP: 31, REBIN_NORMAL: 2, BINS_SPAN: 46, REBIN_SPAN: 71},
+    "23acef50": {BINS_SNP: 12, REBIN_SNP: 12, BINS_SPAN: 44, REBIN_SPAN: 48},
+    "8797710b": {BINS_SNP: 29, REBIN_SNP: 31, REBIN_NORMAL: 2, BINS_SPAN: 44, REBIN_SPAN: 67},
+    "e4bbe03f": {BINS_SNP: 14, REBIN_SNP: 14, REBIN_NORMAL: 1, BINS_SPAN: 46, REBIN_SPAN: 52},
+}
+"""Fixture hash -> criterion id -> the stated exceptions its capture counts (items failing the criterion inside the
+row's stated exceptions). A row absent here has none; a different count fails."""
+
+DEPARTS: dict[str, dict[str, str | None]] = {
+    # NB on two slices the barcodes carry the sample suffix construct_df_clone_label reads (SLICES holds); no run
+    #    tail takes a bin past max_binlength (BINS_SPAN), and no bin backs off under the normal floor (REBIN_NORMAL)
+    "23acef50": {DISPERSIONS: TAUS_UNBOUNDED, BINS_SPAN: None, REBIN_NORMAL: None, SLICES: None},
+    "8797710b": {DISPERSIONS: TAUS_UNBOUNDED, MAX_RDR: MU_UNBOUNDED, BINS_SPAN: None},
+    "e4bbe03f": {BINS_SPAN: None, REBIN_NORMAL: None, SLICES: None},
+}
+"""Fixture hash -> criterion id -> the strict xfail's reason for that fixture, or None where it holds there: where a
+fixture's capture departs (or not) otherwise than the row states (CalicoST easy's observation). A reason given here
+names the mechanism of every failing item on that fixture."""
+
+
 @pytest.mark.parametrize("row", CRITERIA, ids=[f"{c.level}: {c.key or c.quantity}" for c in CRITERIA])
-def test_a_config_criterion_holds(units: Units, request: pytest.FixtureRequest, row: Criterion) -> None:
-    """The row's quantity, against the run's own `/config` value, holds for every item but its stated exceptions."""
-    if row.departs:
-        request.applymarker(pytest.mark.xfail(strict=True, reason=row.departs, raises=RuleBroken))
+def test_a_config_criterion_holds(units: Units, sim_hash: str, request: pytest.FixtureRequest, row: Criterion) -> None:
+    """The row's quantity, against the run's own `/config` value, holds for every item but its stated exceptions,
+    which number what this fixture's capture counts (`EXCEPTIONS`)."""
+    stated = DEPARTS.get(sim_hash, {})
+    departs = stated.get(criterion_id(row), row.departs)
+    if departs:
+        request.applymarker(pytest.mark.xfail(strict=True, reason=departs, raises=RuleBroken))
     value = units.setting(row.key) if row.key and not row.key.startswith("int_copy_num.max_") else None
     check = row.measure(units, value)
     ok, allowed, known = (np.broadcast_to(np.asarray(x, dtype=bool), np.shape(check.ok)) for x in check)
+    if stated.get(criterion_id(row)):
+        known = np.ones_like(ok)
     outside = ~ok & ~allowed
     print(f"{row.level}: {row.quantity} {row.op} {row.key}={value}: {ok.size} checked, "
           f"{int((~ok & allowed).sum())} stated exceptions, {int(outside.sum())} outside them")
     assert not np.any(outside & ~known), f"{int((outside & ~known).sum())} items fail outside the stated exceptions"
+    excepted = int((~ok & allowed).sum())
+    assert excepted == EXCEPTIONS.get(sim_hash, {}).get(criterion_id(row), 0), f"{excepted} stated exceptions"
     if np.any(outside):
         raise RuleBroken(f"{int(outside.sum())} items fail by the named mechanism")

@@ -73,9 +73,9 @@ def bins_leave_where_normal_baf_is_off_balance(u: Units) -> None:
     assert np.array_equal(np.unique(kept.label[kept.label != DROPPED]), np.arange(int((~removed).sum())))
 
 
-RECORDED_CROSSINGS = 0
-"""Re-binned bins whose genes span two phase segments, on easy. The second binning cuts runs only at contigs, so a
-re-binned bin need not respect the phase segments; on easy none crosses one."""
+RECORDED_CROSSINGS: dict[str, int] = {"2d4ce9a9": 0, "23acef50": 1, "8797710b": 1, "e4bbe03f": 0}
+"""Fixture hash -> re-binned bins whose genes span two phase segments, as its capture records it. The second binning
+cuts runs only at contigs, so a re-binned bin need not respect the phase segments; on easy none crosses one."""
 
 
 def rebins_stay_inside_contigs(u: Units) -> None:
@@ -85,7 +85,7 @@ def rebins_stay_inside_contigs(u: Units) -> None:
     called = rebinned.label != DROPPED
     crossing = int(np.sum(pd.Series(phase.label[called]).groupby(rebinned.label[called]).nunique().to_numpy() > 1))
     print(f"re-binned bins across a phase-segment boundary: {crossing} of {rebinned.n_segments}")
-    assert crossing == RECORDED_CROSSINGS
+    assert crossing == RECORDED_CROSSINGS[str(u.sim.config["fixture_hash"])]
 
 
 class Row(NamedTuple):

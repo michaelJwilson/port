@@ -100,9 +100,11 @@ def _initial_partition(d: dict[str, Any]) -> None:
     index, coords = d["initial"], d["coords"]
     every = np.sort(np.concatenate(index))
     assert np.array_equal(every, np.arange(len(coords)))
-    boxes = [(coords[i, 0].min(), coords[i, 0].max(), coords[i, 1].min(), coords[i, 1].max()) for i in index if len(i)]
-    for (a, b) in itertools.combinations(boxes, 2):
-        assert a[1] < b[0] or b[1] < a[0] or a[3] < b[2] or b[3] < a[2], "two initial clones' bounding boxes overlap"
+    # NB per slice: each slice is partitioned on its own, and two slices' coordinates may share a frame
+    boxes = [(d["sample_ids"][i[0]], (coords[i, 0].min(), coords[i, 0].max(), coords[i, 1].min(), coords[i, 1].max()))
+             for i in index if len(i)]
+    for (sa, a), (sb, b) in itertools.combinations(boxes, 2):
+        assert sa != sb or a[1] < b[0] or b[1] < a[0] or a[3] < b[2] or b[3] < a[2], "two initial clones' bounding boxes overlap"
 
 
 def _rectangular(d: dict[str, Any]) -> None:
