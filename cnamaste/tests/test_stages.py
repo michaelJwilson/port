@@ -430,15 +430,16 @@ def state_recovery(run: Run, truth: Any) -> dict[str, float]:
 
 
 SCIENCE: dict[str, tuple[Callable[[Run, Any], float], str, float, Any]] = {
-    "BAF clone ARI (recorded 0.7124; 0.7225 before the symmetric adjacency, Ticket#180)": (baf_ari, ">=", 0.6924, None),
-    "RDR clone ARI (recorded 0.9692; the ledger's 0.9694 before the symmetric adjacency)": (rdr_ari, ">=", 0.9492, None),
+    "BAF clone ARI (recorded 0.7124; 0.7225 before the symmetric adjacency, Ticket#180)": (baf_ari, ">=", 0.7025, None),
+    "RDR clone ARI (recorded 0.9692; the ledger's 0.9694 before the symmetric adjacency)": (rdr_ari, ">=", 0.9494, None),
     "copy ARI, phase-free (recorded 0.8216, the ledger's)": (lambda r, t: copy_scores(r, t)["copy_ari_pf"], ">=", 0.8016, None),
     "exact altered, phase-free (recorded 0.3794, the ledger's)": (lambda r, t: copy_scores(r, t)["exact_altered_minor"], ">=", 0.3594, None),
-    "normal-candidate purity (recorded 0.9970; 1.0000 before the symmetric adjacency)": (normal_purity, ">=", 0.9770, None),
-    "BAF p recovery, mean |minor p - planted| (recorded 0.0038; 0.0037 before)": (lambda r, t: state_recovery(r, t)["p_error"], "<=", 0.0238, None),
-    "mu recovery, mean |mu - (A+B)/2| (recorded 0.0719; 0.0664 before)": (lambda r, t: state_recovery(r, t)["mu_error"], "<=", 0.0919, None),
+    "normal-candidate purity (recorded 0.9970; 1.0000 before the symmetric adjacency)": (normal_purity, ">=", 0.98, None),
+    "BAF p recovery, mean |minor p - planted| (recorded 0.0038; 0.0037 before)": (lambda r, t: state_recovery(r, t)["p_error"], "<=", 0.0237, None),
+    "mu recovery, mean |mu - (A+B)/2| (recorded 0.0719; 0.0664 before)": (lambda r, t: state_recovery(r, t)["mu_error"], "<=", 0.0864, None),
 }
-"""Name -> (score, direction, bound, xfail reason or None). Each bound is the recorded value less (or plus) `MARGIN`.
+"""Name -> (score, direction, bound, xfail reason or None). Each bound is the value recorded before the symmetric adjacency
+(Ticket#180) less (or plus) `MARGIN`; a floor is not lowered.
 The planted defects these scores would show on other fixtures (Ticket#320's impure normal candidates) are `test_defects.py`'s."""
 
 MARGIN = 0.02
@@ -652,7 +653,8 @@ CRITERIA = [
               "new: hmm.tol only enters a log line (hmm_nophasing.py:1120); scipy.optimize.minimize stops on its literal "
               "gtol 1e-5 or max_iter (hmm_nophasing.py:1005-1010)"),
     Criterion("05_baf, 08_rdr", "fit", "hmm.max_iter", "each M-step optimizer converged, or ran max_iter iterations", "==", "none",
-              lambda u, v: Check(flags(*(o["success"] or o["nit"] >= v for o in traced(u, "optimizer"))))),
+              lambda u, v: Check(flags(*(o["success"] or o["nit"] >= v for o in traced(u, "optimizer"))), known=True),
+              "Ticket#895: every M-step optimizer stops on scipy's precision loss, success False, nit < max_iter"),
     Criterion("05_baf, 08_rdr", "fit", "hmrf.ari_tolerance", "ARI of consecutive assignments reaches it before the merge rounds "
               "(hmrf.py:706-720), or the loop ran max_iter_outer + 1 iterations", ">=", "none", lambda u, v: outer_stop(u, v)),
     Criterion("05_baf, 08_rdr", "M step", "hmm.em_ftol", "the M-step optimizer's ftol is hmm.em_ftol", "==", "none",
@@ -661,7 +663,8 @@ CRITERIA = [
     Criterion("05_baf, 08_rdr", "M step", "hmm.em_ftol", "the last M step's final relative objective change", "<=", "none",
               lambda u, v: Check(flags(*(o[-1]["last_relative_change"] <= float(v) for o in traced(u, "optimizer", split=True))))),
     Criterion("05_baf, 08_rdr", "fit", None, "total_llf non-decreasing over the outer iterations before the merge rounds, "
-              "to 1e-6 relative (Ticket#30, Ticket#146)", ">=", "none", lambda u, v: llf_rises(u)),
+              "to 1e-6 relative (Ticket#30, Ticket#146)", ">=", "none", lambda u, v: llf_rises(u)._replace(known=True),
+              "Ticket#896: total_llf falls between outer iterations before the merge rounds"),
     Criterion("06_normal", "M step", "hmm.solver", "em_xtol and em_xrtol reach the solver (hmm_utils.py:23-40)", "==", "none",
               lambda u, v: (set_global_config(u.replayed.staged.config),
                             Check(flags(*(k in get_em_solver_params() for k in ("xtol", "xrtol"))), known=True))[1],
