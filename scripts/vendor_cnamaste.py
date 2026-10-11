@@ -15,7 +15,9 @@ without, so the copy installs as a regular package. The project around it,
 writes nothing and exits 1 where a file differs from the copy without a
 declaration, where a declared file no longer differs, or where a file is
 missing or extra: the committed tree is this script's output plus the declared
-edits.
+edits. `ADDED` declares each file cnamaste owns beyond the copy, under
+`cnamaste/tests/`, and `--check` refuses one there it does not declare. The
+capture that writes its staged-run file is port's, `scripts/capture_cnamaste.py`.
 """
 
 from __future__ import annotations
@@ -38,6 +40,28 @@ DEPARTED: dict[str, str] = {
     "utils.py": "PR1, T- #692: write_fig releases each Text's cached renderer",
 }
 """Copied file -> the T- #836 PR that edits it. Only grows."""
+
+PROJECT = ROOT / "cnamaste"
+OWNED = ("tests",)
+"""cnamaste's own directory beside the copy: every file in it is declared in `ADDED`."""
+
+ADDED: dict[str, str] = {
+    "tests/conftest.py": "PR2: the session fixtures over a staged run",
+    "tests/audit/capture.py": "PR2: the staged-run file's codec and reader",
+    "tests/audit/segments.py": "PR2: port's extensions/segments.py, trimmed",
+    "tests/audit/criteria.py": "PR2: each level's units and counts, recomputed from the staged inputs",
+    "tests/audit/scoring.py": "PR2: port's qa/scoring.py and the truth reader",
+    "tests/data/sim_2d4ce9a9.hdf5": "PR2: CalicoST easy, staged",
+    "tests/test_stages.py": "PR2: replay, bookkeeping and science per stage",
+    "tests/test_lineage.py": "PR2: the segment and clone hierarchies",
+    "tests/test_lookups.py": "PR2: index lookups through merges, reindexing and filtering",
+    "tests/test_roundtrip.py": "PR2: the run's inputs against its outputs",
+    "tests/test_defects.py": "PR2: one row per port issue, a strict xfail where cnamaste has the defect",
+    "tests/test_runtime.py": "PR2: the runtime goals port measured, as placeholders",
+    "tests/data/rectangular_hang.npz": "PR2: port's tests/data copy, #304/#692's coordinates",
+}
+"""File cnamaste owns beyond the copy and its project files, relative to `cnamaste/` -> the T- #836 PR
+that adds it. Only grows. Every file under `OWNED` must be here."""
 
 
 def pinned() -> tuple[str, Path]:
@@ -122,6 +146,20 @@ def check(tree: dict[str, str]) -> list[str]:
             problems.append(f"undeclared edit: {path}")
         if not differs and path in DEPARTED:
             problems.append(f"declared by {DEPARTED[path]} but unedited: {path}")
+    owned = {
+        str(p.relative_to(PROJECT))
+        for d in OWNED
+        for p in (PROJECT / d).rglob("*")
+        if p.is_file() and not {"__pycache__", ".pytest_cache"} & set(p.parts)
+    }
+    problems += [
+        f"undeclared addition: cnamaste/{p}" for p in sorted(owned - set(ADDED))
+    ]
+    problems += [
+        f"added but missing: cnamaste/{p}"
+        for p in sorted(ADDED)
+        if not (PROJECT / p).is_file()
+    ]
     return problems + [
         f"declared but not copied: {p}" for p in sorted(set(DEPARTED) - set(tree))
     ]
