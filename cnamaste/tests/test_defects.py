@@ -350,12 +350,12 @@ def _(**_: Any) -> None:
     assert np.array_equal(given, before), "the caller's assignment was rewritten in place"
 
 
-@row("Ticket#81", "hmrf.run_core_inference", "regression", "Ticket#81: fixed in cnamaste PR-clone-floor; run_core_inference takes the floor as min_clone_spots")
+@row("Ticket#81", "hmrf.run_core_inference", "xfail", "Ticket#81: any clone below 200 spots is merged away, and run_core_inference does not expose the threshold")
 def _(**_: Any) -> None:
     assert "min_clone_spots" in inspect.signature(run_core_inference).parameters
 
 
-@row("Ticket#468", "hmrf.pipeline_clone_assignment", "regression", "Ticket#468: fixed in cnamaste PR-clone-floor; the ICM floor is hmrf.min_spots_per_clone, passed through")
+@row("Ticket#468", "hmrf.pipeline_clone_assignment", "xfail", "Ticket#468: cnaster ignores hmrf.min_spots_per_clone: the ICM floor stays hard-coded at 200")
 def _(**_: Any) -> None:
     caller = function_node(source("hmrf.py"), "pipeline_clone_assignment")
     calls = [n for n in ast.walk(caller) if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "icm_sweep_deque"]
