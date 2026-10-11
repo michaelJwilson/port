@@ -92,6 +92,7 @@ ADDED: dict[str, str] = {
     "tests/data/sim_23acef50.hdf5": "PR10: dev_tree_easy_square r0, staged at efb2e9e, for test_truth.py",
     "tests/data/sim_e4bbe03f.hdf5": "PR10: dev_tree_easy r0, staged at efb2e9e, for test_truth.py",
     "tests/data/truth_phase_e4bbe03f.npy": "PR10: dev_tree_easy r0's planted phase at the loaded SNPs, square's too",
+    "tests/test_capture.py": "PR11: the capture's hard-link deduplication and drawn-sample staging",
 }
 """File cnamaste owns beyond the copy and its project files, relative to `cnamaste/` -> the T- #836 PR
 that adds it. Only grows. Every file under `OWNED` must be here."""
