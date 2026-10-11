@@ -660,7 +660,7 @@ def _(**_: Any) -> None:
     assert importlib.util.find_spec("pyarrow") is not None, "polars' to_pandas needs pyarrow (he.py:125)"
 
 
-@row("Ticket#311", "he.get_he_image", "xfail", "Ticket#311: get_he_image(num_labels=4) labels the brightest pixel 5, an extra initial clone")
+@row("Ticket#311", "he.get_he_image", "regression", "Ticket#311: fixed in cnamaste; get_he_image digitizes on the inner percentile edges, num_labels labels")
 def _(**_: Any) -> None:
     body = ast.unparse(function_node(source("he.py"), "get_he_image"))
     assert "np.digitize(cropped_gray, bins=bins[1:-1])" in body or "right=True" in body, \

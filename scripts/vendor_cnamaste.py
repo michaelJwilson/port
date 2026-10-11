@@ -47,6 +47,7 @@ DEPARTED: dict[str, str] = {
     "normal_spot.py": "D-dedup: an unused string copy of filter_normal_diffexp commented out; PR13, #165: filter_normal_diffexp splits INCLUDED_GENES on binned_gene_snp's ',' and returns its filtered genes",
     "plot_genomic.py": "D-dedup: an unused string copy of plot_clones_genomic commented out",
     "recomb.py": "D-dedup: unused string copies of the three recombination functions commented out",
+    "he.py": "PR21, #311: get_he_image digitizes on the inner percentile edges, num_labels labels from 0",
 }
 """Copied file -> the T- #836 PR that edits it. Only grows."""
 
