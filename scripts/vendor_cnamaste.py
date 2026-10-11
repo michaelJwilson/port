@@ -60,6 +60,7 @@ ADDED: dict[str, str] = {
     "tests/test_runtime.py": "PR2: the runtime goals port measured, as placeholders",
     "tests/data/rectangular_hang.npz": "PR2: port's tests/data copy, #304/#692's coordinates",
     "tests/test_config.py": "PR3: the shipped configurations, key by key",
+    "tests/test_constants.py": "PR7: the hard-coded constants, their values and how often each binds",
     "zenodo_sim_config.yaml": "PR3: cnaster 4adad4d's zenodo_sim_config.yaml, unmodified",
     "config.yaml": "PR3: cnaster 4adad4d's shipped config.yaml, unmodified",
     "tests/audit/callgraph.py": "PR4: the functions run_cnamaste reaches, static graph over the live namespace",
