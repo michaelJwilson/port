@@ -46,9 +46,15 @@ LEVELS = {
 
 
 @pytest.mark.parametrize("level", list(LEVELS))
-def test_segment_label_to_count_row(replayed: Any, lineage: Any, gene_counts: np.ndarray, level: str) -> None:
-    """Row k of the level's UMI counts is the sum of the genes the lineage labels k: `aggregate` of the input counts."""
-    expected = lineage.levels[level].aggregate(gene_counts)
+def test_segment_label_to_count_row(sim: Any, replayed: Any, lineage: Any, gene_counts: np.ndarray, level: str) -> None:
+    """Row k of the level's UMI counts is the sum of the genes the lineage labels k: `aggregate` of the input counts,
+    less the genes the differential-expression filter removes once re-binned (Ticket#440)."""
+    counts = gene_counts
+    if level == "rebinned":
+        _, filtered = replayed.value("06_normal/filter_normal_diffexp/out")
+        names = np.asarray(sim.stored("02_blocks/assign_initial_blocks/out")["gene"])[lineage.genes.row]
+        counts = np.where(np.isin(names, list(filtered))[:, None], 0, gene_counts)
+    expected = lineage.levels[level].aggregate(counts)
     assert np.array_equal(replayed.value(LEVELS[level])[:, 0, :], expected)
 
 

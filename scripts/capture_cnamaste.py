@@ -143,6 +143,11 @@ RECIPES: dict[str, list[Any]] = {
     "05_baf/run_core_inference/in/args/2": ["zeros_like", f"{BINS}/base_nb_mean"],
     "06_normal/determine_normal_candidates/in/args/3": ["zero_rdr", f"{BINS}/X"],
     "06_normal/determine_normal_candidates/in/args/4": ["rdr", f"{BINS}/X"],
+    "07_rebin/create_bin_ranges/in/args/1": [
+        "zero_genes",
+        "00_inputs/load_input_data/out/2",
+        "06_normal/filter_normal_diffexp/out/1",
+    ],
     "07_rebin/determine_normal_baseline/in/args/0": ["rdr", f"{REBIN}/X"],
     "07_rebin/determine_normal_baseline/out/1": [
         "zero_rows",
