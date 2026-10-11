@@ -71,6 +71,7 @@ ADDED: dict[str, str] = {
     "tests/test_fn_spatial.py": "PR4: per-function rows, partitions and the spot graph",
     "tests/test_fn_normal.py": "PR4: per-function rows, normal spots and the beta-binomial fit",
     "tests/test_fn_hmm.py": "PR4: per-function rows, emissions, lattices, M step, initialization",
+    "tests/test_properties.py": "PR5: model properties: normalisation, limits, invariance, monotonicity, phase flip, invalid values",
     "tests/test_fn_hmrf.py": "PR4: per-function rows, the clone field, ICM, merges, re-indexing",
     "tests/test_fn_integer.py": "PR4: per-function rows, the integer copy-number decoder",
     "tests/test_fn_outputs.py": "PR4: per-function rows, the outputs and run_cnamaste's glue",
