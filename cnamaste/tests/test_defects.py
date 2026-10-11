@@ -359,6 +359,23 @@ def _(**_: Any) -> None:
     assert np.array_equal(given, before), "the caller's assignment was rewritten in place"
 
 
+@row("Ticket#45", "icm.icm_sweep_deque (global seed)", "xfail",
+     "Ticket#45: icm_sweep_deque draws from numpy's global generator, so one input gives labels that follow the global seed")
+def _(**_: Any) -> None:
+    sizes = (20, 20, 12, 8)
+    given = np.repeat(np.arange(len(sizes)), sizes).astype(np.int64)
+    llf = np.where(np.arange(len(sizes)) == given[:, None], 0.0, -10.0)  # NB each spot prefers its given clone
+    adjacency = sp.csr_matrix((given.size, given.size))  # NB no edges: the floor's draws are the only edits
+    labels = []
+    for global_seed in (45, 46):
+        np.random.seed(global_seed)  # noqa: NPY002
+        sweep = given.copy()
+        icm_sweep_deque(llf, adjacency.indptr, adjacency.indices, adjacency.data, sweep, 0.0, None, min_clone_spots=10)
+        labels.append(sweep)
+    assert set(labels[0][-8:]) <= {0, 1, 2}, "the 8-spot clone under the floor of 10 is merged into the three above it"
+    assert np.array_equal(*labels), "two global seeds give the same inputs different labels"
+
+
 @row("Ticket#879", "icm.icm_sweep_deque (empty clone)", "xfail",
      "Ticket#879 (Ticket#81): the floor is skipped once any clone is empty: clone_counts.min() counts the empty clone as 0")
 def _(**_: Any) -> None:
