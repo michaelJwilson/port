@@ -20,7 +20,7 @@ from cnamaste.hmm_emission import OptimizationResult, Weighted_BetaBinom, Weight
 from cnamaste.hmm_utils import get_em_solver_params, get_solver
 from cnamaste.normal_spot import determine_normal_baseline, determine_normal_candidates, filter_normal_diffexp, normal_baf_bin_filter
 
-from audit.fn import Replay, Row, deep, run, table, unchanged
+from fn import Replay, Row, deep, run, table, unchanged
 
 
 def beta_draws(n: int = 800, p: float = 0.3, tau: float = 50.0, seed: int = 21) -> dict[str, np.ndarray]:

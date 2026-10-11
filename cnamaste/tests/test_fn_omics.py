@@ -25,8 +25,8 @@ from cnamaste.reference import get_reference_genes
 from cnamaste.spatio_genomic_counts import SpatioGenomicCounts
 from cnamaste.utils import cacher
 
-from audit.capture import grch38
-from audit.fn import Replay, Row, deep, run, table, unchanged
+from cnamaste.audit.capture import grch38
+from fn import Replay, Row, deep, run, table, unchanged
 
 LOADED = "00_inputs/load_input_data/out"
 

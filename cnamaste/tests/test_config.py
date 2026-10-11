@@ -40,9 +40,9 @@ from typing import Any, NamedTuple
 import numpy as np
 import pytest
 import yaml
+from cnamaste.audit import PROJECT
 from cnamaste.normal_spot import filter_normal_diffexp
 
-PROJECT = Path(__file__).resolve().parents[1]
 PACKAGE = PROJECT / "python" / "cnamaste"
 CONFIGS = {
     "config.yaml": PROJECT / "config.yaml",

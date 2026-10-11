@@ -19,8 +19,8 @@ from cnamaste.hmm_phased import _switch_betabinom_1d, hmm_phased, update_combine
 from cnamaste.recomb import assign_centiMorgans, compute_numbat_phase_switch_prob, get_sitewise_transmat
 from cnamaste.reference import get_reference_recomb_rates
 
-from audit.capture import grch38
-from audit.fn import Replay, Row, run, table, unchanged
+from cnamaste.audit.capture import grch38
+from fn import Replay, Row, run, table, unchanged
 
 
 def close(a: Any, b: Any, atol: float = 1e-10) -> None:

@@ -23,7 +23,7 @@ import pandas as pd
 import yaml
 from scipy.stats import betabinom
 
-from audit.segments import DROPPED
+from cnamaste.audit.segments import DROPPED
 from cnamaste.config import set_global_config
 from cnamaste.hmm_emission import Weighted_BetaBinom
 from cnamaste.hmm_utils import get_em_solver_params

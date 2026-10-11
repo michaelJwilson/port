@@ -46,6 +46,7 @@ import numpy as np
 import pandas as pd
 import scipy.sparse as sp
 import yaml
+from cnamaste.audit import PROJECT
 
 GZIP = {"compression": "gzip", "compression_opts": 9, "shuffle": True}
 LINK_BYTES = 256
@@ -737,7 +738,7 @@ def stage_inputs(sample: Path, root: Path, document: dict[str, Any], resources: 
     document["references"].update({k: str(resources / f) for k, f in RESOURCES.items()})
     document["references"]["annotation_file"] = str(root / "unused.gtf.gz")
     # NB cnaster's configuration carries no `quality.diffexp_*`, which run_cnamaste reads: cnamaste's shipped values (Ticket#440)
-    shipped = yaml.safe_load((Path(__file__).resolve().parents[2] / "zenodo_sim_config.yaml").read_text())["quality"]
+    shipped = yaml.safe_load((PROJECT / "zenodo_sim_config.yaml").read_text())["quality"]
     for key, value in shipped.items():
         if key.startswith("diffexp_"):
             document.setdefault("quality", {}).setdefault(key, value)

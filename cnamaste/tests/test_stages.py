@@ -44,10 +44,10 @@ from sklearn.metrics import adjusted_rand_score
 from sklearn.neighbors import LocalOutlierFactor
 
 import cnamaste.hmm_nophasing as nophasing
-from audit.capture import digest
-from audit.criteria import FRAMES, Bins, RuleBroken, Units, bins_of, minor_baf, normal_baf_outside
-from audit.scoring import NEUTRAL, matched, overlap, phase_free, swapped
-from audit.segments import DROPPED
+from cnamaste.audit.capture import digest
+from cnamaste.audit.criteria import FRAMES, Bins, RuleBroken, Units, bins_of, minor_baf, normal_baf_outside
+from cnamaste.audit.scoring import NEUTRAL, matched, overlap, phase_free, swapped
+from cnamaste.audit.segments import DROPPED
 from cnamaste.config import set_global_config
 from cnamaste.hmm_nophasing import get_log_transmat
 from cnamaste.hmm_utils import get_em_solver_params
@@ -739,7 +739,7 @@ CRITERIA = [
                             Check(flags((Path(u.replayed.staged.config.paths.output_dir) / "cnamaste.perf").exists())))[1]),
 ]
 """(stage, level, `/config` key, quantity, comparison, stated exceptions): each read from `/config` at test time and
-checked on quantities recomputed from the staged inputs (`audit.criteria`), never the stage's own counts."""
+checked on quantities recomputed from the staged inputs (`cnamaste.audit.criteria`), never the stage's own counts."""
 
 
 def clone_drops(u: Units) -> Check:
