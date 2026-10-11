@@ -682,7 +682,7 @@ CRITERIA = [
     Criterion("03_phasing", "clones", "hmrf.n_clones", "initial BAF clones", "==", "none",
               lambda u, v: Check(flags(len(u.sim.stored("03_phasing/initialize_clones/out")) == v), known=True),
               "new: hmrf.n_clones only names the output directory (utils.py:245); the BAF round starts from "
-              "phasing.npart_phasing^2 rectangles (run_cnamaste.py:250-256, 276)"),
+              "phasing.npart_phasing^2 rectangles (run_cnamaste.py:255-261, 281)"),
     Criterion("08_rdr", "clones", "hmrf.n_clones_rdr", "initial RDR clones == merged BAF clones x n_clones_rdr", "==", "none",
               lambda u, v: Check(flags(np.unique(u.sim.stored("08_rdr/initialize_rdr_clone_refininement/out/0")).size
                                        == len(u.sim.stored("05_baf/merge_by_minspots/out/0")) * v))),
@@ -731,10 +731,9 @@ CRITERIA = [
     Criterion("09_outputs", "paths", "paths.output_dir", "every written table under paths.output_dir", "==", "none",
               lambda u, v: Check(flags(*(str(u.sim.stored(f"{s}/in")["args"][0]).startswith(v)
                                          for s in json.loads(u.sim.config["files"]).values())))),
-    Criterion("06_normal", "paths", "paths.perf_path", "a fit's perf record lands at paths.perf_path", "==", "none",
+    Criterion("06_normal", "paths", None, "a fit's perf record lands at <paths.output_dir>/cnamaste.perf", "==", "none",
               lambda u, v: (u.replayed.run("06_normal/normal_baf_bin_filter"),
-                            Check(flags(Path(u.replayed.staged.config.paths.perf_path).exists()), known=True))[1],
-              "new: flush_perf appends to the literal `cnamaste.perf` in the working directory (hmm_emission.py:130)"),
+                            Check(flags((Path(u.replayed.staged.config.paths.output_dir) / "cnamaste.perf").exists())))[1]),
 ]
 """(stage, level, `/config` key, quantity, comparison, stated exceptions): each read from `/config` at test time and
 checked on quantities recomputed from the staged inputs (`audit.criteria`), never the stage's own counts."""

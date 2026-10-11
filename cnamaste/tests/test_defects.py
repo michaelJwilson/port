@@ -271,7 +271,7 @@ def _(**_: Any) -> None:
     assert np.array_equal(out[0], counts.sum(axis=1).to_numpy()), "a two-gene bin keeps none of its UMIs"
 
 
-@row("Ticket#177", "run_cnamaste", "xfail", "Ticket#177: run_cnaster discards filter_normal_diffexp's result (run_cnamaste.py:969 -> 1031)")
+@row("Ticket#177", "run_cnamaste", "xfail", "Ticket#177: run_cnaster discards filter_normal_diffexp's result (run_cnamaste.py:971 -> 1033)")
 def _(**_: Any) -> None:
     body = function_node(source("scripts/run_cnamaste.py"), "run_cnamaste")
     statements = [s for s in ast.walk(body) if isinstance(s, (ast.Assign, ast.Expr, ast.If))]
