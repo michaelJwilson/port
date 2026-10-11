@@ -176,7 +176,9 @@ def _bins(d: dict[str, Any]) -> None:
 
 
 def _bins_pure(d: dict[str, Any]) -> None:
-    args, kwargs = d["in"]["args"], d["in"]["kwargs"]
+    # NB copies: the input is the replay's cached value, and the call this row expects to fail
+    #    (Ticket#189) writes bin_id into it, which every later reader of the stage would inherit.
+    args, kwargs = deep(d["in"]["args"]), deep(d["in"]["kwargs"])
     unchanged(create_bin_ranges, *args, **kwargs)
 
 
