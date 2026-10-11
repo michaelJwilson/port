@@ -16,7 +16,7 @@ writes nothing and exits 1 where a file differs from the copy without a
 declaration, where a declared file no longer differs, or where a file is
 missing or extra: the committed tree is this script's output plus the declared
 edits. `ADDED` declares each file cnamaste owns beyond the copy, under
-`cnamaste/tests/` and `cnamaste/docs/`, and `--check` refuses one there it does not declare. The
+`cnamaste/tests/` and `cnamaste/docs/`, or a module under `cnamaste/python/cnamaste/`, and `--check` refuses one there it does not declare. The
 capture that writes its staged-run file is port's, `scripts/capture_cnamaste.py`.
 """
 
@@ -96,7 +96,7 @@ ADDED: dict[str, str] = {
     "tests/data/truth_phase_e4bbe03f.npy": "PR10: dev_tree_easy r0's planted phase at the loaded SNPs, square's too",
     "tests/test_capture.py": "PR11: the capture's hard-link deduplication and drawn-sample staging",
     "tests/test_ledger.py": "PR14: the ledger's latest row per fixture against its staged file",
-    "docs/ledger/ledger.py": "PR14: the ledger writer, one row per capture commit and fixture",
+    "python/cnamaste/ledger.py": "PR14: the ledger writer, one row per capture commit and fixture, writing docs/ledger/",
     "docs/ledger/ledger.tsv": "PR14: the ledger, append-only",
     "docs/ledger/README.md": "PR14: the ledger's columns",
 }
@@ -178,7 +178,11 @@ def check(tree: dict[str, str]) -> list[str]:
         for p in OUT.rglob("*")
         if p.is_file() and "__pycache__" not in p.parts
     }
-    problems = [f"extra: {p}" for p in sorted(found - set(tree))]
+    problems = [
+        f"extra: {p}"
+        for p in sorted(found - set(tree))
+        if f"python/cnamaste/{p}" not in ADDED
+    ]
     problems += [f"missing: {p}" for p in sorted(set(tree) - found)]
     for path in sorted(set(tree) & found):
         differs = (OUT / path).read_text() != tree[path]

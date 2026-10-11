@@ -1,12 +1,12 @@
 """cnamaste's ledger: one append-only row per (capture commit, fixture hash), scored from the staged file (Ticket#836).
 
-    uv run --locked --project cnamaste python cnamaste/docs/ledger/ledger.py \
+    uv run --locked --project cnamaste python -m cnamaste.ledger \
         cnamaste/tests/data/sim_<hash>.hdf5 [...] [--replace] [--date YYYY-MM-DD]
 
 Each staged file is scored against the planted truth it stores (`/truth`) by
-`audit.scoring.ledger_scores` and appended to `ledger.tsv` as one row. A row
+`audit.scoring.ledger_scores` and appended to `docs/ledger/ledger.tsv` as one row. A row
 for the same capture commit and fixture hash is refused unless `--replace`,
-which rewrites that row in place. `README.md` states the columns.
+which rewrites that row in place. `docs/ledger/README.md` states the columns.
 """
 
 from __future__ import annotations
@@ -16,8 +16,8 @@ import datetime
 import sys
 from pathlib import Path
 
-LEDGER_DIR = Path(__file__).resolve().parent
-PROJECT = LEDGER_DIR.parents[1]
+PROJECT = Path(__file__).resolve().parents[2]
+LEDGER_DIR = PROJECT / "docs" / "ledger"
 sys.path.insert(0, str(PROJECT / "tests"))
 
 from audit.capture import Capture  # noqa: E402

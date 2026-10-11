@@ -6,10 +6,10 @@ appended, never edited; `tests/test_ledger.py` checks each fixture's latest row
 against its staged file. A file captured before `/truth` (easy's) is scored against
 its committed sample's truth.
 
-    uv run --locked --project cnamaste python cnamaste/docs/ledger/ledger.py \
+    uv run --locked --project cnamaste python -m cnamaste.ledger \
         cnamaste/tests/data/sim_<hash>.hdf5 [...] [--replace]
 
-`ledger.py` refuses a row whose commit and fixture hash a row already holds;
+`cnamaste/ledger.py` (`python/cnamaste/`) refuses a row whose commit and fixture hash a row already holds;
 `--replace` rewrites that row in place, for a capture re-run at one commit.
 
 ## Columns
