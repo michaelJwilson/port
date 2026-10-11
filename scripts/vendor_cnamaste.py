@@ -85,6 +85,7 @@ ADDED: dict[str, str] = {
     "tests/test_fn_outputs.py": "PR4: per-function rows, the outputs and run_cnamaste's glue",
     "tests/audit/digest.py": "PR4: a return value's canonical digests and summary, and the per-sample pins",
     "tests/data/digests_2d4ce9a9.json": "PR4: easy's pins, each per-function row's returns",
+    "tests/test_smoke.py": "PR6: smoke: the figures, the console script, the output tree, logging and perf",
 }
 """File cnamaste owns beyond the copy and its project files, relative to `cnamaste/` -> the T- #836 PR
 that adds it. Only grows. Every file under `OWNED` must be here."""
