@@ -62,6 +62,20 @@ ADDED: dict[str, str] = {
     "tests/test_config.py": "PR3: the shipped configurations, key by key",
     "zenodo_sim_config.yaml": "PR3: cnaster 4adad4d's zenodo_sim_config.yaml, unmodified",
     "config.yaml": "PR3: cnaster 4adad4d's shipped config.yaml, unmodified",
+    "tests/audit/callgraph.py": "PR4: the functions run_cnamaste reaches, static graph over the live namespace",
+    "tests/audit/fn.py": "PR4: the per-function rows, their context and shared inputs",
+    "tests/test_fn_inventory.py": "PR4: every reached function has rows or a stated reason",
+    "tests/test_fn_io.py": "PR4: per-function rows, loading, configuration, logging",
+    "tests/test_fn_omics.py": "PR4: per-function rows, the genome segmentation and its counts",
+    "tests/test_fn_phasing.py": "PR4: per-function rows, the phase kernel and the phased HMM",
+    "tests/test_fn_spatial.py": "PR4: per-function rows, partitions and the spot graph",
+    "tests/test_fn_normal.py": "PR4: per-function rows, normal spots and the beta-binomial fit",
+    "tests/test_fn_hmm.py": "PR4: per-function rows, emissions, lattices, M step, initialization",
+    "tests/test_fn_hmrf.py": "PR4: per-function rows, the clone field, ICM, merges, re-indexing",
+    "tests/test_fn_integer.py": "PR4: per-function rows, the integer copy-number decoder",
+    "tests/test_fn_outputs.py": "PR4: per-function rows, the outputs and run_cnamaste's glue",
+    "tests/audit/digest.py": "PR4: a return value's canonical digests and summary, and the per-sample pins",
+    "tests/data/digests_2d4ce9a9.json": "PR4: easy's pins, each per-function row's returns",
 }
 """File cnamaste owns beyond the copy and its project files, relative to `cnamaste/` -> the T- #836 PR
 that adds it. Only grows. Every file under `OWNED` must be here."""

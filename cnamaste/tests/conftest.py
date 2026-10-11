@@ -32,8 +32,10 @@ import pytest
 import yaml
 from numba import _helperlib
 
+from audit.capture import Capture, digest, file_sha256, grch38, input_files, stage_inputs, unordered
 from audit.criteria import Units, units_of
-from audit.capture import Capture, digest, unordered, file_sha256, grch38, input_files, stage_inputs
+from audit.digest import Pins, quiet
+from audit.fn import Ctx
 from audit.scoring import Truth, planted
 from audit.segments import DROPPED, Genes, Segmentation
 from cnamaste.config import YAMLConfig, set_global_config
@@ -55,6 +57,29 @@ REPLAY_SKIPPED = {"run_core_inference"}
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption("--sims", default=",".join(DEFAULT_SIMS), help="fixture hashes from SUPPORTED_SIMS, comma separated, or 'all'")
+    parser.addoption("--update-digests", action="store_true", help="rewrite data/digests_<hash>.json from this session's snapshots, deliberately")
+
+
+PINNED: dict[str, dict[str, Any]] = {}
+"""`--update-digests`: sample -> row key -> pin, from the reports (`audit.fn.snapshot`'s `user_properties`)."""
+ROW_KEYS: dict[str, set[str]] = {}
+"""`--update-digests`: sample -> every row's key, where `test_snapshot_pins_are_the_rows` ran: pins of other keys are dropped."""
+
+
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    for name, value in report.user_properties:
+        if name == "digest":
+            sim_hash, key, pin = value
+            PINNED.setdefault(sim_hash, {})[key] = pin
+        elif name == "digest-keys":
+            ROW_KEYS[value[0]] = set(value[1])
+
+
+def pytest_sessionfinish(session: pytest.Session) -> None:
+    """`--update-digests`, on the controller (or the one process): the session's snapshots over the pins on disk."""
+    if session.config.getoption("--update-digests") and not hasattr(session.config, "workerinput"):
+        for sim_hash in sorted(set(PINNED) | set(ROW_KEYS)):
+            Pins.write(sim_hash, PINNED.get(sim_hash, {}), ROW_KEYS.get(sim_hash))
 
 
 def selected(config: pytest.Config) -> list[str]:
@@ -90,8 +115,10 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     if not config.pluginmanager.hasplugin("xdist"):
         return
     for item in items:
-        if "replayed" in getattr(item, "fixturenames", ()):
-            sim_hash = getattr(item, "callspec", None) and item.callspec.params.get("sim_hash")
+        params = item.callspec.params if hasattr(item, "callspec") else {}
+        # NB a per-function row (`audit.fn.Row`) that slices a replayed stage asks for `replayed` lazily
+        if "replayed" in getattr(item, "fixturenames", ()) or getattr(params.get("row"), "replay", False):
+            sim_hash = params.get("sim_hash")
             item.add_marker(pytest.mark.xdist_group(f"replay-{sim_hash}"))
 
 
@@ -197,8 +224,6 @@ class Replay:
     def run(self, stage: str) -> Any:
         """`stage`'s function on its recorded input, with the recorded generator states."""
         if stage not in self.outs:
-
-
             if stage.split("/")[1] in REPLAY_SKIPPED:
                 raise LookupError(f"{stage} is not replayed")
             given = self._rewritten(copy.deepcopy(self.value(f"{stage}/in")))
@@ -210,7 +235,8 @@ class Replay:
             _helperlib.rnd_set_state(_helperlib.rnd_get_np_state_ptr(), numba_state)
             random.setstate(py_state)
             start = time.perf_counter()
-            self.outs[stage] = self.sim.function(stage)(*given["args"], **given["kwargs"])
+            with quiet():  # NB a replay belongs to no per-function row (`audit.digest.QUIET`)
+                self.outs[stage] = self.sim.function(stage)(*given["args"], **given["kwargs"])
             self.seconds[stage] = time.perf_counter() - start
             if "write_tsv" in stage:
                 self.outs[stage + "#file"] = Path(given["args"][0]).read_bytes()
@@ -228,6 +254,18 @@ class Replay:
 @pytest.fixture(scope="session")
 def replayed(sim: Capture, staged: Staged) -> Replay:
     return Replay(sim, staged)
+
+
+@pytest.fixture(scope="session")
+def fn_cache(sim: Capture) -> dict[str, Any]:
+    """The per-function rows' heavy recomputations, once per session (per xdist worker)."""
+    return {}
+
+
+@pytest.fixture
+def ctx(sim: Capture, fn_cache: dict[str, Any], request: pytest.FixtureRequest, tmp_path: Path) -> Any:
+    """A per-function row's context (`audit.fn.Ctx`): the staged file, the replay on demand, the cache."""
+    return Ctx(sim, request, fn_cache, tmp_path)
 
 
 # --- lineage ---------------------------------------------------------------
