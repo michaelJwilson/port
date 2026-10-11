@@ -72,7 +72,7 @@ def window(ctx: Any) -> dict[str, Any]:
 # --- oracle --------------------------------------------------------------------
 
 
-def _pool(_: Any) -> None:
+def _pool_smooths_counts(_: Any) -> None:
     rng = np.random.default_rng(1)
     x = rng.integers(0, 9, size=(5, 2, 6))
     base, total = rng.random((5, 6)), rng.integers(0, 9, size=(5, 6))
@@ -82,7 +82,7 @@ def _pool(_: Any) -> None:
     assert np.array_equal(px, np.einsum("ocj,ij->oci", x, s)) and np.allclose(pb, base @ s.T) and np.array_equal(pt, total @ s.T)
 
 
-def _spot_field(_: Any) -> None:
+def _spot_field_by_hand(_: Any) -> None:
     rng = np.random.default_rng(2)
     n_states, n_obs, n_spots, n_clones = 3, 4, 5, 2
     rdr, baf = rng.normal(size=(n_states, n_obs, n_spots)), rng.normal(size=(n_states, n_obs, n_spots))
@@ -99,7 +99,7 @@ def _spot_field(_: Any) -> None:
     assert np.allclose(concatenated, want), "a clone-concatenated pred reads as the (bins, clones) one"
 
 
-def _assignment(w: dict[str, Any]) -> None:
+def _assignment_field_bb(w: dict[str, Any]) -> None:
     res, n_obs = w["res"], w["X"].shape[0]
     labels, llf, total = unchanged(pipeline_clone_assignment, w["X"], w["base"], w["total"], res, w["pred"], w["adjacency"], w["labels"],
                                    np.zeros(w["idx"].size, dtype=int), 1.0, smooth_mat=w["smooth"], hmmclass=hmm_nophasing)
@@ -114,7 +114,7 @@ def _assignment(w: dict[str, Any]) -> None:
     assert np.isclose(total, potts(llf, w["adjacency"], labels, 1.0)), "the returned objective is the Potts energy of the returned labels"
 
 
-def _icm_energy(f: dict[str, Any]) -> None:
+def _icm_gains_energy(f: dict[str, Any]) -> None:
     a, labels = f["adjacency"], f["labels"].copy()
     before = potts(f["llf"], a, labels, f["weight"])
     np.random.seed(0)  # noqa: NPY002
@@ -128,7 +128,7 @@ def _icm_energy(f: dict[str, Any]) -> None:
         assert local[labels[i]] == local.max(), f"spot {i} is not at its conditional maximum"
 
 
-def _merge_cost(f: dict[str, Any]) -> None:
+def _merge_cost_is_potts(f: dict[str, Any]) -> None:
     spots, neighbours, weights = unpack_adjacency(cast_csr(f["adjacency"]))
     cost, best, (u, v) = merge_assignment(f["llf"], spots, neighbours, weights, f["labels"], f["weight"])
     assert np.isclose(cost, potts(f["llf"], f["adjacency"], f["labels"], f["weight"])), "the current cost is the Potts energy"
@@ -137,14 +137,19 @@ def _merge_cost(f: dict[str, Any]) -> None:
     assert (u, v) in touching and best > -np.inf, "the proposed pair shares a boundary"
 
 
-def _merge_gain(f: dict[str, Any]) -> None:
+def _merge_gain_is_potts(f: dict[str, Any]) -> None:
     spots, neighbours, weights = unpack_adjacency(cast_csr(f["adjacency"]))
     cost, best, (u, v) = merge_assignment(f["llf"], spots, neighbours, weights, f["labels"], f["weight"])
     merged = np.where(f["labels"] == u, v, f["labels"])
     assert np.isclose(best, potts(f["llf"], f["adjacency"], merged, f["weight"])), "the best merge's cost is the merged labels' Potts energy"
 
 
-def _pseudobulk(_: Any) -> None:
+def _pseudobulk_sums_clone_spots(_: Any) -> None:
+    x = np.array([[[1, 2, 3, 4], [0, 1, 0, 1]], [[5, 6, 7, 8], [2, 0, 2, 0]]])  # NB 2 bins x 4 spots
+    base, total = np.array([[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8]]), np.array([[1, 1, 2, 2], [3, 3, 4, 4]])
+    px, pb, pt, tumor = unchanged(merge_pseudobulk_by_index_mix, x, base, total, [np.array([0, 2]), np.array([1, 3])])
+    assert px.tolist() == [[[4, 6], [0, 2]], [[12, 14], [4, 0]]] and pt.tolist() == [[3, 3], [7, 7]], "by hand: spots {0, 2} and {1, 3}"
+    assert np.allclose(pb, [[0.4, 0.6], [1.2, 1.4]], rtol=1e-12, atol=0) and tumor is None
     rng = np.random.default_rng(4)
     x, base, total = rng.integers(0, 9, size=(5, 2, 8)), rng.random((5, 8)), rng.integers(0, 9, size=(5, 8))
     index = [np.array([0, 3, 4]), np.array([], dtype=int), np.array([1, 2, 5, 6, 7])]
@@ -154,7 +159,16 @@ def _pseudobulk(_: Any) -> None:
     assert tumor is None
 
 
-def _stack(_: Any) -> None:
+def _pseudobulk_tumor_threshold(_: Any) -> None:
+    x = np.array([[[1, 2, 3, 4, 5], [1, 0, 1, 0, 1]], [[6, 7, 8, 9, 10], [0, 1, 0, 1, 0]]])  # NB 2 bins x 5 spots
+    base, total = x[:, 0, :] * 0.5, np.array([[2, 2, 2, 2, 2], [1, 1, 1, 1, 1]])
+    prop = np.array([0.9, 0.5, 0.7, 0.2, 0.4])  # NB spot 1 sits at the threshold; clone 1 has no spot above it
+    px, pb, pt, tumor = unchanged(merge_pseudobulk_by_index_mix, x, base, total, [np.array([0, 1, 2]), np.array([3, 4])], prop, 0.5)
+    assert px.tolist() == [[[4, 0], [2, 0]], [[14, 0], [0, 0]]] and pt.tolist() == [[4, 0], [2, 0]], "by hand: spots 0 and 2 kept; clone 1 empty"
+    assert pb.tolist() == [[2.0, 0.0], [7.0, 0.0]] and np.allclose(tumor, [0.8, 0.0], rtol=1e-12, atol=0), "tumor: the kept spots' mean, 0 where none"
+
+
+def _stack_tiles_clones(_: Any) -> None:
     rng = np.random.default_rng(6)
     x, base, total = rng.random((4, 2, 3)), rng.random((4, 3)), rng.random((4, 3))
     sx, sb, st, sl, stm, stp = clone_stack_obs(x, base, total, np.array([1, 3]), np.arange(4.0), np.array([0.2, 0.5, 0.9]))
@@ -163,7 +177,7 @@ def _stack(_: Any) -> None:
     assert sl.tolist() == [1, 3] * 3 and stm.tolist() == list(range(4)) * 3 and stp.ravel().tolist() == [0.2] * 4 + [0.5] * 4 + [0.9] * 4
 
 
-def _unpack(_: Any) -> None:
+def _unpack_is_coo(_: Any) -> None:
     a = sp.random(7, 7, density=0.4, random_state=3, format="csr")
     spots, neighbours, weights = unpack_adjacency(cast_csr(a))
     coo = a.tocoo()
@@ -172,17 +186,20 @@ def _unpack(_: Any) -> None:
 
 ORACLE: list[Row] = table(
     "oracle",
-    ("hmrf:pool_spatio_genomic_counts", "synthetic: 6 spots, a random smoothing graph", lambda c: None, _pool, "pooled counts are the smoothing matrix times the counts"),
-    ("hmrf:compute_loglike_spot_assignment", "synthetic: 5 spots, 2 clones", lambda c: None, _spot_field, "the field is w_s * RDR + BAF summed over each clone's states, w_s = valid BAF / valid RDR bins"),
-    ("hmrf:pipeline_clone_assignment", WINDOW, window, _assignment, "the field is scipy's BB log-likelihood under each clone's MAP path; the objective is the Potts energy"),
-    ("icm:icm_sweep_deque", "synthetic: 8x8 grid, 3 clones", lambda c: field_case(), _icm_energy, "the reported cost is the Potts energy gained, and every spot ends at its conditional maximum"),
-    ("icm:merge_assignment", "synthetic: 8x8 grid, 3 clones", lambda c: field_case(), _merge_cost, "the current cost is the Potts energy (unary + weight x aligned edges)"),
-    ("icm:merge_assignment", "synthetic: 8x8 grid, 3 clones", lambda c: field_case(), _merge_gain, "the best merge's cost is the merged labels' Potts energy",
+    ("hmrf:pool_spatio_genomic_counts", "synthetic: 6 spots, a random smoothing graph", lambda c: None, _pool_smooths_counts, "pooled counts are the smoothing matrix times the counts"),
+    ("hmrf:compute_loglike_spot_assignment", "synthetic: 5 spots, 2 clones", lambda c: None, _spot_field_by_hand, "the field is w_s * RDR + BAF summed over each clone's states, w_s = valid BAF / valid RDR bins"),
+    ("hmrf:pipeline_clone_assignment", WINDOW, window, _assignment_field_bb, "the field is scipy's BB log-likelihood under each clone's MAP path; the objective is the Potts energy"),
+    ("icm:icm_sweep_deque", "synthetic: 8x8 grid, 3 clones", lambda c: field_case(), _icm_gains_energy, "the reported cost is the Potts energy gained, and every spot ends at its conditional maximum"),
+    ("icm:merge_assignment", "synthetic: 8x8 grid, 3 clones", lambda c: field_case(), _merge_cost_is_potts, "the current cost is the Potts energy (unary + weight x aligned edges)"),
+    ("icm:merge_assignment", "synthetic: 8x8 grid, 3 clones", lambda c: field_case(), _merge_gain_is_potts, "the best merge's cost is the merged labels' Potts energy",
      "Ticket#483: Lattice edges through the Potts solvers: cnaster's merge gain is halved, and the reported spatial term uses its own edge rule"),
-    ("pseudobulk:merge_pseudobulk_by_index_mix", "synthetic: 8 spots, 3 clones, one empty", lambda c: None, _pseudobulk, "each clone's pseudobulk is its spots' sum; an empty clone is zero; no input mutation"),
-    ("hmrf_utils:clone_stack_obs", "synthetic: 4 bins, 3 clones", lambda c: None, _stack, "clone c's bins are rows c*n..(c+1)*n; lengths and switch probabilities tile, tumor proportions repeat"),
-    ("hmrf_utils:cast_csr", "synthetic: a random 7x7 sparse matrix", lambda c: None, _unpack, "row lists unpack to the matrix's COO triplets"),
-    ("icm:unpack_adjacency", "synthetic: a random 7x7 sparse matrix", lambda c: None, _unpack, "(spot, neighbour, weight) are scipy's COO row, col, data"),
+    ("pseudobulk:merge_pseudobulk_by_index_mix", "synthetic: 2 bins x 4 spots by hand; 8 spots, 3 clones, one empty", lambda c: None, _pseudobulk_sums_clone_spots,
+     "each clone's pseudobulk is its spots' sum; an empty clone is zero; no input mutation"),
+    ("pseudobulk:merge_pseudobulk_by_index_mix", "synthetic: 2 bins x 5 spots, tumor proportions, by hand", lambda c: None, _pseudobulk_tumor_threshold,
+     "with tumor proportions: sums over spots strictly above the threshold, tumor the kept mean; a clone with none is zero; no input mutation"),
+    ("hmrf_utils:clone_stack_obs", "synthetic: 4 bins, 3 clones", lambda c: None, _stack_tiles_clones, "clone c's bins are rows c*n..(c+1)*n; lengths and switch probabilities tile, tumor proportions repeat"),
+    ("hmrf_utils:cast_csr", "synthetic: a random 7x7 sparse matrix", lambda c: None, _unpack_is_coo, "row lists unpack to the matrix's COO triplets"),
+    ("icm:unpack_adjacency", "synthetic: a random 7x7 sparse matrix", lambda c: None, _unpack_is_coo, "(spot, neighbour, weight) are scipy's COO row, col, data"),
 )
 
 
@@ -199,7 +216,7 @@ def _index_round_trip(labels: np.ndarray) -> None:
     assert np.array_equal(get_clone_assignment(np.zeros((labels.size, 2)), index), labels)
 
 
-def _reindex(res: Any) -> None:
+def _reindex_permutes_labels(res: Any) -> None:
     out, posterior = reindex_clones(res.copy(deep=True))
     before, after = np.asarray(res["new_assignment"]), np.asarray(out["new_assignment"])
     old_of = {int(n): int(o) for o, n in zip(before, after, strict=True)}
@@ -212,11 +229,11 @@ def _reindex(res: Any) -> None:
     assert np.all(np.diff(sizes[1:]) >= 0), "clones after the normal one ascend by spot count"
 
 
-def _reindex_pure(res: Any) -> None:
+def _reindex_keeps_input(res: Any) -> None:
     unchanged(reindex_clones, res.copy(deep=True))
 
 
-def _minspots(_: Any) -> None:
+def _minspots_above_floor(_: Any) -> None:
     labels = np.repeat([0, 1, 2, 3], [50, 5, 30, 15])
     n_obs, n_states = 4, 3
     gamma = np.log(np.full((n_states, 4 * n_obs), 1 / n_states))
@@ -236,7 +253,7 @@ def _core_out(ctx: Any) -> list[Any]:
     return [ctx.sim.stored(f"{r}/run_core_inference/out") for r in (BAF, RDR)] + [ctx.sim.internal(r) for r in (BAF, RDR)]
 
 
-def _core(found: list[Any]) -> None:
+def _core_labels_reindexed(found: list[Any]) -> None:
     baf, rdr, baf_internal, rdr_internal = found
     for res, internal in ((baf, baf_internal), (rdr, rdr_internal)):
         labels = np.asarray(res["new_assignment"])
@@ -246,7 +263,7 @@ def _core(found: list[Any]) -> None:
     assert np.asarray(baf["log_gamma"]).shape[1] == np.asarray(baf["pred_cnv"]).size and np.asarray(rdr["log_gamma"]).ndim == 3
 
 
-def _pipeline_argmax(_: Any) -> None:
+def _field_uses_posterior(_: Any) -> None:
     body = ast.parse(textwrap.dedent(inspect.getsource(run_core_inference)))
     hard = [n for n in ast.walk(body) if isinstance(n, ast.Assign) and any(getattr(t, "id", "") == "pred" for t in n.targets)
             and "argmax" in ast.unparse(n.value)]
@@ -257,13 +274,13 @@ INVARIANT: list[Row] = table(
     "invariant",
     ("hmrf_utils:get_clone_indices", "08_rdr/reindex_clones in: the merged labels", _indices, _index_round_trip, "indices partition the spots by label"),
     ("hmrf_utils:get_clone_assignment", "08_rdr/reindex_clones in: the merged labels", _indices, _index_round_trip, "inverts get_clone_indices"),
-    ("hmrf:reindex_clones", "08_rdr/reindex_clones in", lambda c: c.sim.stored(f"{RDR}/reindex_clones/in/args/0"), _reindex,
+    ("hmrf:reindex_clones", "08_rdr/reindex_clones in", lambda c: c.sim.stored(f"{RDR}/reindex_clones/in/args/0"), _reindex_permutes_labels,
      "a label permutation; paths and posteriors move with it; the rest by size"),
-    ("hmrf:reindex_clones", "08_rdr/reindex_clones in", lambda c: c.sim.stored(f"{RDR}/reindex_clones/in/args/0"), _reindex_pure, "the result it is handed is not rewritten",
+    ("hmrf:reindex_clones", "08_rdr/reindex_clones in", lambda c: c.sim.stored(f"{RDR}/reindex_clones/in/args/0"), _reindex_keeps_input, "the result it is handed is not rewritten",
      "new: reindex_clones rewrites the result it is handed through CnaHMRFResult's shallow copy (labels, pred_cnv, log_gamma); run_cnamaste's merge reaches res_combine the same way"),
-    ("hmrf:merge_by_minspots", "synthetic: 4 clones of 50/5/30/15 spots", lambda c: None, _minspots, "groups partition the clones; survivors >= the floor; representatives' paths kept"),
-    ("hmrf:run_core_inference", "05_baf, 08_rdr run_core_inference out + /internal", _core_out, _core, "labels 0..M-1, the last ICM labels re-indexed; prev the last input labels"),
-    ("hmrf:run_core_inference", "source", lambda c: None, _pipeline_argmax, "the clone field is scored under each clone's posterior, not its argmax",
+    ("hmrf:merge_by_minspots", "synthetic: 4 clones of 50/5/30/15 spots", lambda c: None, _minspots_above_floor, "groups partition the clones; survivors >= the floor; representatives' paths kept"),
+    ("hmrf:run_core_inference", "05_baf, 08_rdr run_core_inference out + /internal", _core_out, _core_labels_reindexed, "labels 0..M-1, the last ICM labels re-indexed; prev the last input labels"),
+    ("hmrf:run_core_inference", "source", lambda c: None, _field_uses_posterior, "the clone field is scored under each clone's posterior, not its argmax",
      "Ticket#869: Clone assignment scores spots under each clone's argmax states (nodepotential=max): uncertain bins are charged as certain"),
 )
 
@@ -275,7 +292,7 @@ def _merges_captured(ctx: Any) -> dict[str, Any]:
     return {"internal": ctx.sim.internal(RDR), "res": ctx.sim.stored(f"{RDR}/run_core_inference/out")}
 
 
-def _merges(found: dict[str, Any]) -> None:
+def _merges_map_labels(found: dict[str, Any]) -> None:
     internal = found["internal"]
     m = np.arange(int(internal["icm"].max()) + 1)
     for u, v in internal["merges"]:
@@ -285,23 +302,23 @@ def _merges(found: dict[str, Any]) -> None:
 
 CAPTURED: list[Row] = table(
     "captured",
-    ("icm:merge_assignment", "/internal/08_rdr: the last iteration's ICM labels and merges", _merges_captured, _merges, "the recorded merges map the ICM labels to the raw labels the run kept"),
+    ("icm:merge_assignment", "/internal/08_rdr: the last iteration's ICM labels and merges", _merges_captured, _merges_map_labels, "the recorded merges map the ICM labels to the raw labels the run kept"),
 )
 
 
 @pytest.mark.parametrize("row", ORACLE, ids=[r.id for r in ORACLE])
-def test_oracle(row: Row, ctx: Any, request: pytest.FixtureRequest) -> None:
+def test_oracle_agrees(row: Row, ctx: Any, request: pytest.FixtureRequest) -> None:
     """Brute-force energies, sums and the scipy field."""
     run(row, ctx, request)
 
 
 @pytest.mark.parametrize("row", INVARIANT, ids=[r.id for r in INVARIANT])
-def test_invariant(row: Row, ctx: Any, request: pytest.FixtureRequest) -> None:
+def test_invariants_hold(row: Row, ctx: Any, request: pytest.FixtureRequest) -> None:
     """Partitions, permutations, floors, no input mutation."""
     run(row, ctx, request)
 
 
 @pytest.mark.parametrize("row", CAPTURED, ids=[r.id for r in CAPTURED])
-def test_captured(row: Row, ctx: Any, request: pytest.FixtureRequest) -> None:
+def test_matches_run(row: Row, ctx: Any, request: pytest.FixtureRequest) -> None:
     """The run's recorded internals agree with each other."""
     run(row, ctx, request)

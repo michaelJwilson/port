@@ -63,7 +63,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 PINNED: dict[str, dict[str, Any]] = {}
 """`--update-digests`: sample -> row key -> pin, from the reports (`audit.fn.snapshot`'s `user_properties`)."""
 ROW_KEYS: dict[str, set[str]] = {}
-"""`--update-digests`: sample -> every row's key, where `test_snapshot_pins_are_the_rows` ran: pins of other keys are dropped."""
+"""`--update-digests`: sample -> every row's key, where `test_pins_match_rows` ran: pins of other keys are dropped."""
 
 
 def pytest_runtest_logreport(report: pytest.TestReport) -> None:

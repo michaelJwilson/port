@@ -40,7 +40,7 @@ def genetic_map(ctx: Any) -> pd.DataFrame:
 # --- oracle --------------------------------------------------------------------
 
 
-def _switch_law(_: Any) -> None:
+def _switch_law_closed_form(_: Any) -> None:
     cm = np.array([0.0, 0.5, 0.5001, np.nan, 2.0, 0.0, 3.0])
     contigs = [(1, 0), (1, 1), (1, 2), (1, 3), (1, 4), (2, 0), (2, 1)]
     p = compute_numbat_phase_switch_prob(cm, contigs, nu=1.0, min_prob=0.01)
@@ -50,7 +50,7 @@ def _switch_law(_: Any) -> None:
     close(p, want)  # NB d = 1e-4 cM floors at min_prob; NaN, the contig change and the last entry take min_prob
 
 
-def _centimorgans(_: Any) -> None:
+def _centimorgans_interpolate(_: Any) -> None:
     table_ = pd.DataFrame({"chrom": [1, 1, 1, 2, 2], "pos": [100, 200, 400, 50, 150], "pos_cm": [1.0, 2.0, 4.0, 0.5, 1.5]})
     positions = [(1, 50), (1, 150), (1, 300), (2, 100), (2, 150)]
     found = assign_centiMorgans(list(positions), table_)
@@ -58,7 +58,7 @@ def _centimorgans(_: Any) -> None:
     close(found, want)
 
 
-def _switched(_: Any) -> None:
+def _switched_bb_swaps_shapes(_: Any) -> None:
     k, n = np.array([0.0, 3.0, 7.0, 10.0]), np.array([10.0, 10.0, 12.0, 10.0])
     p, tau = np.array([0.2, 0.45]), np.array([30.0, 300.0])
     direct = np.stack([scipy.stats.betabinom.logpmf(k, n, p[i] * tau[i], (1 - p[i]) * tau[i]) for i in range(2)])
@@ -66,7 +66,7 @@ def _switched(_: Any) -> None:
     close(_switch_betabinom_1d(direct, k, n, p, tau), flipped, 1e-9)
 
 
-def _phased_emission(_: Any) -> None:
+def _phased_emission_mirrors(_: Any) -> None:
     rng = np.random.default_rng(9)
     total = rng.integers(5, 40, size=(30, 1)).astype(float)
     x = np.stack([np.zeros((30, 1)), rng.binomial(total.astype(int), 0.3).astype(float)], axis=1)
@@ -90,7 +90,7 @@ def combined(transmat: np.ndarray, switch: float) -> np.ndarray:
     return np.log(np.block([[(1 - s) * a, s * a], [s * a, (1 - s) * a]]))
 
 
-def _phased_forward(h: dict[str, Any]) -> None:
+def _phased_forward_textbook(h: dict[str, Any]) -> None:
     found = hmm_phased.forward_lattice(h["lengths"], h["transmat"], h["start"], h["emission"], h["switch"])
     e = h["emission"][:, :, 0]
     want = np.zeros_like(e)
@@ -102,7 +102,7 @@ def _phased_forward(h: dict[str, Any]) -> None:
     close(found, want)
 
 
-def _phased_backward(h: dict[str, Any]) -> None:
+def _phased_backward_textbook(h: dict[str, Any]) -> None:
     found = hmm_phased.backward_lattice(h["lengths"], h["transmat"], h["start"], h["emission"], h["switch"])
     e = h["emission"][:, :, 0]
     want = np.zeros_like(e)
@@ -112,7 +112,7 @@ def _phased_backward(h: dict[str, Any]) -> None:
     close(found, want)
 
 
-def _combined(_: Any) -> None:
+def _combined_transmat_closed_form(_: Any) -> None:
     a = get_log_transmat(3, 0.8)
     out = np.empty((6, 6))
     update_combined_transmat(out, 3, a, np.log(0.9), np.log(0.1), False, np.log(0.5))
@@ -122,27 +122,27 @@ def _combined(_: Any) -> None:
 
 ORACLE: list[Row] = table(
     "oracle",
-    ("recomb:compute_numbat_phase_switch_prob", "synthetic: 7 positions, 2 contigs", lambda c: None, _switch_law, "(1 - e^{-2 nu d}) / 2, floored at min_prob; boundaries, NaN and the end take min_prob"),
-    ("recomb:assign_centiMorgans", "synthetic: a 5-marker map, 2 contigs", lambda c: None, _centimorgans, "linear interpolation between markers, from (0, 0) before the first"),
-    ("hmm_phased:_switch_betabinom_1d", "synthetic: 4 counts, 2 states", lambda c: None, _switched, "the switched BB is scipy's with alpha and beta exchanged"),
-    ("hmm_phased:hmm_phased.compute_emission_probability_nb_betabinom", "synthetic: 30 bins, 2 states", lambda c: None, _phased_emission, "states K..2K-1 are the BB at 1 - p; RDR zero without a baseline"),
-    ("hmm_phased:hmm_phased.compute_emission_probability_nb_betabinom_coded", "synthetic: 30 bins, 2 states", lambda c: None, _phased_emission, "the coded phased emission is scipy's, both phases"),
-    ("hmm_phased:hmm_phased.forward_lattice", "synthetic: 2 states x 2 phases, 7 bins, 2 segments", lambda c: phased_case(), _phased_forward, "the textbook recursion over the paired chain, switch probability per bin"),
-    ("hmm_phased:hmm_phased.backward_lattice", "synthetic: 2 states x 2 phases, 7 bins, 2 segments", lambda c: phased_case(), _phased_backward, "the textbook backward recursion over the paired chain"),
-    ("hmm_phased:update_combined_transmat", "synthetic: 3 states", lambda c: None, _combined, "[[(1-s)A, sA], [sA, (1-s)A]]; rows sum to one"),
+    ("recomb:compute_numbat_phase_switch_prob", "synthetic: 7 positions, 2 contigs", lambda c: None, _switch_law_closed_form, "(1 - e^{-2 nu d}) / 2, floored at min_prob; boundaries, NaN and the end take min_prob"),
+    ("recomb:assign_centiMorgans", "synthetic: a 5-marker map, 2 contigs", lambda c: None, _centimorgans_interpolate, "linear interpolation between markers, from (0, 0) before the first"),
+    ("hmm_phased:_switch_betabinom_1d", "synthetic: 4 counts, 2 states", lambda c: None, _switched_bb_swaps_shapes, "the switched BB is scipy's with alpha and beta exchanged"),
+    ("hmm_phased:hmm_phased.compute_emission_probability_nb_betabinom", "synthetic: 30 bins, 2 states", lambda c: None, _phased_emission_mirrors, "states K..2K-1 are the BB at 1 - p; RDR zero without a baseline"),
+    ("hmm_phased:hmm_phased.compute_emission_probability_nb_betabinom_coded", "synthetic: 30 bins, 2 states", lambda c: None, _phased_emission_mirrors, "the coded phased emission is scipy's, both phases"),
+    ("hmm_phased:hmm_phased.forward_lattice", "synthetic: 2 states x 2 phases, 7 bins, 2 segments", lambda c: phased_case(), _phased_forward_textbook, "the textbook recursion over the paired chain, switch probability per bin"),
+    ("hmm_phased:hmm_phased.backward_lattice", "synthetic: 2 states x 2 phases, 7 bins, 2 segments", lambda c: phased_case(), _phased_backward_textbook, "the textbook backward recursion over the paired chain"),
+    ("hmm_phased:update_combined_transmat", "synthetic: 3 states", lambda c: None, _combined_transmat_closed_form, "[[(1-s)A, sA], [sA, (1-s)A]]; rows sum to one"),
 )
 
 
 # --- invariants ---------------------------------------------------------------------
 
 
-def _map_rows(m: pd.DataFrame) -> None:
+def _map_autosomal_ascending(m: pd.DataFrame) -> None:
     assert set(m["chrom"].unique()) == {str(i) for i in range(1, 23)}
     for _, g in m.groupby("chrom"):
         assert np.all(np.diff(g["pos"].to_numpy()) >= 0) and np.all(np.diff(g["pos_cm"].to_numpy()) >= 0), "positions and cM ascend within a contig"
 
 
-def _map_order(m: pd.DataFrame) -> None:
+def _map_numeric_contigs(m: pd.DataFrame) -> None:
     order = pd.unique(m["chrom"]).tolist()
     assert order == [str(i) for i in range(1, 23)], f"contig order {order[:12]}"
 
@@ -154,14 +154,14 @@ def _transmat_rows(ctx: Any) -> dict[str, Any]:
             "min_prob": float(ctx.config.phasing.min_prob), "shift": float(ctx.config.phasing.logphase_shift)}
 
 
-def _transmat_bounds(d: dict[str, Any]) -> None:
+def _transmat_within_bounds(d: dict[str, Any]) -> None:
     assert d["log"].shape == d["chr"].shape
     assert np.all(d["log"] <= np.log(0.5) + 1e-12) and np.all(d["log"] >= np.log(d["min_prob"]) - d["shift"] - 1e-12)
     last = np.r_[d["chr"][1:] != d["chr"][:-1], True]
     assert np.allclose(d["log"][last], np.log(d["min_prob"]) - d["shift"]), "the last bin of a contig takes min_prob"
 
 
-def _transmat_contigs(d: dict[str, Any]) -> None:
+def _no_contig_all_floor(d: dict[str, Any]) -> None:
     floored = np.isclose(d["log"], np.log(d["min_prob"]) - d["shift"])
     per = {c: floored[d["chr"] == c].mean() for c in range(1, 23)}
     assert max(per.values()) < 0.9, f"contigs with every bin at the floor: {[c for c, f in per.items() if f == 1.0]}"
@@ -173,7 +173,7 @@ def _vote(ctx: Any) -> dict[str, Any]:
             "n_clones": len(given["args"][5]), "n_states": int(given["args"][6]), "config": ctx.config}
 
 
-def _phase_vote(d: dict[str, Any]) -> None:
+def _phase_majority_vote(d: dict[str, Any]) -> None:
     res, phase, refined = d["out"]
     n_states, n_clones = d["n_states"], d["n_clones"]
     pred = np.argmax(np.asarray(res["log_gamma"]), axis=0).reshape(n_clones, -1)
@@ -197,21 +197,21 @@ def _phase_vote(d: dict[str, Any]) -> None:
     assert np.array_equal(np.asarray(refined), want_lengths), "segments split where the minor BAF jumps, no shorter than the minimum"
 
 
-def _phased_init(_: Any) -> None:
+def _phased_init_stores(_: Any) -> None:
     m = hmm_phased(params="sp", t=0.3)
     assert (m.params, m.t) == ("sp", 0.3)
 
 
 INVARIANT: list[Row] = table(
     "invariant",
-    ("reference:get_reference_recomb_rates", "CalicoST genetic map", genetic_map, _map_rows, "chr1-22 only, chr prefix dropped; positions and cM ascend within a contig"),
-    ("reference:get_reference_recomb_rates", "CalicoST genetic map", genetic_map, _map_order, "contigs in numeric order, as assign_centiMorgans' sweep needs",
+    ("reference:get_reference_recomb_rates", "CalicoST genetic map", genetic_map, _map_autosomal_ascending, "chr1-22 only, chr prefix dropped; positions and cM ascend within a contig"),
+    ("reference:get_reference_recomb_rates", "CalicoST genetic map", genetic_map, _map_numeric_contigs, "contigs in numeric order, as assign_centiMorgans' sweep needs",
      "Ticket#438: get_reference_recomb_rates sorts contigs as text (1, 10..19, 2, 20..22, 3..9), so assign_centiMorgans' numeric sweep gives chr2-9 one constant cM"),
-    ("recomb:get_sitewise_transmat", "04_bins/get_sitewise_transmat out, 04_bins/create_bin_ranges out", _transmat_rows, _transmat_bounds, "one entry per bin in [log min_prob - shift, log 1/2]; contig ends at the floor"),
-    ("recomb:get_sitewise_transmat", "04_bins/get_sitewise_transmat out, 04_bins/create_bin_ranges out", _transmat_rows, _transmat_contigs, "no contig has every bin at the min_prob floor",
+    ("recomb:get_sitewise_transmat", "04_bins/get_sitewise_transmat out, 04_bins/create_bin_ranges out", _transmat_rows, _transmat_within_bounds, "one entry per bin in [log min_prob - shift, log 1/2]; contig ends at the floor"),
+    ("recomb:get_sitewise_transmat", "04_bins/get_sitewise_transmat out, 04_bins/create_bin_ranges out", _transmat_rows, _no_contig_all_floor, "no contig has every bin at the min_prob floor",
      "Ticket#438: get_reference_recomb_rates sorts contigs as text, so every bin on chr2-9 (861 of 1,847 on easy) takes the min_prob floor: no phase switch there"),
-    ("phasing:initial_phase_given_partition", Replay("03_phasing/initial_phase_given_partition, replayed"), _vote, _phase_vote, "phase = majority vote of non-balanced clones; refined lengths split at minor-BAF jumps (recomputed)"),
-    ("hmm_phased:hmm_phased.__init__", "synthetic", lambda c: None, _phased_init, "stores params and t"),
+    ("phasing:initial_phase_given_partition", Replay("03_phasing/initial_phase_given_partition, replayed"), _vote, _phase_majority_vote, "phase = majority vote of non-balanced clones; refined lengths split at minor-BAF jumps (recomputed)"),
+    ("hmm_phased:hmm_phased.__init__", "synthetic", lambda c: None, _phased_init_stores, "stores params and t"),
 )
 
 
@@ -230,30 +230,30 @@ def _replay_transmat(ctx: Any) -> tuple[np.ndarray, np.ndarray]:
     return out, np.asarray(ctx.sim.stored("02_blocks/get_sitewise_transmat/out"))[:200]
 
 
-def _prefix(pair: tuple[np.ndarray, np.ndarray]) -> None:
+def _prefix_matches_run(pair: tuple[np.ndarray, np.ndarray]) -> None:
     found, want = pair
     close(found[:-1], want[:-1], 0)  # NB the slice's last block is a contig end only in the slice
 
 
 CAPTURED: list[Row] = table(
     "captured",
-    ("recomb:get_sitewise_transmat", "02_blocks/get_sitewise_transmat in, the first 200 blocks", _replay_transmat, _prefix, "on the first 200 blocks it returns the run's first 199 entries; no input mutation"),
+    ("recomb:get_sitewise_transmat", "02_blocks/get_sitewise_transmat in, the first 200 blocks", _replay_transmat, _prefix_matches_run, "on the first 200 blocks it returns the run's first 199 entries; no input mutation"),
 )
 
 
 @pytest.mark.parametrize("row", ORACLE, ids=[r.id for r in ORACLE])
-def test_oracle(row: Row, ctx: Any, request: pytest.FixtureRequest) -> None:
+def test_oracle_agrees(row: Row, ctx: Any, request: pytest.FixtureRequest) -> None:
     """Closed forms and scipy's switched beta-binomial; the paired lattices by the textbook recursion."""
     run(row, ctx, request)
 
 
 @pytest.mark.parametrize("row", INVARIANT, ids=[r.id for r in INVARIANT])
-def test_invariant(row: Row, ctx: Any, request: pytest.FixtureRequest) -> None:
+def test_invariants_hold(row: Row, ctx: Any, request: pytest.FixtureRequest) -> None:
     """Map order, kernel bounds, the phase vote recomputed."""
     run(row, ctx, request)
 
 
 @pytest.mark.parametrize("row", CAPTURED, ids=[r.id for r in CAPTURED])
-def test_captured(row: Row, ctx: Any, request: pytest.FixtureRequest) -> None:
+def test_matches_run(row: Row, ctx: Any, request: pytest.FixtureRequest) -> None:
     """A slice of the run's kernel, recomputed."""
     run(row, ctx, request)

@@ -30,7 +30,7 @@ from audit.capture import input_files
 from audit.segments import DROPPED
 from cnamaste.utils import write_tsv
 
-pytestmark = pytest.mark.roundtrip
+pytestmark = pytest.mark.end2end
 
 
 @pytest.fixture(scope="session")

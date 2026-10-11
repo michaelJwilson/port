@@ -33,7 +33,7 @@ def _labels(ctx: Any) -> dict[str, Any]:
     return {"in": ctx.sim.stored("09_outputs/construct_df_clone_label/in"), "out": ctx.sim.stored("09_outputs/construct_df_clone_label/out")}
 
 
-def _clone_label(d: dict[str, Any]) -> None:
+def _clone_label_rows_sorted(d: dict[str, Any]) -> None:
     barcodes, coords, labels, tumor = d["in"]["args"]
     frame = unchanged(construct_df_clone_label, barcodes, coords, labels, tumor)
     by_barcode = pd.Series(np.asarray(labels), index=np.asarray(barcodes))
@@ -49,7 +49,7 @@ def _baf_profiles(ctx: Any) -> dict[str, Any]:
             "n_states": ctx.config.hmm.n_states}
 
 
-def _profiles(d: dict[str, Any]) -> None:
+def _profiles_map_baf(d: dict[str, Any]) -> None:
     res, n_states = d["merged"], d["n_states"]
     pred = np.argmax(np.asarray(res["log_gamma"]), axis=0)
     n_clones = np.unique(np.asarray(res["new_assignment"])).size
@@ -64,7 +64,7 @@ def _decoder_inputs(ctx: Any) -> dict[str, Any]:
             "calls": [ctx.sim.stored(f"09_outputs/integer_copy_{k}/in")["args"] for k in range(4)]}
 
 
-def _decoder_glue(d: dict[str, Any]) -> None:
+def _decoder_gets_clone_inputs(d: dict[str, Any]) -> None:
     res = d["res"]
     labels = np.asarray(res["new_assignment"])
     ids = np.unique(labels)
@@ -81,7 +81,7 @@ def _seglevel(ctx: Any) -> dict[str, Any]:
             "bins": ctx.sim.stored("07_rebin/create_bin_ranges/out")}
 
 
-def _written_copies(d: dict[str, Any]) -> None:
+def _written_copies_follow_path(d: dict[str, Any]) -> None:
     seg, state, res = d["seg"], d["state"], d["res"]
     pred = np.asarray(res["pred_cnv"])
     for s, copies in enumerate(d["copies"]):
@@ -95,18 +95,18 @@ def _written_copies(d: dict[str, Any]) -> None:
 
 ORACLE: list[Row] = table(
     "oracle",
-    ("io:construct_df_clone_label", "09_outputs/construct_df_clone_label in and out", _labels, _clone_label, "one row per barcode with its label, sorted by (sample, x, y); no input mutation"),
-    (GLUE, "05_baf/merge_by_minspots out, 06_normal/determine_normal_candidates in", _baf_profiles, _profiles, "the glue's merged BAF profiles are each clone's MAP state BAF, phase applied"),
-    (GLUE, Replay("08_rdr/run_core_inference in, 08_rdr/reindex_clones out, 09_outputs/integer_copy in"), _decoder_inputs, _decoder_glue,
+    ("io:construct_df_clone_label", "09_outputs/construct_df_clone_label in and out", _labels, _clone_label_rows_sorted, "one row per barcode with its label, sorted by (sample, x, y); no input mutation"),
+    (GLUE, "05_baf/merge_by_minspots out, 06_normal/determine_normal_candidates in", _baf_profiles, _profiles_map_baf, "the glue's merged BAF profiles are each clone's MAP state BAF, phase applied"),
+    (GLUE, Replay("08_rdr/run_core_inference in, 08_rdr/reindex_clones out, 09_outputs/integer_copy in"), _decoder_inputs, _decoder_gets_clone_inputs,
      "each decoder call gets its clone's log_mu, p, path and pseudobulk baseline"),
-    (GLUE, "cnv_seglevel.tsv, cnv_perstate.tsv, decoder outs", _seglevel, _written_copies, "the written Z, A, B and log mu are the decoded copies along each clone's path"),
+    (GLUE, "cnv_seglevel.tsv, cnv_perstate.tsv, decoder outs", _seglevel, _written_copies_follow_path, "the written Z, A, B and log mu are the decoded copies along each clone's path"),
 )
 
 
 # --- invariants ---------------------------------------------------------------------
 
 
-def _tsv(tmp: Any) -> None:
+def _tsv_round_trips(tmp: Any) -> None:
     frame = pd.DataFrame({"a": [1, 2], "b": ["x", "y"]}, index=["r0", "r1"])
     write_tsv(str(tmp / "t.tsv"), frame, index=True, index_label="row")
     back = pd.read_csv(tmp / "t.tsv", sep="\t", index_col="row")
@@ -117,17 +117,17 @@ def _tsv(tmp: Any) -> None:
 
 INVARIANT: list[Row] = table(
     "invariant",
-    ("utils:write_tsv", "synthetic: a 2-row frame", lambda c: c.tmp_path, _tsv, "tab-separated, round trips with its index; no frame writes an empty file"),
+    ("utils:write_tsv", "synthetic: a 2-row frame", lambda c: c.tmp_path, _tsv_round_trips, "tab-separated, round trips with its index; no frame writes an empty file"),
 )
 
 
 @pytest.mark.parametrize("row", ORACLE, ids=[r.id for r in ORACLE])
-def test_oracle(row: Row, ctx: Any, request: pytest.FixtureRequest) -> None:
+def test_oracle_agrees(row: Row, ctx: Any, request: pytest.FixtureRequest) -> None:
     """The glue between recorded calls, recomputed."""
     run(row, ctx, request)
 
 
 @pytest.mark.parametrize("row", INVARIANT, ids=[r.id for r in INVARIANT])
-def test_invariant(row: Row, ctx: Any, request: pytest.FixtureRequest) -> None:
+def test_invariants_hold(row: Row, ctx: Any, request: pytest.FixtureRequest) -> None:
     """Writers round trip."""
     run(row, ctx, request)

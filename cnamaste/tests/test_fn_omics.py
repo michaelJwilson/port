@@ -39,7 +39,7 @@ def loaded(ctx: Any) -> dict[str, Any]:
 # --- oracle --------------------------------------------------------------------
 
 
-def _greedy(_: Any) -> None:
+def _greedy_shortest_runs(_: Any) -> None:
     lengths = np.full(7, 10)
     umi = np.array([5, 5, 5, 5, 5, 5, 1])
     snp = np.array([1, 3, 0, 4, 2, 2, 0])
@@ -50,7 +50,7 @@ def _greedy(_: Any) -> None:
     assert every.tolist() == list(range(7)), "with no floor each block is a bin"
 
 
-def _blocks_counts(d: dict[str, Any]) -> None:
+def _block_counts_sum_snps(d: dict[str, Any]) -> None:
     frame, counts = d["frame"], d["counts"]
     snps = frame[frame["snp_id"].notna()]
     where = {s: i for i, s in enumerate(d["ids"])}
@@ -66,7 +66,7 @@ def _blocks_counts(d: dict[str, Any]) -> None:
         assert np.array_equal(counts.X[block, 0], np.asarray(d["adata"].layers["count"])[:, cols].sum(axis=1))
 
 
-def _bins_counts(d: dict[str, Any]) -> None:
+def _bin_counts_sum_genes(d: dict[str, Any]) -> None:
     frame, counts = d["frame"], d["counts"]
     names = d["adata"].var.index
     genes = frame[frame["is_interval"] & frame["bin_id"].notna() & (frame["bin_id"] < 80)]
@@ -85,7 +85,7 @@ def _bins_in(stage: str) -> Any:
     return build
 
 
-def _binned(frame: pd.DataFrame) -> None:
+def _binned_spans_and_members(frame: pd.DataFrame) -> None:
     out = unchanged(binned_gene_snp, frame)
     kept = frame[frame["bin_id"].notna()]
     groups = kept.groupby("bin_id")
@@ -98,11 +98,11 @@ def _binned(frame: pd.DataFrame) -> None:
 
 ORACLE: list[Row] = table(
     "oracle",
-    ("omics:greedy_binning_nobreak", "synthetic: 7 blocks", lambda c: None, _greedy, "the shortest runs meeting the SNP-UMI floor; a failing tail joins the previous bin; no floor, one block per bin"),
-    ("omics:summarize_counts_for_blocks", Replay("02_blocks out, load_input_data out (replayed), blocks 0-49"), _blocks_in, _blocks_counts, "A-allele and A+B sums over each block's SNPs; UMIs over its genes"),
-    ("omics:summarize_counts_for_bins", Replay("04_bins out, load_input_data out (replayed), bins 0-79"), _bins_in("04_bins"), _bins_counts, "a bin's UMIs are its genes' counts in the AnnData"),
-    ("omics:summarize_counts_for_bins", Replay("07_rebin out, load_input_data out (replayed), bins 0-79"), _bins_in("07_rebin"), _bins_counts, "after re-binning too"),
-    ("omics:binned_gene_snp", "07_rebin/create_bin_ranges out", lambda c: c.sim.stored("07_rebin/create_bin_ranges/out"), _binned,
+    ("omics:greedy_binning_nobreak", "synthetic: 7 blocks", lambda c: None, _greedy_shortest_runs, "the shortest runs meeting the SNP-UMI floor; a failing tail joins the previous bin; no floor, one block per bin"),
+    ("omics:summarize_counts_for_blocks", Replay("02_blocks out, load_input_data out (replayed), blocks 0-49"), _blocks_in, _block_counts_sum_snps, "A-allele and A+B sums over each block's SNPs; UMIs over its genes"),
+    ("omics:summarize_counts_for_bins", Replay("04_bins out, load_input_data out (replayed), bins 0-79"), _bins_in("04_bins"), _bin_counts_sum_genes, "a bin's UMIs are its genes' counts in the AnnData"),
+    ("omics:summarize_counts_for_bins", Replay("07_rebin out, load_input_data out (replayed), bins 0-79"), _bins_in("07_rebin"), _bin_counts_sum_genes, "after re-binning too"),
+    ("omics:binned_gene_snp", "07_rebin/create_bin_ranges out", lambda c: c.sim.stored("07_rebin/create_bin_ranges/out"), _binned_spans_and_members,
      "per bin: first CHR and START, last END, distinct SNPs, its genes; no input mutation"),
 )
 
@@ -110,7 +110,7 @@ ORACLE: list[Row] = table(
 # --- invariants ---------------------------------------------------------------------
 
 
-def _table(frame: pd.DataFrame) -> None:
+def _snps_inside_genes(frame: pd.DataFrame) -> None:
     genes = frame[frame["is_interval"]]
     snps = frame[~frame["is_interval"]]
     assert genes["snp_id"].isna().all() and snps["snp_id"].notna().all()
@@ -126,12 +126,12 @@ def _reference(ctx: Any) -> pd.DataFrame:
     return ctx.once("omics/reference_genes", lambda: get_reference_genes(str(resources / "hgTables_hg38_gencode.txt")))
 
 
-def _reference_rows(genes: pd.DataFrame) -> None:
+def _reference_autosomal_genes(genes: pd.DataFrame) -> None:
     assert set(genes["CHR"].unique()) == set(range(1, 23)) and genes["is_interval"].all() and genes["snp_id"].isna().all()
     assert np.all(genes["END"] >= genes["START"])
 
 
-def _blocks(d: dict[str, Any]) -> None:
+def _blocks_ascend_above_floor(d: dict[str, Any]) -> None:
     frame, total, floor = d["frame"], d["total"], d["floor"]
     ids = frame["block_id"].to_numpy()
     snp_umis = total.sum(axis=1)
@@ -153,7 +153,7 @@ def _bins_respect(ctx: Any) -> dict[str, Any]:
     return {"in": given, "out": ctx.sim.stored("04_bins/create_bin_ranges/out")}
 
 
-def _bins(d: dict[str, Any]) -> None:
+def _bins_within_segments(d: dict[str, Any]) -> None:
     args, kwargs = d["in"]["args"], d["in"]["kwargs"]
     frame, total, refined = args[0], args[6], np.asarray(args[7])
     out = create_bin_ranges(deep(frame), *args[1:], **kwargs)
@@ -175,14 +175,14 @@ def _bins(d: dict[str, Any]) -> None:
     assert np.all((snp >= args[9]) | lonely | capped), "a bin below the SNP-UMI floor is its run's only bin, or stopped at max_binlength"
 
 
-def _bins_pure(d: dict[str, Any]) -> None:
+def _bins_keep_caller_table(d: dict[str, Any]) -> None:
     # NB copies: the input is the replay's cached value, and the call this row expects to fail
     #    (Ticket#189) writes bin_id into it, which every later reader of the stage would inherit.
     args, kwargs = deep(d["in"]["args"]), deep(d["in"]["kwargs"])
     unchanged(create_bin_ranges, *args, **kwargs)
 
 
-def _summary(_: Any) -> None:
+def _summary_logs_totals(_: Any) -> None:
     stream = io.StringIO()
     handler = logging.StreamHandler(stream)
     logger = logging.getLogger("cnamaste.omics")
@@ -199,7 +199,7 @@ def _summary(_: Any) -> None:
     assert "total blocks: 2" in text and "total umis: 10" in text and "total snp-umis: 9" in text
 
 
-def _counts_container(_: Any) -> None:
+def _counts_validate_and_unpack(_: Any) -> None:
     x = np.arange(12).reshape(2, 2, 3)
     c = SpatioGenomicCounts(np.array([1, 1]), x, np.zeros((2, 3)), np.ones((2, 3), dtype=int) * 20)
     assert (c.n_segments, c.n_spots) == (2, 3) and c.keys() == ["lengths", "X", "base_nb_mean", "total_bb_RD"]
@@ -211,7 +211,38 @@ def _counts_container(_: Any) -> None:
         SpatioGenomicCounts(np.array([2]), x, np.zeros((2, 4)), np.zeros((2, 3)))
 
 
-def _cached(tmp: Any) -> None:
+def _counts_get_set_copy_lock(_: Any) -> None:
+    x = np.arange(12).reshape(2, 2, 3)
+    c = SpatioGenomicCounts(np.array([1, 1]), x, np.ones((2, 3)), np.full((2, 3), 20))
+    assert c["X"] is x and c["n_spots"] == 3, "a field or property by name, by identity"
+    with pytest.raises(KeyError):
+        c["nope"]
+    assert [k for k, _ in c.items()] == c.keys() and all(v is getattr(c, k) for k, v in c.items()), "items pair keys with fields"
+    base = np.full((2, 3), 2.0)
+    c["base_nb_mean"] = base
+    assert c.base_nb_mean is base, "a valid set takes"
+    with pytest.raises(ValueError):
+        c["total_bb_RD"] = np.zeros((2, 4))  # NB validate() refuses a shape other than (segments, spots)
+    with pytest.raises(KeyError):
+        c["nope"] = 1
+    shallow, deep_ = c.copy(), c.copy(deep=True)
+    assert shallow is not c and shallow.X is c.X, "copy() is shallow: the arrays are shared"
+    assert deep_.X is not c.X and np.array_equal(deep_.X, c.X), "a deep copy holds equal, separate arrays"
+    deep_.X[0, 0, 0] = -1
+    assert c.X[0, 0, 0] == 0, "a deep copy's writes do not reach the original"
+    deep_.lock()
+    assert not deep_.X.flags.writeable and c.X.flags.writeable, "lock freezes the instance's own arrays only"
+    with pytest.raises(ValueError):
+        deep_.X[0, 0, 0] = 1
+    with pytest.raises(RuntimeError):
+        deep_.lengths = np.array([2])
+    with pytest.raises(RuntimeError):
+        deep_["X"] = deep_.X  # NB __setitem__ goes through the locked __setattr__
+    deep_.unlock()
+    assert deep_.X.flags.writeable, "unlock restores writes"
+
+
+def _cache_reads_back(tmp: Any) -> None:
     calls = []
 
     @cacher("probe.tsv")
@@ -233,34 +264,40 @@ def _cache_config(ctx: Any) -> Any:
 
 INVARIANT: list[Row] = table(
     "invariant",
-    ("omics:form_gene_snp_table", "01_genes/form_gene_snp_table out", lambda c: c.sim.stored("01_genes/form_gene_snp_table/out"), _table, "gene rows carry no SNP id; every SNP lies inside its gene's span"),
-    ("reference:get_reference_genes", "CalicoST hgTables", _reference, _reference_rows, "chr1-22 as integers; gene rows only"),
-    ("omics:assign_initial_blocks", Replay("02_blocks out and summarize_counts_for_blocks (replayed)"), _blocks_in_total, _blocks, "blocks ascend; only a contig's end block falls under phasing_min_snp_umis"),
-    ("omics:create_bin_ranges", Replay("04_bins/create_bin_ranges in (replayed)"), _bins_respect, _bins, "recomputed, the run's frame; no bin crosses a refined segment; under-floor bins are a run's only bin or length-capped"),
-    ("omics:create_bin_ranges", Replay("04_bins/create_bin_ranges in (replayed)"), _bins_respect, _bins_pure, "the caller's gene table is not rewritten",
+    ("omics:form_gene_snp_table", "01_genes/form_gene_snp_table out", lambda c: c.sim.stored("01_genes/form_gene_snp_table/out"), _snps_inside_genes, "gene rows carry no SNP id; every SNP lies inside its gene's span"),
+    ("reference:get_reference_genes", "CalicoST hgTables", _reference, _reference_autosomal_genes, "chr1-22 as integers; gene rows only"),
+    ("omics:assign_initial_blocks", Replay("02_blocks out and summarize_counts_for_blocks (replayed)"), _blocks_in_total, _blocks_ascend_above_floor, "blocks ascend; only a contig's end block falls under phasing_min_snp_umis"),
+    ("omics:create_bin_ranges", Replay("04_bins/create_bin_ranges in (replayed)"), _bins_respect, _bins_within_segments, "recomputed, the run's frame; no bin crosses a refined segment; under-floor bins are a run's only bin or length-capped"),
+    ("omics:create_bin_ranges", Replay("04_bins/create_bin_ranges in (replayed)"), _bins_respect, _bins_keep_caller_table, "the caller's gene table is not rewritten",
      "Ticket#189: Inherited defect: assign_initial_blocks writes by positional column and is not re-entrant (create_bin_ranges adds bin_id to its caller's frame the same way)"),
-    ("omics:summarize_blocks", "synthetic: 2 blocks", lambda c: None, _summary, "returns None; logs block, UMI and SNP-UMI totals (Ticket#191: the result is discarded)"),
-    ("spatio_genomic_counts:SpatioGenomicCounts.__post_init__", "synthetic", lambda c: None, _counts_container, "validate refuses lengths or shapes that disagree with X"),
-    ("spatio_genomic_counts:SpatioGenomicCounts.validate", "synthetic", lambda c: None, _counts_container, "sum(lengths) == segments; base and depth (segments, spots)"),
-    ("spatio_genomic_counts:SpatioGenomicCounts.n_segments", "synthetic", lambda c: None, _counts_container, "X's first axis"),
-    ("spatio_genomic_counts:SpatioGenomicCounts.n_spots", "synthetic", lambda c: None, _counts_container, "X's last axis"),
-    ("spatio_genomic_counts:SpatioGenomicCounts.__iter__", "synthetic", lambda c: None, _counts_container, "unpacks as (lengths, X, base, depth), by identity"),
-    ("spatio_genomic_counts:SpatioGenomicCounts.keys", "synthetic", lambda c: None, _counts_container, "the four field names in order"),
-    ("spatio_genomic_counts:SpatioGenomicCounts.values", "synthetic", lambda c: None, _counts_container, "the four fields in order"),
-    ("spatio_genomic_counts:SpatioGenomicCounts.__str__", "synthetic", lambda c: None, _counts_container, "names each field"),
-    ("spatio_genomic_counts:LockableMixin.__setattr__", "synthetic", lambda c: None, _counts_container, "an unlocked container takes writes"),
-    ("utils:cacher", "synthetic: a cached two-row table, run.cache on", _cache_config, _cached, "the second call reads the cache, and the cached table equals the computed one",
+    ("omics:summarize_blocks", "synthetic: 2 blocks", lambda c: None, _summary_logs_totals, "returns None; logs block, UMI and SNP-UMI totals (Ticket#191: the result is discarded)"),
+    ("spatio_genomic_counts:SpatioGenomicCounts.__post_init__", "synthetic", lambda c: None, _counts_validate_and_unpack, "validate refuses lengths or shapes that disagree with X"),
+    ("spatio_genomic_counts:SpatioGenomicCounts.validate", "synthetic", lambda c: None, _counts_validate_and_unpack, "sum(lengths) == segments; base and depth (segments, spots)"),
+    ("spatio_genomic_counts:SpatioGenomicCounts.n_segments", "synthetic", lambda c: None, _counts_validate_and_unpack, "X's first axis"),
+    ("spatio_genomic_counts:SpatioGenomicCounts.n_spots", "synthetic", lambda c: None, _counts_validate_and_unpack, "X's last axis"),
+    ("spatio_genomic_counts:SpatioGenomicCounts.__iter__", "synthetic", lambda c: None, _counts_validate_and_unpack, "unpacks as (lengths, X, base, depth), by identity"),
+    ("spatio_genomic_counts:SpatioGenomicCounts.keys", "synthetic", lambda c: None, _counts_validate_and_unpack, "the four field names in order"),
+    ("spatio_genomic_counts:SpatioGenomicCounts.values", "synthetic", lambda c: None, _counts_validate_and_unpack, "the four fields in order"),
+    ("spatio_genomic_counts:SpatioGenomicCounts.__str__", "synthetic", lambda c: None, _counts_validate_and_unpack, "names each field"),
+    ("spatio_genomic_counts:LockableMixin.__setattr__", "synthetic", lambda c: None, _counts_validate_and_unpack, "an unlocked container takes writes"),
+    ("spatio_genomic_counts:SpatioGenomicCounts.__getitem__", "synthetic", lambda c: None, _counts_get_set_copy_lock, "a field or property by name, by identity; an unknown name raises KeyError"),
+    ("spatio_genomic_counts:SpatioGenomicCounts.__setitem__", "synthetic", lambda c: None, _counts_get_set_copy_lock,
+     "a valid set takes; a shape validate() refuses raises ValueError; an unknown name KeyError; a locked container RuntimeError"),
+    ("spatio_genomic_counts:SpatioGenomicCounts.items", "synthetic", lambda c: None, _counts_get_set_copy_lock, "(key, field) pairs in keys() order, by identity"),
+    ("spatio_genomic_counts:SpatioGenomicCounts.copy", "synthetic", lambda c: None, _counts_get_set_copy_lock, "shallow shares the arrays; deep holds equal, separate ones"),
+    ("spatio_genomic_counts:LockableMixin.lock", "synthetic", lambda c: None, _counts_get_set_copy_lock, "a locked container refuses attribute and item writes and freezes its arrays; unlock restores both"),
+    ("utils:cacher", "synthetic: a cached two-row table, run.cache on", _cache_config, _cache_reads_back, "the second call reads the cache, and the cached table equals the computed one",
      "new: cacher's .tsv round trip turns None into '' (keep_default_na=False), and the first call returns the reloaded table: with run.cache on, form_gene_snp_table's gene rows carry snp_id ''"),
 )
 
 
 @pytest.mark.parametrize("row", ORACLE, ids=[r.id for r in ORACLE])
-def test_oracle(row: Row, ctx: Any, request: pytest.FixtureRequest) -> None:
+def test_oracle_agrees(row: Row, ctx: Any, request: pytest.FixtureRequest) -> None:
     """Counts recounted from the AnnData and allele matrices; greedy binning by hand."""
     run(row, ctx, request)
 
 
 @pytest.mark.parametrize("row", INVARIANT, ids=[r.id for r in INVARIANT])
-def test_invariant(row: Row, ctx: Any, request: pytest.FixtureRequest) -> None:
+def test_invariants_hold(row: Row, ctx: Any, request: pytest.FixtureRequest) -> None:
     """Spans, floors, segment boundaries, container checks, the cache."""
     run(row, ctx, request)
