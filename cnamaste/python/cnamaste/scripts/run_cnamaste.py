@@ -521,14 +521,13 @@ def run_cnamaste(config_path, over_rides=None):
     logger.runtime_phase = "baf-only clone & copy state inference"
 
     # TODO
-    # NB smooth pooling matrix & distance based (exponential decay) adjacency.
+    # NB symmetric k-nearest-neighbour adjacency; spots are not pooled (Ticket#180).
     #    requires pre-defined single_total_bb_RD, but largely on data loading.
-    adjacency_mat, smooth_mat = construct_multislice_lattice_adjacency(
+    adjacency_mat = construct_multislice_lattice_adjacency(
         sample_ids,
         sample_list,
         coords,
         across_slice_adjacency_mat,
-        maxspots_pooling=1,  # DEPRECATE config.hmrf.maxspots_pooling,
         unit_xsquared=config.hmrf.unit_xsquared,  # TODO
         unit_ysquared=config.hmrf.unit_ysquared,  # TODO
     )
@@ -632,7 +631,6 @@ def run_cnamaste(config_path, over_rides=None):
         log_sitewise_transmat,
         # prefix="bafonly",
         # coords=coords,
-        smooth_mat=smooth_mat,  # TODO HACK FINAL
         adjacency_mat=adjacency_mat,
         sample_ids=sample_ids,
         sample_list=sample_list,
@@ -912,7 +910,7 @@ def run_cnamaste(config_path, over_rides=None):
         merged_baf_profiles,
         single_X,
         copy_single_X_rdr,
-        smooth_mat,
+        None,
         single_tumor_prop=None,
     )
 
@@ -1082,7 +1080,6 @@ def run_cnamaste(config_path, over_rides=None):
         global_initial_clone_index,
         n_states=config.hmm.n_states,
         log_sitewise_transmat=log_sitewise_transmat,
-        smooth_mat=smooth_mat,  # TODO HACK FINAL
         adjacency_mat=adjacency_mat,
         sample_ids=sample_ids,
         sample_list=sample_list,

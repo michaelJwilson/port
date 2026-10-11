@@ -35,9 +35,11 @@ OUT = ROOT / "cnamaste" / "python" / "cnamaste"
 ENTRY = "cnaster.scripts.run_cnaster"
 
 DEPARTED: dict[str, str] = {
-    "scripts/run_cnamaste.py": "PR1, #105: a removed bin's genes leave the gene-level output",
+    "scripts/run_cnamaste.py": "PR1, #105: a removed bin's genes leave the gene-level output; PR12, #180: no smooth_mat or maxspots_pooling",
     "hmm_emission.py": "PR3: flush_perf writes to <paths.output_dir>/cnamaste.perf; paths.perf_path is gone",
-    "spatial.py": "PR1, #692: rectangular clones that admit no assignment are banded",
+    "spatial.py": "PR1, #692: rectangular clones that admit no assignment are banded; PR12, #180: no smooth_mat or maxspots_pooling",
+    "hmrf.py": "PR12, #180: no smooth_mat pooling in the clone field",
+    "config.py": "PR12, #180: hmrf.maxspots_pooling other than 1 raises",
     "utils.py": "PR1, T- #692: write_fig releases each Text's cached renderer; D-dedup: `from copyreg import pickle` removed, so the cacher's .pkl mode uses the standard pickle",
     "icm.py": "D-dedup: 3 unused string copies of icm_sweep_deque and the shadowed logsumexp import commented out",
     "hmm_initialize.py": "D-dedup: an unused string copy of gmm_init commented out",
