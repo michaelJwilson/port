@@ -10,6 +10,7 @@ One HDF5 file per sample, written by a capture of one run, holds one
     /lineage/segments           int32 [genes, levels], -1 where a level drops the gene
     /lineage/clones             int16 [spots, levels], `parent/<level>` maps
     /internal/<run>/...         maps the pipeline computes and discards
+    /truth/<file>               the sample's planted truth files, gzip, with their sha256
 
 A value is a node: a dataset (an array), or a group whose `kind` attribute
 says how to rebuild it (`call`, `dict`, `list`, `tuple`, `dataclass`, `frame`,
@@ -620,6 +621,16 @@ class Capture:
     def file(self, name: str) -> bytes:
         """An output file's bytes, as the run wrote it."""
         return gzip.decompress(self.h5[f"files/{name}"][()].tobytes())
+
+    def truth(self) -> dict[str, bytes]:
+        """The sample's planted truth files, as the capture stored them (`/truth`), by name; empty where not stored."""
+        if "truth" not in self.h5:
+            return {}
+        found = {name: gzip.decompress(ds[()].tobytes()) for name, ds in self.h5["truth"].items()}
+        for name, data in found.items():
+            if hashlib.sha256(data).hexdigest() != self.h5[f"truth/{name}"].attrs["sha256"]:
+                raise ValueError(f"/truth/{name}: sha256 differs from the one stored beside it")
+        return found
 
 
 def checked(value: Any, sha: str, path: str, sets: str | None = None) -> Any:

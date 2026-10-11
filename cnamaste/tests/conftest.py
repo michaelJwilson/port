@@ -38,18 +38,11 @@ from audit.digest import Pins, quiet
 from audit.fn import Ctx
 from audit.scoring import Truth, planted
 from audit.segments import DROPPED, Genes, Segmentation
+from audit.sims import DEFAULT_SIMS, SUPPORTED_SIMS
 from cnamaste.config import YAMLConfig, set_global_config
 
 PROJECT = Path(__file__).resolve().parents[1]
 REPOSITORY = PROJECT.parent
-
-SUPPORTED_SIMS: dict[str, tuple[str, str]] = {
-    "2d4ce9a9": ("sim/numcnas1.2_cnasize5e7_ploidy2_random0", "tests/data/sim_2d4ce9a9.hdf5"),
-    # "8797710b": ("sim/numcnas6.3_cnasize1e7_ploidy2_random0", "tests/data/sim_8797710b.hdf5"),  # hard: no staged file yet
-}
-"""Fixture hash -> (the committed sample, relative to the repository; its staged file, relative to `cnamaste/`)."""
-
-DEFAULT_SIMS = ("2d4ce9a9",)
 
 REPLAY_SKIPPED = {"run_core_inference"}
 """Not replayed: 100 s (BAF) and 230 s (RDR) on easy; their outputs are stored whole and checked by rows."""
