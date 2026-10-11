@@ -40,7 +40,13 @@ DEPARTED: dict[str, str] = {
     "hmrf.py": "PR-adjacency, #180: no smooth_mat pooling in the clone field",
     "config.py": "PR-adjacency, #180: hmrf.maxspots_pooling other than 1 raises",
     "hmm_emission.py": "PR3: flush_perf writes to <paths.output_dir>/cnamaste.perf; paths.perf_path is gone",
-    "utils.py": "PR1, T- #692: write_fig releases each Text's cached renderer",
+    "utils.py": "PR1, T- #692: write_fig releases each Text's cached renderer; D-dedup: `from copyreg import pickle` removed, so the cacher's .pkl mode uses the standard pickle",
+    "icm.py": "D-dedup: 3 unused string copies of icm_sweep_deque and the shadowed logsumexp import commented out",
+    "hmm_initialize.py": "D-dedup: an unused string copy of gmm_init commented out",
+    "hmm_nophasing.py": "D-dedup: an unused string copy of compute_emission_probability_nb_betabinom_coded commented out",
+    "normal_spot.py": "D-dedup: an unused string copy of filter_normal_diffexp commented out",
+    "plot_genomic.py": "D-dedup: an unused string copy of plot_clones_genomic commented out",
+    "recomb.py": "D-dedup: unused string copies of the three recombination functions commented out",
 }
 """Copied file -> the T- #836 PR that edits it. Only grows."""
 
