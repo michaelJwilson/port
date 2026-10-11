@@ -284,7 +284,7 @@ LIMIT_TAU = "Ticket#561: beta-binomial log-pmf loses precision at large concentr
 LIMIT_PHI = ("Ticket#560: nbinom_logpmf_numba scores any count at probability 1 when p rounds to 1: r = 1/max(phi, 1e-10) caps the dispersion "
              "and p = 1/(1 + phi lambda) rounds to 1, a gap of 4e-5 at phi 1e-10 and 867 nats at 1e-12")
 NAN_LSE = "Ticket#411: icm.logsumexp and hmrf.logsumexp return NaN on an all -inf row, where scipy returns -inf"
-POSTERIOR = ("Ticket#411: the posterior check tests sum(log_gamma) == 0 (hmm.py:28, hmm_nophasing.py:443), a sum of logs; an all -inf column "
+POSTERIOR = ("Ticket#411: the posterior check tests sum(log_gamma) == 0 (hmm.py:28, hmm_nophasing.py:442), a sum of logs; an all -inf column "
              "passes it and normalises to NaN")
 
 ROWS: list[Row] = [
