@@ -682,7 +682,7 @@ CRITERIA = [
     Criterion("03_phasing", "clones", "hmrf.n_clones", "initial BAF clones", "==", "none",
               lambda u, v: Check(flags(len(u.sim.stored("03_phasing/initialize_clones/out")) == v), known=True),
               "new: hmrf.n_clones only names the output directory (utils.py:245); the BAF round starts from "
-              "phasing.npart_phasing^2 rectangles (run_cnamaste.py:250-256, 276)"),
+              "phasing.npart_phasing^2 rectangles (run_cnamaste.py:255-261, 281)"),
     Criterion("08_rdr", "clones", "hmrf.n_clones_rdr", "initial RDR clones == merged BAF clones x n_clones_rdr", "==", "none",
               lambda u, v: Check(flags(np.unique(u.sim.stored("08_rdr/initialize_rdr_clone_refininement/out/0")).size
                                        == len(u.sim.stored("05_baf/merge_by_minspots/out/0")) * v))),
@@ -697,9 +697,9 @@ CRITERIA = [
               "none", lambda u, v: Check(flags(False), known=True),
               "Ticket#788: max_total_copy and max_allele_copy are not in the config; the code fixes 6 and 5 (integer_copy.py:106-107)"),
     Criterion("09_outputs", "integer copies", "int_copy_num.ploidy", "cnv{medfix}_{genelevel,seglevel,perstate}.tsv per ploidy pass "
-              "(run_cnamaste.py:1316-1579)", "==", "none", lambda u, v: ploidy_files(u, v),
+              "(run_cnamaste.py:1323-1586)", "==", "none", lambda u, v: ploidy_files(u, v),
               "new: the configured ploidy pass writes no files: its clones yield no state copies and the pass `continue`s "
-              "(run_cnamaste.py:1508-1510)"),
+              "(run_cnamaste.py:1515-1517)"),
     Criterion("09_outputs", "integer copies", "int_copy_num.nonbalance_bafdist", "the (1, 1) state's |p - 1/2| (binds above 0.5 never)",
               "<=", "none", lambda u, v: Check(normal_state(u)[0] <= v)),
     Criterion("09_outputs", "integer copies", "int_copy_num.nondiploid_rdrdist", "the (1, 1) state's |mu - 1|", "<=", "none",
