@@ -294,6 +294,29 @@ def write_fig(opath, fig=None, transparent=True, bbox_inches="tight", dpi=300):
         text._renderer = None
 
 
+def write_combined(opath, figures, dpi=150):
+    """`figures`, each rendered as write_fig writes it (tight box), stacked top to bottom on one PNG page at their widest
+    width, white behind; a None figure is skipped."""
+    import io
+
+    images = []
+    for fig in figures:
+        if fig is None:
+            continue
+        buffer = io.BytesIO()
+        fig.savefig(buffer, format="png", dpi=dpi, bbox_inches="tight", facecolor="white")
+        buffer.seek(0)
+        images.append(plt.imread(buffer)[..., :3])
+    if not images:
+        return
+
+    width = max(image.shape[1] for image in images)
+    page = np.vstack([np.pad(image, ((0, 0), (0, width - image.shape[1]), (0, 0)), constant_values=1.0) for image in images])
+
+    logger.info(f"Writing combined figure to:\n{opath}")
+    plt.imsave(opath, page)
+
+
 @njit
 def top_hat_sum(arr, width):
     # TODO HACK?

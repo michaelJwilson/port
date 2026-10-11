@@ -52,7 +52,7 @@ from cnamaste.spatial import (
     initialize_rdr_clone_refininement,
     construct_multislice_lattice_adjacency,
 )
-from cnamaste.utils import configure_output_dir, pause, write_fig, write_tsv
+from cnamaste.utils import configure_output_dir, pause, write_combined, write_fig, write_tsv
 from cnamaste.annotation import load_clone_labels, load_clone_ranges, assign_clone_ranges
 
 # from cnamaste.sim import load_tables_to_matrices
@@ -1725,6 +1725,12 @@ def run_cnamaste(config_path, over_rides=None):
         fig_copy_number_profile,
         transparent=True,
         bbox_inches="tight",
+    )
+
+    # NB one page: the copy-number profile over the clones' RDR and BAF over the clones in space.
+    write_combined(
+        f"{plots_dir}/combined.png",
+        [fig_copy_number_profile, rdr_baf_fig, clones_fig],
     )
 
     logger.info(f"Done in {(time.time() - start_time)/60.:.2f} minutes.")

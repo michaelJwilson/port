@@ -29,7 +29,7 @@ from cnamaste.plot_copy_number_profile import plot_copy_number_profile
 from cnamaste.plot_genomic import plot_clones_genomic
 from cnamaste.plotting import plot_clones_spatial
 from cnamaste.scripts import run_cnamaste as script
-from cnamaste.utils import write_fig
+from cnamaste.utils import write_combined, write_fig
 
 from fn import Replay, Row, fitted, run, table
 
@@ -85,6 +85,25 @@ def _spatial(d: dict[str, Any]) -> Any:
 
 def _profile(d: dict[str, Any]) -> Any:
     return plot_copy_number_profile(d["seg"])
+
+
+def _combined_stacks(d: dict[str, Any]) -> None:
+    """combined.png: the profile, the segment-level genomic and the spatial figures, each as rendered alone, stacked."""
+    import matplotlib.pyplot as plt
+
+    figures = [_profile(d), _segments(d), _spatial(d)]
+    alone = []
+    for k, fig in enumerate(figures):
+        fig.savefig(d["tmp"] / f"part{k}.png", format="png", dpi=150, bbox_inches="tight", facecolor="white")
+        alone.append(plt.imread(d["tmp"] / f"part{k}.png")[..., :3])
+    write_combined(str(d["tmp"] / "combined.png"), [*figures, None])
+    page = plt.imread(d["tmp"] / "combined.png")[..., :3]
+    assert page.shape[:2] == (sum(a.shape[0] for a in alone), max(a.shape[1] for a in alone)), "the parts stacked, at the widest width"
+    top = 0
+    for a in alone:
+        assert np.allclose(page[top:top + a.shape[0], : a.shape[1]], a, atol=1 / 255), "each part as it renders alone"
+        top += a.shape[0]
+    plt.close("all")
 
 
 def _empty_figure(tmp: Path) -> None:
@@ -184,6 +203,8 @@ ROWS: list[Row] = [
          "the final labels on the coordinates (run_cnamaste.py:1699): a non-empty PDF"),
         ("plot_copy_number_profile:plot_copy_number_profile", COUNTS, figure_inputs, rendered("copy_number_profile", _profile),
          "cnv_seglevel.tsv's allele-specific profile (run_cnamaste.py:1714): a non-empty PDF"),
+        ("utils:write_combined", COUNTS, figure_inputs, _combined_stacks,
+         "combined.png (run_cnamaste's last figure): the profile, the segment-level genomic and the spatial figures stacked, each as it renders alone"),
         ("utils:write_fig", "synthetic", lambda c: c.tmp_path, _empty_figure, "no figure writes a blank PDF page"),
     ),
     *table(

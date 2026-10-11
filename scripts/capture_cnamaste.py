@@ -20,7 +20,7 @@ and runs `cnamaste.scripts.run_cnamaste.run_cnamaste` with every key stage
 wrapped on the module's namespace. Each wrapped call is recorded once, the
 call the pipeline made: its arguments, deep-copied on entry, its return,
 deep-copied on exit, and the generator states it found. Plots are stubbed
-(`plot_*` and `write_fig` return None): they read and draw, and the run's
+(`plot_*`, `write_fig` and `write_combined` return None): they read and draw, and the run's
 scores equal the ledger row with them on (`cnamaste/tests/test_stages.py`).
 
 A drawn sample (`--sample` a realization directory with a shared `snp/`,
@@ -224,6 +224,7 @@ PLOTS = (
     "plot_copy_number_profile",
     "plot_he",
     "write_fig",
+    "write_combined",
 )
 
 

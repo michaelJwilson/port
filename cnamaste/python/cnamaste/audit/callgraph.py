@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = ("cnamaste.scripts.run_cnamaste", "run_cnamaste")
-PLOTS = {"plot_clones_genomic", "plot_clones_spatial", "plot_copy_number_profile", "plot_he", "write_fig"}
+PLOTS = {"plot_clones_genomic", "plot_clones_spatial", "plot_copy_number_profile", "plot_he", "write_fig", "write_combined"}
 """`capture.py` stubs these: they read and draw, and nothing downstream reads what they return."""
 PLOT_MODULES = {"cnamaste.plotting", "cnamaste.plot_genomic", "cnamaste.plot_copy_number_profile", "cnamaste.palette"}
 IMPLICIT_CALLS: dict[str, tuple[str, str]] = {
