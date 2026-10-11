@@ -63,22 +63,36 @@ def _diploid(_: Any) -> None:
 
 
 def _milp(calls: list[dict[str, Any]]) -> None:
+    """Cost and copies against the separable argmin, on occupied states only.
+
+    A state with no bins enters the objective with weight 1e-6 (`points + 1e-6`), so
+    every copy pair costs it about 1e-6, inside the solver's gap: its copies are not
+    identifiable, and two optima differing only there are the same solution.
+    """
     for k, call in enumerate(calls):
         log_mu, _, p, pred = call["args"]
-        copies, cost, ploidy = call["out"]
-        want, want_cost, want_ploidy = separable(log_mu, p, pred)
+        copies, cost, _ = call["out"]
+        want, want_cost, _ = separable(log_mu, p, pred)
         assert np.isclose(cost, want_cost, rtol=1e-6), f"call {k}: cost {cost} against the separable minimum {want_cost}"
         occupied = np.bincount(pred, minlength=len(log_mu)) > 0
-        assert np.array_equal(copies[occupied], want[occupied]), f"call {k}: copies differ from the per-state argmin (a state with no bins costs ~0 whatever its copies)"
-        # NB a looser bound whose objective differs by solver noise can win `res.fun < best_obj` (new: call 1 on easy returns 3)
-        assert ploidy >= max(want_ploidy, 1), f"call {k}: a ploidy bound the solution meets"
+        assert np.array_equal(copies[occupied], want[occupied]), f"call {k}: copies differ from the per-state argmin"
+
+
+def _milp_ploidy(calls: list[dict[str, Any]]) -> None:
+    for k, call in enumerate(calls):
+        log_mu, _, p, pred = call["args"]
+        _, _, want_ploidy = separable(log_mu, p, pred)
+        assert call["out"][2] == max(want_ploidy, 1), f"call {k}: the least ploidy bound the solution meets"
 
 
 ORACLE: list[Row] = table(
     "oracle",
     ("integer_copy:find_diploid_balanced_state", "synthetic: 4 states", lambda c: None, _diploid, "the balanced, frequent state with mu closest to 1; none raises"),
     ("integer_copy:hill_climbing_integer_copynumber_fixdiploid_milp", "09_outputs/integer_copy_{0..3} in and out", recorded, _milp,
-     "on each recorded call: the per-state argmin, its cost and its ploidy (the ploidy row does not bind)"),
+     "on each recorded call: the per-state argmin on occupied states, and its cost"),
+    ("integer_copy:hill_climbing_integer_copynumber_fixdiploid_milp", "09_outputs/integer_copy_{0..3} in and out", recorded, _milp_ploidy,
+     "on each recorded call: the least ploidy bound the solution meets",
+     "Ticket#894: integer MILP: best_ploidy takes a looser bound by solver noise"),
 )
 
 

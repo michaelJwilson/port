@@ -52,7 +52,7 @@ NOT_EXECUTED: dict[str, str] = {
 """Reached in the static graph, not executed on easy: why. A row may still test one (e.g. unpack_param_errors)."""
 
 ISSUES = (20, 30, 45, 46, 58, 80, 81, 84, 105, 113, 115, 122, 135, 136, 143, 146, 165, 172, 177, 180, 181, 182, 189, 191, 236, 240, 241, 244,
-          267, 269, 293, 311, 320, 417, 440, 446, 449, 466, 468, 479, 483, 560, 561, 788, 799, 860, 869, 871)
+          267, 269, 293, 311, 320, 417, 440, 446, 449, 466, 468, 479, 483, 560, 561, 788, 799, 860, 869, 871, 894)
 """Issues the per-function work places: each has a row here or in test_defects.py."""
 
 DEDUP = ("dead copies of reached functions remain in the source (shadowed definitions and definitions inside string literals): "

@@ -1366,7 +1366,27 @@
    "09_outputs/integer_copy_3"
   ]
  },
- "integer_copy:hill_climbing_integer_copynumber_fixdiploid_milp | on each recorded call: the per-state argmin, its cost and its ploidy (the ploidy row does not bind)": {
+ "integer_copy:hill_climbing_integer_copynumber_fixdiploid_milp | on each recorded call: the least ploidy bound the solution meets": {
+  "stable": "0c99e65cf01999c269f35951dfa52424af85ed8b08856b952ccf678b2084d40b",
+  "exact": "ae7276bab20d28a85cdb5bd9a0d67b2480eecb4ce9d4ec67617fb5567eb95cb4",
+  "summary": {
+   "['judged'][0]['args'][0]": "float64 (7,) min=-6.41149 max=0.50822 mean=-1.35959 sum=-9.51712",
+   "['judged'][0]['args'][1]": "float64 (1578,) min=0 max=4027.86 mean=690.236 sum=1.08919e+06",
+   "['judged'][0]['args'][2]": "float64 (7,) min=0.0821164 max=0.967171 mean=0.484699 sum=3.39289",
+   "['judged'][0]['args'][3]": "int64 (1578,) min=0 max=3 sum=84",
+   "['judged'][0]['kwargs']['nonbalance_bafdist']": "float 1",
+   "['judged'][0]['kwargs']['nondiploid_rdrdist']": "float 10",
+   "['judged'][0]['out'][0]": "int64 (7, 2) min=0 max=3 sum=17",
+   "['judged'][0]['out'][1]": "float 1.3335",
+   "['judged'][0]['out'][2]": "int 2",
+   "['judged'][1]['args'][0]": "float64 (7,) min=-6.41149 max=0.50822 mean=-1.35959 sum=-9.51712",
+   "['judged'][1]['args'][1]": "float64 (1578,) min=0 max=1179.45 mean=202.117 sum=318940",
+   "['judged'][1]['args'][2]": "float64 (7,) min=0.0821164 max=0.967171 mean=0.484699 sum=3.39289",
+   "...": "24 more leaves"
+  },
+  "calls": 0
+ },
+ "integer_copy:hill_climbing_integer_copynumber_fixdiploid_milp | on each recorded call: the per-state argmin on occupied states, and its cost": {
   "stable": "0c99e65cf01999c269f35951dfa52424af85ed8b08856b952ccf678b2084d40b",
   "exact": "ae7276bab20d28a85cdb5bd9a0d67b2480eecb4ce9d4ec67617fb5567eb95cb4",
   "summary": {
