@@ -273,14 +273,14 @@ def _(**_: Any) -> None:
     assert any(stored[0] < line < rebound[0] for line in lines), "the filter's return is overwritten before any read"
 
 
-@row("Ticket#440", "normal_spot.filter_normal_diffexp / run_cnamaste", "xfail",
-     "Ticket#440: differential-expression filter: fix the separator, reconnect it at gene level (Ticket#165, Ticket#177)")
+@row("Ticket#440", "normal_spot.filter_normal_diffexp / run_cnamaste", "regression",
+     "Ticket#440: fixed; the filtered rdr reaches create_bin_ranges and the filtered genes leave the counts summarize_counts_for_bins sums")
 def _(replayed: Any, **_: Any) -> None:
-    removed = replayed.value("06_normal/normal_baf_bin_filter/out/1/X")[:, 0, :].sum() - replayed.value("06_normal/filter_normal_diffexp/out").sum()
-    fitted = replayed.value("08_rdr/run_core_inference/in")["args"][0][:, 0, :].sum()
-    unfiltered = replayed.value("07_rebin/determine_normal_baseline/out/1").sum()
-    assert removed > 0
-    assert fitted <= unfiltered - removed, f"the RDR fit holds the {removed:.0f} UMIs the filter removed"
+    filtered, genes = replayed.value("06_normal/filter_normal_diffexp/out")
+    binned = replayed.value("07_rebin/create_bin_ranges/in")["args"][5][:, 0, :]
+    adata = replayed.value("07_rebin/summarize_counts_for_bins/in")["args"][1]
+    assert len(genes) > 0 and np.array_equal(binned, filtered), "create_bin_ranges reads the filtered rdr"
+    assert not adata.layers["count"][:, adata.var.index.isin(genes)].any(), "the RDR fit holds the UMIs the filter removed"
 
 
 @row("Ticket#479", "normal_spot.determine_normal_candidates", "xfail",
