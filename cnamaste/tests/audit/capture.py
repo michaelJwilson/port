@@ -1,4 +1,4 @@
-"""The staged-run file: its codec, its reader, and the staging of a committed sample.
+"""The staged-run file: its codec, its reader, and the staging of a sample (committed or drawn).
 
 One HDF5 file per sample, written by a capture of one run, holds one
 `run_cnamaste` run stage by stage:
@@ -248,12 +248,15 @@ def _read_array(ds: h5py.Dataset) -> np.ndarray:
 
 
 class Writer:
-    """Encodes values under `h5`, linking repeats; `memo` keeps every node's value by path."""
+    """Encodes values under `h5`, linking repeats; `memo` keeps each node's value by path where `keep` says so (every
+    node by default; a capture keeps those its recipes and lineage read, as every deep copy held to the end of a
+    6,000-spot run passes 14 GB)."""
 
     def __init__(self, h5: h5py.File) -> None:
         self.h5 = h5
         self.seen: dict[str, str] = {}
         self.memo: dict[str, Any] = {}
+        self.keep: Callable[[str], bool] = lambda path: True
         self.digest_only: Callable[[str, Any], bool] = lambda path, value: False
         self.recipes: dict[str, list[Any]] = {}
 
@@ -277,7 +280,8 @@ class Writer:
 
         sha = digest(value)
         sets = digest(unordered(value)) if isinstance(value, pd.DataFrame) else sha
-        self.memo[path] = value
+        if self.keep(path):
+            self.memo[path] = value
         size = value.nbytes if isinstance(value, np.ndarray) else LINK_BYTES
         if sha in self.seen and size >= LINK_BYTES:
             return {"link": self.seen[sha], "sha256": sha}
@@ -654,19 +658,53 @@ def grch38() -> Path | None:
     return None
 
 
+SLICE_INPUTS = ("filtered_feature_bc_matrix.h5ad", "spatial/tissue_positions_list.csv")
+"""What `load_input_data` reads from each slice of a drawn sample (one directory per slice)."""
+
+SNP_INPUTS = ("barcodes.txt", "unique_snp_ids.npy", "cell_snp_Aallele.npz", "cell_snp_Ballele.npz")
+"""What `load_input_data` reads from a drawn sample's shared `snp/` directory."""
+
+TRUTH = ("truth_clone_labels.tsv", "truth_acn_profile.tsv")
+"""The planted truth a sample carries, stored whole under `/truth` (plain or `.gz` on disk)."""
+
+
+def drawn(sample: Path) -> bool:
+    """A drawn sample: one directory per slice beside a shared `snp/`, and its own `sample_sheet.tsv` and `config.yaml`."""
+    return (sample / "snp").is_dir()
+
+
+def slices(sample: Path) -> list[str]:
+    """A drawn sample's slices, in its sample sheet's order."""
+    return [str(s) for s in pd.read_csv(sample / "sample_sheet.tsv", sep="\t")["sample_id"]]
+
+
 def input_files(sample: Path) -> dict[str, Path]:
-    """Each input `load_input_data` reads, by name, at its committed path (`.gz` where compressed for the commit)."""
+    """Each input `load_input_data` reads, by name (relative to `sample`), at its path (`.gz` where compressed)."""
+    names = (
+        [f"{s}/{n}" for s in slices(sample) for n in SLICE_INPUTS] + [f"snp/{n}" for n in SNP_INPUTS]
+        if drawn(sample)
+        else list(INPUTS)
+    )
     found = {}
-    for name in INPUTS:
+    for name in names:
         plain, packed = sample / name, sample / (name + ".gz")
         found[name] = plain if plain.exists() else packed
     return found
 
 
-def stage_inputs(sample: Path, root: Path, document: dict[str, Any], resources: Path) -> Path:
-    """`sample`'s inputs under `root/inputs/<name>` (a `.gz` written plain, the rest linked), the
-    sample sheet, and `document` pointed at them."""
-    target = root / "inputs" / sample.name
+def truth_files(sample: Path) -> dict[str, bytes]:
+    """`sample`'s planted truth, by name, decompressed."""
+    found = {}
+    for name in TRUTH:
+        plain, packed = sample / name, sample / (name + ".gz")
+        found[name] = plain.read_bytes() if plain.exists() else gzip.decompress(packed.read_bytes())
+    return found
+
+
+def stage_inputs(sample: Path, root: Path, document: dict[str, Any], resources: Path, name: str | None = None) -> Path:
+    """`sample`'s inputs under `root/inputs/<name>` (`sample.name` by default; a `.gz` written plain, the rest linked),
+    the sample sheet (one row per slice of a drawn sample), and `document` pointed at them."""
+    target = root / "inputs" / (name or sample.name)
     for name, source in input_files(sample).items():
         (target / name).parent.mkdir(parents=True, exist_ok=True)
         (target / name).unlink(missing_ok=True)
@@ -674,9 +712,13 @@ def stage_inputs(sample: Path, root: Path, document: dict[str, Any], resources: 
             (target / name).write_bytes(gzip.decompress(source.read_bytes()))
         else:
             (target / name).symlink_to(source.resolve())
-    pd.DataFrame(
-        {"bam": ["unused.bam"], "sample_id": [sample.name], "spaceranger_dir": [str(target)], "snp_dir": [str(target)]}
-    ).to_csv(root / "sample_sheet.tsv", sep="\t", index=False)
+    if drawn(sample):
+        ids = slices(sample)
+        sheet = {"bam": ["unused.bam"] * len(ids), "sample_id": ids,
+                 "spaceranger_dir": [str(target / s) for s in ids], "snp_dir": [str(target / "snp")] * len(ids)}
+    else:
+        sheet = {"bam": ["unused.bam"], "sample_id": [sample.name], "spaceranger_dir": [str(target)], "snp_dir": [str(target)]}
+    pd.DataFrame(sheet).to_csv(root / "sample_sheet.tsv", sep="\t", index=False)
     document = json.loads(json.dumps(document))
     document["paths"] = {
         "sample_sheet": str(root / "sample_sheet.tsv"),
@@ -688,3 +730,48 @@ def stage_inputs(sample: Path, root: Path, document: dict[str, Any], resources: 
     config.write_text(yaml.safe_dump(document))
     return config
 
+
+# --- compaction ------------------------------------------------------------
+
+
+def _key(ds: h5py.Dataset) -> str:
+    """A dataset's identity: dtype, shape, filters, bytes and attributes."""
+    h = hashlib.sha256()
+    h.update(f"{ds.dtype.str}{ds.shape}{ds.compression}{ds.compression_opts}{ds.shuffle}".encode())
+    h.update(np.ascontiguousarray(ds[()]).tobytes())
+    for k in sorted(ds.attrs):
+        v = ds.attrs[k]
+        h.update(k.encode() + (np.ascontiguousarray(v).tobytes() if isinstance(v, np.ndarray) else repr(v).encode()))
+    return h.hexdigest()
+
+
+def deduplicated(source: Path, target: Path) -> int:
+    """`source` rewritten to `target` with every repeated dataset a hard link to its first copy; returns the links made.
+
+    A dataset equal to an earlier one in bytes and attributes (a frame column carried from stage to stage, an
+    unchanged generator state) is the same HDF5 object under both names, so a reader cannot tell the two files apart.
+    """
+    seen: dict[str, str] = {}
+    links = 0
+    with h5py.File(source, "r") as a, h5py.File(target, "w", libver="latest") as b:
+
+        def copy(src: h5py.Group, dst: h5py.Group) -> None:
+            nonlocal links
+            dst.attrs.update(dict(src.attrs))
+            for name in src:
+                obj = src[name]
+                if isinstance(obj, h5py.Group):
+                    copy(obj, dst.create_group(name))
+                    continue
+                key = _key(obj)
+                if key in seen:
+                    dst[name] = b[seen[key]]
+                    links += 1
+                    continue
+                filters = {"compression": obj.compression, "compression_opts": obj.compression_opts, "shuffle": obj.shuffle} if obj.compression else {}
+                made = dst.create_dataset(name, data=obj[()], chunks=obj.chunks, **filters)
+                made.attrs.update(dict(obj.attrs))
+                seen[key] = made.name
+
+        copy(a, b)
+    return links
