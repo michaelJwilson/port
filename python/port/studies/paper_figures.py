@@ -32,7 +32,6 @@ the ledger's `fixture_hash` column (`<fixture>_ln_r0` before T- #660), and
 from __future__ import annotations
 
 import argparse
-import functools
 import shutil
 import tempfile
 import tomllib
@@ -192,8 +191,8 @@ def multisample_pages(fixture: str, draw: Path | None, out: Path) -> list[Path]:
     r = analysis.read(realization(counterpart, draw))
     truth, truth_spatial, spatial, he = (out / name for name in MULTISAMPLE_PAGES)
     pages = (
-        (truth_combined_figure(r, metric=True), truth),
-        (truth_combined_figure(r, metric=True, spatial=True), truth_spatial),
+        (truth_combined_figure(r), truth),
+        (truth_combined_figure(r, spatial=True), truth_spatial),
         (he_slices_figure(r), he),
     )
     for figure, path in pages:
@@ -216,17 +215,17 @@ def truth_figures(path: Path, out: Path) -> list[Path]:
     from port.sim.truth_figure import simulated_tree_figure, truth_combined_figure
 
     r = analysis.read(path)
-    written = r.plot(out, metric=True)
+    written = r.plot(out)
 
     # NB `mutation_tree.png` is not a paper figure: `simulated_tree.png` is
     #    `truth_combined`'s panel (a) alone (T- #660).
     (out / "mutation_tree.png").unlink(missing_ok=True)
     written = [w for w in written if w.name != "mutation_tree.png"]
     pages = (
-        ("truth_combined.png", truth_combined_figure(r, metric=True)),
+        ("truth_combined.png", truth_combined_figure(r)),
         (
             "truth_combined_spatial.png",
-            truth_combined_figure(r, metric=True, spatial=True),
+            truth_combined_figure(r, spatial=True),
         ),
         ("simulated_tree.png", simulated_tree_figure(r)),
     )
@@ -292,9 +291,9 @@ def run_figures(sample: Any, root: Path, out: Path) -> Run:
     #    writes them: the page is included at 1:1.
     with page_style():
         for name, figure in (
-            ("genomic.png", genomic_figure(recorded, metric=True)),
+            ("genomic.png", genomic_figure(recorded)),
             ("spatial.png", spatial_figure(recorded, frame)),
-            ("combined.png", combined_figure(recorded, frame, metric=True)),
+            ("combined.png", combined_figure(recorded, frame)),
         ):
             figure.savefig(
                 out / name, dpi=300, facecolor="white", metadata={"Software": None}
@@ -617,9 +616,7 @@ def exact_figure(c: Compared) -> Any:
 FIGURES: dict[str, Callable[[Compared], Any]] = {
     "clones_truth_vs_fit.png": labels_figure,
     "copy_confusion.png": confusion_figure,
-    "copy_genomic_truth_vs_fit.png": functools.partial(
-        genomic_compare_figure, metric=True
-    ),
+    "copy_genomic_truth_vs_fit.png": genomic_compare_figure,
     "exact_by_class.png": exact_figure,
 }
 
@@ -908,8 +905,7 @@ and the run never reads the mock. `solver_combined.png` is not drawn from this f
 `port.studies.copy_state_stream` record, and `solver_combined.md` beside it names both
 records, their data hashes and their settings. `pop_combined.png` is the population
 study's, its data in `docs/studies/`. The genomic panels of `truth_combined.png` and
-`combined.png` draw every altered bin at 2x its extent (`port.extensions.genomic_axis`,
-T- #683), each on its own segmentation, so their contig widths differ.
+`combined.png` draw every bin at its extent, each on its own segmentation.
 
 | File | Question | Source |
 | --- | --- | --- |

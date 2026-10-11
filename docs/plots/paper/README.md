@@ -24,9 +24,11 @@ and the run never reads the mock. `solver_combined.png` is not drawn from this f
 `--solvers POTTS.record COPY.record` draws it from a `port.studies.potts_stream` and a
 `port.studies.copy_state_stream` record, and `solver_combined.md` beside it names both
 records, their data hashes and their settings. `pop_combined.png` is the population
-study's, its data in `docs/studies/`. The genomic panels of `truth_combined.png` and
-`combined.png` draw every altered bin at 2x its extent (`port.extensions.genomic_axis`,
-T- #683), each on its own segmentation, so their contig widths differ.
+study's, its data in `docs/studies/`. The genomic panels of the committed
+`truth_combined.png` and `combined.png` draw every altered bin at 2x its extent
+(`port.extensions.genomic_axis`, T- #683), each on its own segmentation, so their contig
+widths differ. The set now draws every bin at its extent; the next regeneration redraws
+them so.
 
 | File | Question | Source |
 | --- | --- | --- |

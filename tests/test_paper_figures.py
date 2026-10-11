@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import re
 import subprocess
 from pathlib import Path
@@ -36,6 +37,18 @@ def test_the_paper_readme_lists_exactly_the_committed_files() -> None:
     assert len(listed) == len(set(listed))
     assert sorted(listed) == committed
     assert sorted(QUESTIONS | KEY_STUDIES) == committed
+
+
+@pytest.mark.infra
+def test_the_paper_set_draws_cnas_at_their_extent() -> None:
+    """No paper figure asks for `metric`, the 2x CNA widening (T- #683): every bin at its extent by default."""
+    tree = ast.parse(Path(pf.__file__).read_text())
+    asked = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.keyword) and node.arg == "metric"
+    ]
+    assert not asked, f"metric passed at paper_figures.py lines {asked}"
 
 
 def _tiny() -> Compared:
