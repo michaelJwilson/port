@@ -35,7 +35,8 @@ OUT = ROOT / "cnamaste" / "python" / "cnamaste"
 ENTRY = "cnaster.scripts.run_cnaster"
 
 DEPARTED: dict[str, str] = {
-    "scripts/run_cnamaste.py": "PR1, #105: a removed bin's genes leave the gene-level output",
+    "scripts/run_cnamaste.py": "PR1, #105: a removed bin's genes leave the gene-level output; PR-diffexp, #177: the differential-expression filter's result reaches the rebinned counts",
+    "normal_spot.py": "PR-diffexp, #165: filter_normal_diffexp splits INCLUDED_GENES on binned_gene_snp's ',' and returns its filtered genes",
     "spatial.py": "PR1, #692: rectangular clones that admit no assignment are banded",
     "utils.py": "PR1, T- #692: write_fig releases each Text's cached renderer",
 }

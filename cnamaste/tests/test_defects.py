@@ -254,15 +254,15 @@ def _(sim: Any, **_: Any) -> None:
 # --- normal spots and the expression filter ---------------------------------------
 
 
-@row("Ticket#165", "normal_spot.filter_normal_diffexp", "xfail", "Ticket#165: filter_normal_diffexp splits INCLUDED_GENES on the wrong separator")
+@row("Ticket#165", "normal_spot.filter_normal_diffexp", "regression", "Ticket#165: fixed; filter_normal_diffexp splits INCLUDED_GENES on binned_gene_snp's ','")
 def _(**_: Any) -> None:
     counts = pd.DataFrame({"g0": [3, 4, 5, 6], "g1": [1, 1, 1, 1]}, index=list("abcd"))
     table = pd.DataFrame({"INCLUDED_GENES": ["g0,g1"]})
-    out = filter_normal_diffexp(counts, table, np.array([True, True, False, False]), use_kmeans=False)
+    out, _ = filter_normal_diffexp(counts, table, np.array([True, True, False, False]), use_kmeans=False)
     assert np.array_equal(out[0], counts.sum(axis=1).to_numpy()), "a two-gene bin keeps none of its UMIs"
 
 
-@row("Ticket#177", "run_cnamaste", "xfail", "Ticket#177: run_cnaster discards filter_normal_diffexp's result (run_cnamaste.py:969 -> 1031)")
+@row("Ticket#177", "run_cnamaste", "regression", "Ticket#177: fixed; filter_normal_diffexp's result is read before copy_single_X_rdr is rebound")
 def _(**_: Any) -> None:
     body = function_node(source("scripts/run_cnamaste.py"), "run_cnamaste")
     statements = [s for s in ast.walk(body) if isinstance(s, (ast.Assign, ast.Expr, ast.If))]
@@ -273,14 +273,14 @@ def _(**_: Any) -> None:
     assert any(stored[0] < line < rebound[0] for line in lines), "the filter's return is overwritten before any read"
 
 
-@row("Ticket#440", "normal_spot.filter_normal_diffexp / run_cnamaste", "xfail",
-     "Ticket#440: differential-expression filter: fix the separator, reconnect it at gene level (Ticket#165, Ticket#177)")
+@row("Ticket#440", "normal_spot.filter_normal_diffexp / run_cnamaste", "regression",
+     "Ticket#440: fixed; the filtered rdr reaches create_bin_ranges and the filtered genes leave the counts summarize_counts_for_bins sums")
 def _(replayed: Any, **_: Any) -> None:
-    removed = replayed.value("06_normal/normal_baf_bin_filter/out/1/X")[:, 0, :].sum() - replayed.value("06_normal/filter_normal_diffexp/out").sum()
-    fitted = replayed.value("08_rdr/run_core_inference/in")["args"][0][:, 0, :].sum()
-    unfiltered = replayed.value("07_rebin/determine_normal_baseline/out/1").sum()
-    assert removed > 0
-    assert fitted <= unfiltered - removed, f"the RDR fit holds the {removed:.0f} UMIs the filter removed"
+    filtered, genes = replayed.value("06_normal/filter_normal_diffexp/out")
+    binned = replayed.value("07_rebin/create_bin_ranges/in")["args"][5][:, 0, :]
+    adata = replayed.value("07_rebin/summarize_counts_for_bins/in")["args"][1]
+    assert len(genes) > 0 and np.array_equal(binned, filtered), "create_bin_ranges reads the filtered rdr"
+    assert not adata.layers["count"][:, adata.var.index.isin(genes)].any(), "the RDR fit holds the UMIs the filter removed"
 
 
 @row("Ticket#479", "normal_spot.determine_normal_candidates", "xfail",

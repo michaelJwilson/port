@@ -740,7 +740,7 @@ def filter_normal_diffexp(
     (or directly via pre-defined normal candidates), dropping differentially expressed genes.
 
     Returns new counts structure of (genomic bins x spots) after filtering genes with estimated
-    differential expression, namely new_single_X_rdr.
+    differential expression, namely new_single_X_rdr, and the filtered genes, filtered_out_set.
     """
     adata = anndata.AnnData(exp_counts)
     adata.layers["count"] = exp_counts.values
@@ -901,7 +901,8 @@ def filter_normal_diffexp(
     total_counts, retained_counts = 0, 0
 
     for b, genestr in enumerate(df_bininfo.INCLUDED_GENES.values):
-        bin_genes = set(genestr.split(" "))
+        # NB Ticket#165: binned_gene_snp joins INCLUDED_GENES with ",".
+        bin_genes = set(genestr.split(","))
         involved_genes = bin_genes - filtered_out_set
 
         total_counts += np.sum(
@@ -919,7 +920,7 @@ def filter_normal_diffexp(
         f"Retained {100. * retained_counts / max(total_counts, 1):.3f}% of bin UMIs."
     )
 
-    return new_single_X_rdr
+    return new_single_X_rdr, filtered_out_set
 
 
 def normal_baf_bin_filter(

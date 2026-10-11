@@ -268,6 +268,9 @@ class Writer:
             return {"float": repr(float(value)), "type": type(value).__name__}
         if isinstance(value, str):
             return {"str": value}
+        if isinstance(value, set):
+            # NB stored as the sorted list `digest` hashes it as; decodes to that list
+            return self.put(g, name, sorted(value, key=repr), path)
         if type(value).__name__ == "YAMLConfig":
             return {"config": 1}
         if isinstance(value, type) or (callable(value) and not dataclasses.is_dataclass(value) and not hasattr(value, "shape")):
@@ -446,8 +449,15 @@ def _zero_rows(rdr: np.ndarray, rdr_normal: np.ndarray) -> np.ndarray:
     return out
 
 
+def _zero_genes(adata: Any, genes: list[str]) -> Any:
+    out = adata.copy()
+    out.layers["count"][:, out.var.index.isin(genes)] = 0
+    return out
+
+
 OPS: dict[str, Callable[..., Any]] = {
     "zero_rdr": _zero_rdr,
+    "zero_genes": _zero_genes,
     "rdr": lambda x: x[:, 0, :],
     "with_rdr": _with_rdr,
     "zeros_like": lambda x: np.zeros(x.shape),
