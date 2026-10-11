@@ -964,15 +964,23 @@ def run_cnamaste(config_path, over_rides=None):
     # NB zeros out high-umi differentially expressed genes,
     #    which may bias rdr estimates.
     if config.quality.filter_normal_diffexp:
-        copy_single_X_rdr = filter_normal_diffexp(
+        copy_single_X_rdr, filtered_out_set = filter_normal_diffexp(
             exp_counts,
             df_bin_info,
             normal_candidate,
             sample_list=sample_list,
             sample_ids=sample_ids,
+            logfcthreshold_u=config.quality.diffexp_logfcthreshold_u,
+            logfcthreshold_t=config.quality.diffexp_logfcthreshold_t,
+            quantile_threshold=config.quality.diffexp_quantile_threshold,
+            use_kmeans=config.quality.diffexp_use_kmeans,
         )
     else:
+        filtered_out_set = set()
         logger.warning(f"Assuming no filter for normal differential expression.")
+
+    single_X[:, 0, :] = copy_single_X_rdr
+    adata.layers["count"][:, adata.var.index.isin(filtered_out_set)] = 0
 
     pause()
 

@@ -53,7 +53,7 @@ from cnamaste.io import get_aggregated_barcodes, get_sample_list, get_spacerange
 from cnamaste.normal_spot import determine_normal_candidates, filter_normal_diffexp
 from cnamaste.omics import assign_initial_blocks, summarize_counts_for_bins
 from cnamaste.recomb import assign_centiMorgans, compute_numbat_phase_switch_prob
-from cnamaste.spatial import banded, construct_lattice_adjacency, initialize_rectangular_clones
+from cnamaste.spatial import banded, construct_lattice_adjacency, construct_multislice_lattice_adjacency, initialize_rectangular_clones
 from cnamaste.utils import top_hat_sum
 
 PROJECT = Path(__file__).resolve().parents[1]
@@ -263,15 +263,15 @@ def _(sim: Any, **_: Any) -> None:
 # --- normal spots and the expression filter ---------------------------------------
 
 
-@row("Ticket#165", "normal_spot.filter_normal_diffexp", "xfail", "Ticket#165: filter_normal_diffexp splits INCLUDED_GENES on the wrong separator")
+@row("Ticket#165", "normal_spot.filter_normal_diffexp", "regression", "Ticket#165: fixed; filter_normal_diffexp splits INCLUDED_GENES on binned_gene_snp's ','")
 def _(**_: Any) -> None:
     counts = pd.DataFrame({"g0": [3, 4, 5, 6], "g1": [1, 1, 1, 1]}, index=list("abcd"))
     table = pd.DataFrame({"INCLUDED_GENES": ["g0,g1"]})
-    out = filter_normal_diffexp(counts, table, np.array([True, True, False, False]), use_kmeans=False)
+    out, _ = filter_normal_diffexp(counts, table, np.array([True, True, False, False]), use_kmeans=False)
     assert np.array_equal(out[0], counts.sum(axis=1).to_numpy()), "a two-gene bin keeps none of its UMIs"
 
 
-@row("Ticket#177", "run_cnamaste", "xfail", "Ticket#177: run_cnaster discards filter_normal_diffexp's result (run_cnamaste.py:969 -> 1031)")
+@row("Ticket#177", "run_cnamaste", "regression", "Ticket#177: fixed; filter_normal_diffexp's result is read before copy_single_X_rdr is rebound")
 def _(**_: Any) -> None:
     body = function_node(source("scripts/run_cnamaste.py"), "run_cnamaste")
     statements = [s for s in ast.walk(body) if isinstance(s, (ast.Assign, ast.Expr, ast.If))]
@@ -282,14 +282,14 @@ def _(**_: Any) -> None:
     assert any(stored[0] < line < rebound[0] for line in lines), "the filter's return is overwritten before any read"
 
 
-@row("Ticket#440", "normal_spot.filter_normal_diffexp / run_cnamaste", "xfail",
-     "Ticket#440: differential-expression filter: fix the separator, reconnect it at gene level (Ticket#165, Ticket#177)")
+@row("Ticket#440", "normal_spot.filter_normal_diffexp / run_cnamaste", "regression",
+     "Ticket#440: fixed; the filtered rdr reaches create_bin_ranges and the filtered genes leave the counts summarize_counts_for_bins sums")
 def _(replayed: Any, **_: Any) -> None:
-    removed = replayed.value("06_normal/normal_baf_bin_filter/out/1/X")[:, 0, :].sum() - replayed.value("06_normal/filter_normal_diffexp/out").sum()
-    fitted = replayed.value("08_rdr/run_core_inference/in")["args"][0][:, 0, :].sum()
-    unfiltered = replayed.value("07_rebin/determine_normal_baseline/out/1").sum()
-    assert removed > 0
-    assert fitted <= unfiltered - removed, f"the RDR fit holds the {removed:.0f} UMIs the filter removed"
+    filtered, genes = replayed.value("06_normal/filter_normal_diffexp/out")
+    binned = replayed.value("07_rebin/create_bin_ranges/in")["args"][5][:, 0, :]
+    adata = replayed.value("07_rebin/summarize_counts_for_bins/in")["args"][1]
+    assert len(genes) > 0 and np.array_equal(binned, filtered), "create_bin_ranges reads the filtered rdr"
+    assert not adata.layers["count"][:, adata.var.index.isin(genes)].any(), "the RDR fit holds the UMIs the filter removed"
 
 
 @row("Ticket#479", "normal_spot.determine_normal_candidates", "xfail",
@@ -339,6 +339,16 @@ def _(**_: Any) -> None:
 def _(**_: Any) -> None:
     adjacency = construct_lattice_adjacency(lattice(5, 5), unit_xsquared=1, unit_ysquared=1)
     assert np.diff(adjacency.tocsr().indptr)[0] == 3, "a square lattice's corner has 3 king-move neighbours, not 8"
+
+
+@row("Ticket#417", "spatial.construct_multislice_lattice_adjacency", "xfail",
+     "Ticket#417: the multi-slice adjacency takes a self loop or a one-way edge without a guard")
+def _(**_: Any) -> None:
+    coords, ids = lattice(3, 3), np.zeros(9, dtype=int)
+    one_way, self_loop = sp.csr_matrix(([1.0], ([0], [8])), shape=(9, 9)), sp.csr_matrix(([1.0], ([4], [4])), shape=(9, 9))
+    for across in (one_way, self_loop):
+        with pytest.raises(ValueError):
+            construct_multislice_lattice_adjacency(ids, ["a"], coords, across, unit_xsquared=1, unit_ysquared=1)
 
 
 @row("Ticket#692", "spatial.initialize_rectangular_clones", "regression", "Ticket#692: fixed in cnamaste PR1; the dev blocks return, banded")

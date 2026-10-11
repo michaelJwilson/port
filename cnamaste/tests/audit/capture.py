@@ -272,6 +272,9 @@ class Writer:
             return {"float": repr(float(value)), "type": type(value).__name__}
         if isinstance(value, str):
             return {"str": value}
+        if isinstance(value, set):
+            # NB stored as the sorted list `digest` hashes it as; decodes to that list
+            return self.put(g, name, sorted(value, key=repr), path)
         if type(value).__name__ == "YAMLConfig":
             return {"config": 1}
         if isinstance(value, type) or (callable(value) and not dataclasses.is_dataclass(value) and not hasattr(value, "shape")):
@@ -451,8 +454,15 @@ def _zero_rows(rdr: np.ndarray, rdr_normal: np.ndarray) -> np.ndarray:
     return out
 
 
+def _zero_genes(adata: Any, genes: list[str]) -> Any:
+    out = adata.copy()
+    out.layers["count"][:, out.var.index.isin(genes)] = 0
+    return out
+
+
 OPS: dict[str, Callable[..., Any]] = {
     "zero_rdr": _zero_rdr,
+    "zero_genes": _zero_genes,
     "rdr": lambda x: x[:, 0, :],
     "with_rdr": _with_rdr,
     "zeros_like": lambda x: np.zeros(x.shape),
@@ -726,6 +736,11 @@ def stage_inputs(sample: Path, root: Path, document: dict[str, Any], resources: 
     }
     document["references"].update({k: str(resources / f) for k, f in RESOURCES.items()})
     document["references"]["annotation_file"] = str(root / "unused.gtf.gz")
+    # NB cnaster's configuration carries no `quality.diffexp_*`, which run_cnamaste reads: cnamaste's shipped values (Ticket#440)
+    shipped = yaml.safe_load((Path(__file__).resolve().parents[2] / "zenodo_sim_config.yaml").read_text())["quality"]
+    for key, value in shipped.items():
+        if key.startswith("diffexp_"):
+            document.setdefault("quality", {}).setdefault(key, value)
     config = root / "config.yaml"
     config.write_text(yaml.safe_dump(document))
     return config

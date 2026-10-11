@@ -430,14 +430,15 @@ def state_recovery(run: Run, truth: Any) -> dict[str, float]:
 
 SCIENCE: dict[str, tuple[Callable[[Run, Any], float], str, float, Any]] = {
     "BAF clone ARI (recorded 0.7225)": (baf_ari, ">=", 0.7025, None),
-    "RDR clone ARI (recorded 0.9694, the ledger's)": (rdr_ari, ">=", 0.9494, None),
-    "copy ARI, phase-free (recorded 0.8216, the ledger's)": (lambda r, t: copy_scores(r, t)["copy_ari_pf"], ">=", 0.8016, None),
-    "exact altered, phase-free (recorded 0.3794, the ledger's)": (lambda r, t: copy_scores(r, t)["exact_altered_minor"], ">=", 0.3594, None),
+    "RDR clone ARI (recorded 0.9652; 0.9694, the ledger's, before the filter, Ticket#440)": (rdr_ari, ">=", 0.9494, None),
+    "copy ARI, phase-free (recorded 0.9013; 0.8216 before the filter)": (lambda r, t: copy_scores(r, t)["copy_ari_pf"], ">=", 0.8813, None),
+    "exact altered, phase-free (recorded 0.5064; 0.3794 before the filter)": (lambda r, t: copy_scores(r, t)["exact_altered_minor"], ">=", 0.4864, None),
     "normal-candidate purity (recorded 1.0000)": (normal_purity, ">=", 0.98, None),
-    "BAF p recovery, mean |minor p - planted| (recorded 0.0037)": (lambda r, t: state_recovery(r, t)["p_error"], "<=", 0.0237, None),
-    "mu recovery, mean |mu - (A+B)/2| (recorded 0.0664)": (lambda r, t: state_recovery(r, t)["mu_error"], "<=", 0.0864, None),
+    "BAF p recovery, mean |minor p - planted| (recorded 0.0031; 0.0037 before the filter)": (lambda r, t: state_recovery(r, t)["p_error"], "<=", 0.0231, None),
+    "mu recovery, mean |mu - (A+B)/2| (recorded 0.0683; 0.0664 before the filter)": (lambda r, t: state_recovery(r, t)["mu_error"], "<=", 0.0864, None),
 }
-"""Name -> (score, direction, bound, xfail reason or None). Each bound is the recorded value less (or plus) `MARGIN`.
+"""Name -> (score, direction, bound, xfail reason or None). Each bound is the recorded value less (or plus) `MARGIN`,
+or the earlier bound where a score fell within it: a floor is not lowered.
 The planted defects these scores would show on other fixtures (Ticket#320's impure normal candidates) are `test_defects.py`'s."""
 
 MARGIN = 0.02
@@ -678,7 +679,9 @@ CRITERIA = [
     Criterion("05_baf, 08_rdr", "fit", None, "alphas in [1e-6, 1e3], taus in [1e-4, 5e3] (hmm_nophasing.py:510-557; not passed: "
               "bounds=None, hmm_nophasing.py:1033)", "in", "none",
               lambda u, v: Check(np.concatenate([((f["new_alphas"] >= 1e-6) & (f["new_alphas"] <= 1e3)).ravel() for f in fits(u)]
-                                                + [((f["new_taus"] >= 1e-4) & (f["new_taus"] <= 5e3)).ravel() for f in fits(u)]))),
+                                                + [((f["new_taus"] >= 1e-4) & (f["new_taus"] <= 5e3)).ravel() for f in fits(u)]), known=True),
+              "new: the bounds are not passed (bounds=None, hmm_nophasing.py:1033); with the differential-expression filter "
+              "connected (Ticket#440) 08_rdr's shared tau reaches 5788"),
     Criterion("03_phasing", "clones", "hmrf.n_clones", "initial BAF clones", "==", "none",
               lambda u, v: Check(flags(len(u.sim.stored("03_phasing/initialize_clones/out")) == v), known=True),
               "new: hmrf.n_clones only names the output directory (utils.py:245); the BAF round starts from "

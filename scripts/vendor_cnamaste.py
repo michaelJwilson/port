@@ -35,7 +35,7 @@ OUT = ROOT / "cnamaste" / "python" / "cnamaste"
 ENTRY = "cnaster.scripts.run_cnaster"
 
 DEPARTED: dict[str, str] = {
-    "scripts/run_cnamaste.py": "PR1, #105: a removed bin's genes leave the gene-level output; PR12, #180: no smooth_mat or maxspots_pooling",
+    "scripts/run_cnamaste.py": "PR1, #105: a removed bin's genes leave the gene-level output; PR12, #180: no smooth_mat or maxspots_pooling; PR13, #177: the differential-expression filter's result reaches the rebinned counts, its parameters read from quality.diffexp_*",
     "hmm_emission.py": "PR3: flush_perf writes to <paths.output_dir>/cnamaste.perf; paths.perf_path is gone",
     "spatial.py": "PR1, #692: rectangular clones that admit no assignment are banded; PR12, #180: no smooth_mat or maxspots_pooling",
     "hmrf.py": "PR12, #180: no smooth_mat pooling in the clone field",
@@ -44,7 +44,7 @@ DEPARTED: dict[str, str] = {
     "icm.py": "D-dedup: 3 unused string copies of icm_sweep_deque and the shadowed logsumexp import commented out",
     "hmm_initialize.py": "D-dedup: an unused string copy of gmm_init commented out",
     "hmm_nophasing.py": "D-dedup: an unused string copy of compute_emission_probability_nb_betabinom_coded commented out",
-    "normal_spot.py": "D-dedup: an unused string copy of filter_normal_diffexp commented out",
+    "normal_spot.py": "D-dedup: an unused string copy of filter_normal_diffexp commented out; PR13, #165: filter_normal_diffexp splits INCLUDED_GENES on binned_gene_snp's ',' and returns its filtered genes",
     "plot_genomic.py": "D-dedup: an unused string copy of plot_clones_genomic commented out",
     "recomb.py": "D-dedup: unused string copies of the three recombination functions commented out",
 }
