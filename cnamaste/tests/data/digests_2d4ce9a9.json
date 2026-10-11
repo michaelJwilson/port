@@ -587,7 +587,7 @@
   },
   "calls": 1
  },
- "hmm_emission:flush_perf | the fit's timing row goes to paths.perf_path": {
+ "hmm_emission:flush_perf | the fit's timing row goes to <paths.output_dir>/cnamaste.perf": {
   "stable": "c12d5f2a2c879a4c719ef22848653afb57dd63e9b6fec88956fd53b0692efe8f",
   "exact": "c12d5f2a2c879a4c719ef22848653afb57dd63e9b6fec88956fd53b0692efe8f",
   "summary": {
