@@ -428,12 +428,16 @@ def _(**_: Any) -> None:
     assert calls and all(any(k.arg == "min_clone_spots" for k in c.keywords) for c in calls)
 
 
-@row("Ticket#483", "icm.merge_assignment", "regression", "Ticket#483: fixed in cnamaste; merging aligns each boundary edge, gaining its full weight")
+@row("Ticket#483", "icm.merge_assignment", "regression",
+     "Ticket#483: fixed in cnamaste; merging aligns each boundary edge, stored either way, at w / 2 per stored direction")
 def _(**_: Any) -> None:
     llf = np.zeros((2, 2))
     spots, neighbours, weights = np.array([0, 1]), np.array([1, 0]), np.array([1.0, 1.0])
     cost, best, pair = merge_assignment(llf, spots, neighbours, weights, np.array([0, 1]), 1.0)
-    assert np.isclose(best - cost, 1.0), f"merging two spots joined by one unit edge gains {best - cost}, not 1"
+    assert np.isclose(best - cost, 1.0), f"merging two spots joined by one unit edge, stored both ways, gains {best - cost}, not 1"
+    for labels in (np.array([0, 1]), np.array([1, 0])):
+        cost, best, _ = merge_assignment(llf, np.array([0]), np.array([1]), np.array([1.0]), labels, 1.0)
+        assert np.isclose(best - cost, 0.5), f"a unit edge stored one way gains {best - cost}, not 1/2, whichever end merges"
 
 
 @row("Ticket#58", "hmrf.compute_loglike_spot_assignment", "xfail", "Ticket#58: the external field the HMM hands ICM is not the one the paper defines")

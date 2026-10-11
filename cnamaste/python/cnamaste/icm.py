@@ -5,6 +5,7 @@ from collections import deque
 
 import numpy as np
 from numba import njit
+from scipy.sparse import csr_matrix
 # NB shadowed by the logsumexp defined at line 122 before any use; never reachable.
 # from scipy.special import logsumexp
 
@@ -212,11 +213,11 @@ def merge_assignment(
         for neighbor, edge_weight in zip(neighbors, weights):
             v = assignment[neighbor]
 
-            # NB we loop all spots and their neighbors, so double count edges.
+            # NB each stored edge counts w / 2 (calc_assignment_cost), an edge stored both ways w.
             if u == v:
                 current_spatial_cost += spatial_weight * edge_weight / 2.0
             else:
-                boundary_gain[u, v] += spatial_weight * edge_weight
+                boundary_gain[u, v] += spatial_weight * edge_weight / 2.0
 
     current_unary_cost = 0.0
 
@@ -239,7 +240,8 @@ def merge_assignment(
             if boundary_gain[u, v] > 0:
                 # NB option: merge u into v (spots of u become v).
                 #    selta = (unary of u becoming v) - (unary of u being u) + boundary gain.
-                delta_u_to_v = (unary_sum[u, v] - unary_sum[u, u]) + boundary_gain[u, v]
+                # NB merging aligns every u-v edge, stored either way (Ticket#483).
+                delta_u_to_v = (unary_sum[u, v] - unary_sum[u, u]) + boundary_gain[u, v] + boundary_gain[v, u]
 
                 if current_total_cost + delta_u_to_v > best_merge_cost:
                     best_merge_cost = current_total_cost + delta_u_to_v
@@ -822,6 +824,11 @@ def icm_sweep_deque(
     n_spots, n_clones = single_llf.shape
     cost = cost_zeropoint
 
+    # NB each stored edge counts w / 2 (calc_assignment_cost): a spot's field takes half of each
+    #    out-edge (row i) and half of each in-edge (column i, read through the transpose) (Ticket#483).
+    incoming = csr_matrix((adj_weights, adj_indices, adj_indptr), shape=(n_spots, n_spots)).T.tocsr()
+    in_indptr, in_indices, in_weights = incoming.indptr, incoming.indices, incoming.data
+
     w_edge = np.zeros(n_clones, dtype=np.float64)
     assignment_cost = np.zeros(n_clones, dtype=np.float64)
     niter = 0
@@ -857,7 +864,11 @@ def icm_sweep_deque(
 
             for k in range(start_idx, end_idx):
                 neighbor = adj_indices[k]
-                w_edge[new_assignment[neighbor]] += adj_weights[k]
+                w_edge[new_assignment[neighbor]] += adj_weights[k] / 2.0
+
+            for k in range(in_indptr[i], in_indptr[i + 1]):
+                neighbor = in_indices[k]
+                w_edge[new_assignment[neighbor]] += in_weights[k] / 2.0
 
             # Inlined Assignment Cost Calculation
             max_cost = -np.inf
@@ -900,9 +911,15 @@ def icm_sweep_deque(
                 clone_counts[label] += 1
                 new_assignment[i] = label
 
-                # 3. Add neighbors to the SECOND queue (q_next)
+                # 3. Add neighbors to the SECOND queue (q_next): out- and in-neighbors, whose fields read this spot
                 for k in range(start_idx, end_idx):
                     neighbor = adj_indices[k]
+                    if not in_queue[neighbor]:
+                        q_next.append(neighbor)
+                        in_queue[neighbor] = True
+
+                for k in range(in_indptr[i], in_indptr[i + 1]):
+                    neighbor = in_indices[k]
                     if not in_queue[neighbor]:
                         q_next.append(neighbor)
                         in_queue[neighbor] = True
@@ -949,11 +966,17 @@ def icm_sweep_deque(
                         clone_counts[c] -= 1
                         clone_counts[new_label] += 1
 
-                        # Add forced edit's neighbors to SECOND queue
+                        # Add forced edit's neighbors to SECOND queue: out- and in-neighbors
                         start_idx = adj_indptr[idx]
                         end_idx = adj_indptr[idx + 1]
                         for k in range(start_idx, end_idx):
                             neighbor = adj_indices[k]
+                            if not in_queue[neighbor]:
+                                q_next.append(neighbor)
+                                in_queue[neighbor] = True
+
+                        for k in range(in_indptr[idx], in_indptr[idx + 1]):
+                            neighbor = in_indices[k]
                             if not in_queue[neighbor]:
                                 q_next.append(neighbor)
                                 in_queue[neighbor] = True
