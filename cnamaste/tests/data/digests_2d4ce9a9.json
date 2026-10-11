@@ -1201,7 +1201,17 @@
   },
   "calls": 1
  },
- "hmrf:pipeline_clone_assignment | the field is scipy's BB log-likelihood under each clone's MAP path; the objective is the Potts energy": {
+ "hmrf:pipeline_clone_assignment | the field is scipy's BB log-likelihood under each clone's MAP path": {
+  "stable": "94d2712bcc264e30c400126f3ec6e847b4c5a4ae99ef5387edda79104873ec8e",
+  "exact": "0d6fc86d635f12987573e4787f11992df113bf0d5570a44ad42c1cd8f8bc65f7",
+  "summary": {
+   "call0[0]": "int64 (300,) min=0 max=0 sum=0",
+   "call0[1]": "float64 (300, 4) min=-425.512 max=-51.2906 mean=-170.104 sum=-204125",
+   "call0[2]": "float64 -49481.2"
+  },
+  "calls": 1
+ },
+ "hmrf:pipeline_clone_assignment | the returned objective is the Potts energy (w / 2 per stored edge)": {
   "stable": "94d2712bcc264e30c400126f3ec6e847b4c5a4ae99ef5387edda79104873ec8e",
   "exact": "0d6fc86d635f12987573e4787f11992df113bf0d5570a44ad42c1cd8f8bc65f7",
   "summary": {
@@ -1329,6 +1339,15 @@
   },
   "calls": 1
  },
+ "icm:icm_sweep_deque | on an asymmetric graph: the reported cost is the energy gained (w / 2 per stored edge), each spot at its conditional maximum": {
+  "stable": "03eff13fa0f88bcbdd4dcd74ba943bb98c9901167933b65addb5d13cd44fc9d6",
+  "exact": "dff34e2b79345ad75973db65f677656d27e061ac564cf723d24e4175523e9ea2",
+  "summary": {
+   "call0[0]": "int 4",
+   "call0[1]": "float64 138.189"
+  },
+  "calls": 1
+ },
  "icm:icm_sweep_deque | the reported cost is the Potts energy gained, and every spot ends at its conditional maximum": {
   "stable": "b0a3bbc2080c1058da4208d0ef6a56079ba58f4800384839ba7db6169637d244",
   "exact": "2df422ffb0ec740257f193db7f728ae8036c89c093e7d165f66c4ce567b5d9be",
@@ -1338,23 +1357,45 @@
   },
   "calls": 1
  },
+ "icm:merge_assignment | on an asymmetric graph: the best merge's cost is the merged labels' energy": {
+  "stable": "f7b3d43757706ccff68895fdc2a456de381b5845e799f539ef59692a5a5f9a72",
+  "exact": "fe1d4eaf4c969e5402c29479a8aca3ca752814ac971dce50730c421b8ab8208a",
+  "summary": {
+   "call0[0]": "float64 10.1533",
+   "call0[1]": "float64 54.8725",
+   "call0[2][0]": "int 0",
+   "call0[2][1]": "int 2"
+  },
+  "calls": 1
+ },
+ "icm:merge_assignment | on an asymmetric graph: the current cost is the energy (w / 2 per stored edge)": {
+  "stable": "f7b3d43757706ccff68895fdc2a456de381b5845e799f539ef59692a5a5f9a72",
+  "exact": "fe1d4eaf4c969e5402c29479a8aca3ca752814ac971dce50730c421b8ab8208a",
+  "summary": {
+   "call0[0]": "float64 10.1533",
+   "call0[1]": "float64 54.8725",
+   "call0[2][0]": "int 0",
+   "call0[2][1]": "int 2"
+  },
+  "calls": 1
+ },
  "icm:merge_assignment | the best merge's cost is the merged labels' Potts energy": {
-  "stable": "fc30f1244f9943716636f5463dcd47ddc6129369f83d2464d4122171b442eb05",
-  "exact": "7d7426636606678fe884ffc5014b4d9f28b5e28272fd76d6ba56bbae96606029",
+  "stable": "36273d60e5ac8f17164a990ce65faa32af633ed67cd040ca2c74e0bb5beb773e",
+  "exact": "672eea496d183afc9c96b3a57eea95cdc84ef4e6c92a6b2ea7184f0bdc336da1",
   "summary": {
    "call0[0]": "float64 11.3141",
-   "call0[1]": "float64 43.1747",
+   "call0[1]": "float64 53.6747",
    "call0[2][0]": "int 2",
    "call0[2][1]": "int 0"
   },
   "calls": 1
  },
  "icm:merge_assignment | the current cost is the Potts energy (unary + weight x aligned edges)": {
-  "stable": "fc30f1244f9943716636f5463dcd47ddc6129369f83d2464d4122171b442eb05",
-  "exact": "7d7426636606678fe884ffc5014b4d9f28b5e28272fd76d6ba56bbae96606029",
+  "stable": "36273d60e5ac8f17164a990ce65faa32af633ed67cd040ca2c74e0bb5beb773e",
+  "exact": "672eea496d183afc9c96b3a57eea95cdc84ef4e6c92a6b2ea7184f0bdc336da1",
   "summary": {
    "call0[0]": "float64 11.3141",
-   "call0[1]": "float64 43.1747",
+   "call0[1]": "float64 53.6747",
    "call0[2][0]": "int 2",
    "call0[2][1]": "int 0"
   },

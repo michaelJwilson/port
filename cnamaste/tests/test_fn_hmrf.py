@@ -45,9 +45,10 @@ def lattice_graph(nx: int, ny: int) -> sp.csr_matrix:
 
 
 def potts(llf: np.ndarray, adjacency: sp.csr_matrix, labels: np.ndarray, weight: float) -> float:
-    """sum_i llf[i, l_i] + weight * #undirected edges with equal labels."""
-    a = sp.triu(adjacency, k=1).tocoo()
-    return float(llf[np.arange(len(labels)), labels].sum() + weight * np.sum(a.data * (labels[a.row] == labels[a.col])))
+    """sum_i llf[i, l_i] + weight * sum over stored edges with equal labels of w / 2: an edge stored both ways counts w,
+    one stored one way w / 2 (`icm.calc_assignment_cost`)."""
+    a = adjacency.tocoo()
+    return float(llf[np.arange(len(labels)), labels].sum() + weight * np.sum(a.data * (labels[a.row] == labels[a.col])) / 2.0)
 
 
 def field_case(seed: int = 5) -> dict[str, Any]:
@@ -55,6 +56,16 @@ def field_case(seed: int = 5) -> dict[str, Any]:
     adjacency = lattice_graph(8, 8)
     llf = rng.normal(scale=2.0, size=(64, 3))
     return {"llf": llf, "adjacency": adjacency, "labels": rng.integers(0, 3, size=64), "weight": 0.7}
+
+
+def one_way_case(seed: int = 6) -> dict[str, Any]:
+    """`field_case`'s lattice with a tenth of its stored directions dropped: an asymmetric graph, as kNN gives."""
+    f = field_case(seed)
+    a = f["adjacency"].tocoo()
+    keep = np.random.default_rng(seed).random(a.nnz) >= 0.1
+    f["adjacency"] = sp.csr_matrix((a.data[keep], (a.row[keep], a.col[keep])), shape=a.shape)
+    assert (f["adjacency"] != f["adjacency"].T).nnz > 0
+    return f
 
 
 def window(ctx: Any) -> dict[str, Any]:
@@ -100,6 +111,11 @@ def _assignment_field_bb(w: dict[str, Any]) -> None:
         b = scipy.stats.betabinom.logpmf(w["X"][:, 1, :], w["total"], (p[state, 0] * taus[state, 0])[:, None], ((1 - p[state, 0]) * taus[state, 0])[:, None])
         want[:, c] = b.sum(axis=0)
     assert np.allclose(llf, want, atol=1e-6), "the spot field is the BB log-likelihood of each spot under each clone's MAP path (RDR zero)"
+
+
+def _assignment_objective_potts(w: dict[str, Any]) -> None:
+    labels, llf, total = unchanged(pipeline_clone_assignment, w["X"], w["base"], w["total"], w["res"], w["pred"], w["adjacency"], w["labels"],
+                                   np.zeros(w["idx"].size, dtype=int), 1.0, hmmclass=hmm_nophasing)
     assert np.isclose(total, potts(llf, w["adjacency"], labels, 1.0)), "the returned objective is the Potts energy of the returned labels"
 
 
@@ -111,10 +127,12 @@ def _icm_gains_energy(f: dict[str, Any]) -> None:
     after = potts(f["llf"], a, labels, f["weight"])
     assert np.isclose(cost, after - before), "the reported cost is the Potts energy gained"
     assert after >= before
+    # NB the field of the energy above: half of each out-edge and half of each in-edge
+    half = ((a + a.T) / 2.0).tocsr()
     for i in range(len(labels)):
-        neighbours = a.indices[a.indptr[i]:a.indptr[i + 1]]
-        local = f["llf"][i] + f["weight"] * np.bincount(labels[neighbours], minlength=3)
-        assert local[labels[i]] == local.max(), f"spot {i} is not at its conditional maximum"
+        row = slice(half.indptr[i], half.indptr[i + 1])
+        local = f["llf"][i] + f["weight"] * np.bincount(labels[half.indices[row]], weights=half.data[row], minlength=3)
+        assert np.isclose(local[labels[i]], local.max()), f"spot {i} is not at its conditional maximum"
 
 
 def _merge_cost_is_potts(f: dict[str, Any]) -> None:
@@ -176,11 +194,19 @@ def _unpack_is_coo(_: Any) -> None:
 ORACLE: list[Row] = table(
     "oracle",
     ("hmrf:compute_loglike_spot_assignment", "synthetic: 5 spots, 2 clones", lambda c: None, _spot_field_by_hand, "the field is w_s * RDR + BAF summed over each clone's states, w_s = valid BAF / valid RDR bins"),
-    ("hmrf:pipeline_clone_assignment", WINDOW, window, _assignment_field_bb, "the field is scipy's BB log-likelihood under each clone's MAP path; the objective is the Potts energy"),
+    ("hmrf:pipeline_clone_assignment", WINDOW, window, _assignment_field_bb, "the field is scipy's BB log-likelihood under each clone's MAP path"),
+    ("hmrf:pipeline_clone_assignment", WINDOW, window, _assignment_objective_potts, "the returned objective is the Potts energy (w / 2 per stored edge)",
+     "Ticket#918: the returned objective counts each aligned stored edge with row < column once, unweighted (hmrf.py:275), not w / 2 per stored edge"),
     ("icm:icm_sweep_deque", "synthetic: 8x8 grid, 3 clones", lambda c: field_case(), _icm_gains_energy, "the reported cost is the Potts energy gained, and every spot ends at its conditional maximum"),
     ("icm:merge_assignment", "synthetic: 8x8 grid, 3 clones", lambda c: field_case(), _merge_cost_is_potts, "the current cost is the Potts energy (unary + weight x aligned edges)"),
-    ("icm:merge_assignment", "synthetic: 8x8 grid, 3 clones", lambda c: field_case(), _merge_gain_is_potts, "the best merge's cost is the merged labels' Potts energy",
-     "Ticket#483: Lattice edges through the Potts solvers: cnaster's merge gain is halved, and the reported spatial term uses its own edge rule"),
+    ("icm:merge_assignment", "synthetic: 8x8 grid, 3 clones", lambda c: field_case(), _merge_gain_is_potts, "the best merge's cost is the merged labels' Potts energy"),
+    ("icm:icm_sweep_deque", "synthetic: 8x8 grid, a tenth of directions dropped", lambda c: one_way_case(), _icm_gains_energy,
+     "on an asymmetric graph: the reported cost is the energy gained (w / 2 per stored edge), each spot at its conditional maximum",
+     "Ticket#918: the ICM field reads out-edges at w, not the energy's w / 2 per stored edge, on an asymmetric adjacency"),
+    ("icm:merge_assignment", "synthetic: 8x8 grid, a tenth of directions dropped", lambda c: one_way_case(), _merge_cost_is_potts,
+     "on an asymmetric graph: the current cost is the energy (w / 2 per stored edge)"),
+    ("icm:merge_assignment", "synthetic: 8x8 grid, a tenth of directions dropped", lambda c: one_way_case(), _merge_gain_is_potts,
+     "on an asymmetric graph: the best merge's cost is the merged labels' energy"),
     ("pseudobulk:merge_pseudobulk_by_index_mix", "synthetic: 2 bins x 4 spots by hand; 8 spots, 3 clones, one empty", lambda c: None, _pseudobulk_sums_clone_spots,
      "each clone's pseudobulk is its spots' sum; an empty clone is zero; no input mutation"),
     ("pseudobulk:merge_pseudobulk_by_index_mix", "synthetic: 2 bins x 5 spots, tumor proportions, by hand", lambda c: None, _pseudobulk_tumor_threshold,

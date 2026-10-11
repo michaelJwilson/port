@@ -239,7 +239,8 @@ def merge_assignment(
             if boundary_gain[u, v] > 0:
                 # NB option: merge u into v (spots of u become v).
                 #    selta = (unary of u becoming v) - (unary of u being u) + boundary gain.
-                delta_u_to_v = (unary_sum[u, v] - unary_sum[u, u]) + boundary_gain[u, v]
+                # NB merging aligns every u-v edge, stored either way (Ticket#483).
+                delta_u_to_v = (unary_sum[u, v] - unary_sum[u, u]) + boundary_gain[u, v] + boundary_gain[v, u]
 
                 if current_total_cost + delta_u_to_v > best_merge_cost:
                     best_merge_cost = current_total_cost + delta_u_to_v

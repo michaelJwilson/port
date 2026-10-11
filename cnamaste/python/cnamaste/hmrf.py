@@ -573,6 +573,8 @@ def run_core_inference(
             X, base_nb_mean, total_bb_RD, lengths, log_sitewise_transmat, tumor_prop
         )
 
+        clone_lengths = X.shape[0] * np.ones(X.shape[2], dtype=int)
+
         state_counts = np.bincount(pred, minlength=n_states)
         state_usage = state_counts / len(pred)
 
