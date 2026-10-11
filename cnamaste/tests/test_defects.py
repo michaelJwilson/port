@@ -319,17 +319,25 @@ def _(**_: Any) -> None:
 
 
 @row("Ticket#180", "spatial.construct_lattice_adjacency", "xfail",
-     "Ticket#180: the spot adjacency is k-nearest-neighbour, asymmetric, and discards maxspots_pooling")
+     "Ticket#180: the spot adjacency is k-nearest-neighbour and asymmetric")
 def _(**_: Any) -> None:
-    smooth, adjacency = construct_lattice_adjacency(lattice(5, 5), maxspots_pooling=7, unit_xsquared=1, unit_ysquared=1)
+    adjacency = construct_lattice_adjacency(lattice(5, 5), unit_xsquared=1, unit_ysquared=1)
     assert (adjacency != adjacency.T).nnz == 0, "a one-way edge"
-    assert smooth.nnz > smooth.shape[0], "maxspots_pooling = 7 pools nothing"
+
+
+@row("Ticket#180", "spatial.construct_lattice_adjacency", "regression",
+     "Ticket#180: fixed in cnamaste; maxspots_pooling and the identity smooth_mat are removed, and a pooling other than 1 raises")
+def _(**_: Any) -> None:
+    assert "maxspots_pooling" not in inspect.signature(construct_lattice_adjacency).parameters
+    with pytest.raises(ValueError, match="maxspots_pooling"):
+        YAMLConfig({"annotation": {"clone_label": None}, "phasing": {"run": True},
+                    "hmrf": {"n_clones_rdr": 2, "fixed_assignment": False, "maxspots_pooling": 7}}).issue_warnings()
 
 
 @row("Ticket#417", "spatial.construct_lattice_adjacency", "xfail",
      "Ticket#417: cnaster's adjacency is directed, unreinforced at boundaries, and has no guard")
 def _(**_: Any) -> None:
-    _, adjacency = construct_lattice_adjacency(lattice(5, 5), unit_xsquared=1, unit_ysquared=1)
+    adjacency = construct_lattice_adjacency(lattice(5, 5), unit_xsquared=1, unit_ysquared=1)
     assert np.diff(adjacency.tocsr().indptr)[0] == 3, "a square lattice's corner has 3 king-move neighbours, not 8"
 
 
@@ -422,7 +430,7 @@ def _(**_: Any) -> None:
 def _(**_: Any) -> None:
     rdr, baf = -np.ones((1, 2, 1)), -np.ones((1, 2, 1))
     field = compute_loglike_spot_assignment(1, np.array([1]), np.array([2]), np.empty(0), False, rdr, baf,
-                                            np.zeros(2, dtype=np.int64), 2, 1, smooth_indices=np.array([0]), smooth_indptr=np.array([0, 1]))
+                                            np.zeros(2, dtype=np.int64), 2, 1)
     assert np.isclose(field[0, 0], -4.0), f"the field weighs read depth by valid-bin counts: {field[0, 0]}, the paper's -4"
 
 

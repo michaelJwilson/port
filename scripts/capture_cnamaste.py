@@ -23,6 +23,12 @@ deep-copied on exit, and the generator states it found. Plots are stubbed
 (`plot_*` and `write_fig` return None): they read and draw, and the run's
 scores equal the ledger row with them on (`cnamaste/tests/test_stages.py`).
 
+A drawn sample (`--sample` a realization directory with a shared `snp/`,
+e.g. `dev_tree_easy` r0, drawn outside the repository) is staged one sample
+sheet row per slice and runs on its own `config.yaml` unless `--template`
+says otherwise. Its inputs are not committed, so the planted truth of every
+sample is stored whole under `/truth`, and the tests read it from there.
+
 The run is staged under `DIR/staged_run` and run from `DIR`, so every path
 the file records is relative to `DIR` (`/config` `run_root`): nothing in the
 file names the host's checkout. `/config` `capture_commit` is the checkout's
@@ -33,7 +39,16 @@ what `hmrf` computes and discards: the ICM labels, each Potts merge
 `merge_assignment` applied, the labels before the empty-clone re-indexing,
 and that re-indexing. `/lineage` is built from the recorded frames.
 
-On easy (`2d4ce9a9`) the run takes 562 s on 4 threads.
+`/config` records the run's `wall_seconds`, the wrappers' own share of it
+(`capture_seconds`: deep copies, encoding, writing) and their difference
+(`run_seconds`). The written file is rewritten once more with every repeated
+dataset (a frame column carried from stage to stage, an unchanged generator
+state) a hard link to its first copy (`audit.capture.deduplicated`).
+
+On 4 threads, a capture's wall (run plus recording) is 496 s (388 + 108) on
+easy (`2d4ce9a9`, 3,000 spots) and 1,663 s (1,375 + 287) on `23acef50`
+(6,000 spots), whose peak RSS is 7.6 GB with `MEMO`; holding every recorded
+value instead passes 14 GB and is killed.
 """
 
 from __future__ import annotations
@@ -41,6 +56,7 @@ from __future__ import annotations
 import argparse
 import copy
 import gzip
+import hashlib
 import json
 import os
 import random
@@ -51,8 +67,6 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-import cnamaste.hmrf as hmrf  # type: ignore[import-not-found]  # noqa: PLR0402
-import cnamaste.scripts.run_cnamaste as rc  # type: ignore[import-not-found]
 import h5py
 import numba
 import numpy as np
@@ -62,6 +76,9 @@ import yaml
 from numba import _helperlib
 from sklearn.metrics import adjusted_rand_score
 
+import cnamaste.hmrf as hmrf  # type: ignore[import-not-found]  # noqa: PLR0402
+import cnamaste.scripts.run_cnamaste as rc  # type: ignore[import-not-found]
+
 REPOSITORY = Path(__file__).resolve().parents[1]
 PROJECT = REPOSITORY / "cnamaste"
 sys.path.insert(0, str(PROJECT / "tests"))
@@ -69,11 +86,14 @@ sys.path.insert(0, str(PROJECT / "tests"))
 from audit.capture import (  # type: ignore[import-not-found]  # noqa: E402
     Capture,
     Writer,
+    deduplicated,
     digest,
+    drawn,
     file_sha256,
     grch38,
     input_files,
     stage_inputs,
+    truth_files,
 )
 
 ENTRY_POINT_SEED = 0
@@ -167,6 +187,39 @@ RECIPES: dict[str, list[Any]] = {
 }
 """A large input that equals no earlier node, rebuilt from the nodes `run_cnamaste`'s glue built it from."""
 
+LINEAGE = {
+    f"{stage}/out"
+    for stage in (
+        "00_inputs/load_input_data",
+        "02_blocks/assign_initial_blocks",
+        "03_phasing/initialize_clones",
+        "03_phasing/initial_phase_given_partition",
+        "04_bins/create_bin_ranges",
+        "05_baf/run_core_inference",
+        "05_baf/merge_by_minspots",
+        "06_normal/normal_baf_bin_filter",
+        "07_rebin/create_bin_ranges",
+        "08_rdr/initialize_rdr_clone_refininement",
+        "08_rdr/run_core_inference",
+        "08_rdr/merge_by_minspots",
+        "08_rdr/reindex_clones",
+    )
+}
+"""The recorded values `lineage` reads."""
+
+MEMO = (
+    LINEAGE
+    | set(RECIPES)
+    | {
+        p
+        for recipe in RECIPES.values()
+        for p in recipe
+        if isinstance(p, str) and "/" in p
+    }
+)
+"""The recorded values the capture keeps in memory to the end: what `lineage` and `RECIPES` read. Every other deep copy
+is released once written."""
+
 PLOTS = (
     "plot_clones_genomic",
     "plot_clones_spatial",
@@ -213,12 +266,15 @@ class Recorder:
         self.h5 = h5
         self.writer = Writer(h5)
         self.writer.recipes = RECIPES
+        self.writer.keep = MEMO.__contains__
         self.writer.digest_only = self.digest_only
         self.calls: dict[str, int] = {}
         self.order: list[str] = []
         self.current = ""
         self.internal: dict[str, dict[str, Any]] = {}
         self.files: dict[str, str] = {}
+        self.overhead = 0.0
+        """Seconds the wrappers spend outside the wrapped calls: deep copies, encoding, writing."""
 
     def digest_only(self, path: str, value: Any) -> bool:
         """A large output of a replayed stage: the replay re-derives it."""
@@ -243,6 +299,7 @@ class Recorder:
         f = getattr(module, name)
 
         def wrapped(*args: Any, **kwargs: Any) -> Any:
+            entered = time.perf_counter()
             label = self.label(name)
             state = rng_state()
             given = copy.deepcopy((args, kwargs))
@@ -274,6 +331,7 @@ class Recorder:
                 )
                 self.h5.require_group("files").create_dataset(written.name, data=data)
             self.order.append(label)
+            self.overhead += time.perf_counter() - entered - seconds
             print(f"{label} {seconds:.1f}s", flush=True)
             return out
 
@@ -511,6 +569,15 @@ def lineage(rec: Recorder, h5: h5py.File) -> None:
         )
 
 
+def named(path: Path) -> str:
+    """`path` relative to the repository; a drawn sample outside it by its last two parts (`<name>/r0`)."""
+    return (
+        str(path.relative_to(REPOSITORY))
+        if path.is_relative_to(REPOSITORY)
+        else "/".join(path.parts[-2:])
+    )
+
+
 def commit() -> str:
     found = subprocess.run(
         ["git", "rev-parse", "HEAD"],
@@ -568,7 +635,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--template",
         type=Path,
-        default=REPOSITORY / "tests" / "data" / "zenodo_sim_config.yaml",
+        default=None,
+        help="the run's configuration: a drawn sample's own config.yaml, else tests/data/zenodo_sim_config.yaml",
     )
     parser.add_argument(
         "--hash",
@@ -583,9 +651,16 @@ def main(argv: list[str] | None = None) -> int:
         help="a scratch directory for the staged run",
     )
     arguments = parser.parse_args(argv)
-    arguments.work, arguments.sample, arguments.template = (
-        p.resolve() for p in (arguments.work, arguments.sample, arguments.template)
+    arguments.work, arguments.sample = (
+        p.resolve() for p in (arguments.work, arguments.sample)
     )
+    if arguments.template is None:
+        arguments.template = (
+            arguments.sample / "config.yaml"
+            if drawn(arguments.sample)
+            else REPOSITORY / "tests" / "data" / "zenodo_sim_config.yaml"
+        )
+    arguments.template = arguments.template.resolve()
     out = (
         arguments.out.resolve()
         if arguments.out
@@ -621,9 +696,18 @@ def main(argv: list[str] | None = None) -> int:
 
     lineage(rec, h5)
     inputs = {
-        name: {"path": str(p.relative_to(REPOSITORY)), "sha256": file_sha256(p)}
+        name: {
+            "path": named(p) if p.is_relative_to(REPOSITORY) else name,
+            "sha256": file_sha256(p),
+        }
         for name, p in input_files(arguments.sample).items()
     }
+    for name, data in truth_files(arguments.sample).items():
+        stored = h5.require_group("truth").create_dataset(
+            name,
+            data=np.frombuffer(gzip.compress(data, mtime=0), dtype=np.uint8),
+        )
+        stored.attrs["sha256"] = hashlib.sha256(data).hexdigest()
     h5.create_group("config").attrs.update(
         {
             "yaml": config.read_text(),
@@ -631,7 +715,8 @@ def main(argv: list[str] | None = None) -> int:
             "template_sha256": file_sha256(arguments.template),
             "run_root": str(RUN_ROOT),
             "resources": str(resources),
-            "sample": str(arguments.sample.relative_to(REPOSITORY)),
+            "sample": named(arguments.sample),
+            "drawn": drawn(arguments.sample),
             "fixture_hash": arguments.hash,
             "inputs": json.dumps(inputs),
             "capture_commit": commit(),
@@ -652,12 +737,16 @@ def main(argv: list[str] | None = None) -> int:
             ),
             "plots": "stubbed",
             "wall_seconds": wall,
+            "capture_seconds": rec.overhead,
+            "run_seconds": wall - rec.overhead,
             "stages": json.dumps(rec.order),
             "files": json.dumps(rec.files),
         }
     )
     h5.close()
-    partial.replace(out)
+    links = deduplicated(partial, out)
+    partial.unlink()
+    print(f"{links} repeated datasets linked")
     size = out.stat().st_size
     report(out)
     verify(out)

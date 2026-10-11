@@ -63,7 +63,7 @@ def _admits_equals_brute(_: Any) -> None:
 
 def _knn_eight_nearest(_: Any) -> None:
     coords = scattered()
-    smooth, adjacency = construct_lattice_adjacency(coords, unit_xsquared=4, unit_ysquared=1)
+    adjacency = construct_lattice_adjacency(coords, unit_xsquared=4, unit_ysquared=1)
     scaled = coords * np.array([2.0, 1.0])
     d = np.sum((scaled[:, None, :] - scaled[None, :, :]) ** 2, axis=2)
     np.fill_diagonal(d, np.inf)
@@ -71,19 +71,17 @@ def _knn_eight_nearest(_: Any) -> None:
     a = adjacency.tocsr()
     found = np.sort(a.indices.reshape(-1, 8), axis=1)
     assert np.array_equal(found, want), "each spot's 8 nearest neighbours in the scaled metric"
-    assert np.array_equal(smooth.toarray(), np.eye(len(coords)))
 
 
 def _multislice_block_diagonal(_: Any) -> None:
     coords = np.vstack([scattered(30, 1), scattered(20, 2)])
     ids = np.repeat([0, 1], [30, 20])
-    adjacency, smooth = unchanged(construct_multislice_lattice_adjacency, ids, ["a", "b"], coords, None, 1, unit_xsquared=1, unit_ysquared=1)
+    adjacency = unchanged(construct_multislice_lattice_adjacency, ids, ["a", "b"], coords, None, unit_xsquared=1, unit_ysquared=1)
     a = adjacency.toarray()
     assert not a[:30, 30:].any() and not a[30:, :30].any(), "no edge crosses slices"
     for idx in (slice(0, 30), slice(30, 50)):
-        _, one = construct_lattice_adjacency(coords[idx], unit_xsquared=1, unit_ysquared=1)
+        one = construct_lattice_adjacency(coords[idx], unit_xsquared=1, unit_ysquared=1)
         assert np.array_equal(a[idx, idx], one.toarray()), "each slice's block is its own lattice adjacency"
-    assert np.array_equal(smooth.toarray(), np.eye(50))
 
 
 def _equal_partition_least_variance(_: Any) -> None:
@@ -117,7 +115,7 @@ ORACLE: list[Row] = table(
     ("spatial:best_equal_partition", "synthetic: 6x6 and 6x4 grids", lambda c: None, _equal_partition_least_variance,
      "the first least-variance partition over the trials (exhaustive); at 200 trials the 6x6 grid's quadrants, variance 0, the global optimum"),
     ("spatial:banded", "synthetic: 6 spots with ties, 10 on a line", lambda c: None, _bands_by_hand, "hand-computed bands: the axis with more distinct values, ties by the other axis then index"),
-    ("spatial:construct_lattice_adjacency", "synthetic: 60 scattered spots", lambda c: None, _knn_eight_nearest, "each spot's out-edges are its 8 nearest neighbours in the scaled metric; smooth is the identity"),
+    ("spatial:construct_lattice_adjacency", "synthetic: 60 scattered spots", lambda c: None, _knn_eight_nearest, "each spot's out-edges are its 8 nearest neighbours in the scaled metric"),
     ("spatial:construct_multislice_lattice_adjacency", "synthetic: two slices, 30 and 20 spots", lambda c: None, _multislice_block_diagonal, "block diagonal of the per-slice adjacencies; no input mutation"),
 )
 

@@ -204,13 +204,11 @@ def _(run: Run) -> None:
     assert np.array_equal(summed, bins.X[:, 1, :])
 
 
-@row(BOOKKEEPING, "adjacency: 8 out-edges per spot, unit weights, no self edges; smooth_mat the identity")
+@row(BOOKKEEPING, "adjacency: 8 out-edges per spot, unit weights, no self edges")
 def _(run: Run) -> None:
-    adjacency, smooth = run("04_bins/construct_multislice_lattice_adjacency/out")
-    a = adjacency.tocsr()
+    a = run("04_bins/construct_multislice_lattice_adjacency/out").tocsr()
     # NB symmetric it is not: a kNN rule (Ticket#180, test_defects.py)
     assert np.all(np.diff(a.indptr) == 8) and np.all(a.data == 1) and a.diagonal().sum() == 0
-    assert (smooth != sp.identity(a.shape[0])).nnz == 0
 
 
 def _labels_dense(labels: np.ndarray) -> None:

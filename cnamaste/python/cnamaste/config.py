@@ -122,6 +122,11 @@ class YAMLConfig:
         #     logger.warning(f"Excluding Neyman-Pearson model testing")
         if self.hmrf.fixed_assignment:
             logger.warning(f"Assuming fixed assignment")
+        # DEPRECATE spots are not pooled (Ticket#180).
+        if int(getattr(self.hmrf, "maxspots_pooling", 1)) != 1:
+            raise ValueError(
+                "hmrf.maxspots_pooling is deprecated: spots are not pooled; remove it or set it to 1."
+            )
 
 
 class JSONConfig:

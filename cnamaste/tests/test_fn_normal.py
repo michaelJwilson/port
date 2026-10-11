@@ -78,7 +78,8 @@ def _candidates_recomputed(d: dict[str, Any]) -> None:
     config, res, profiles, x, rdr, smooth = d["in"]["args"]
     labels = np.asarray(res["new_assignment"])
     clone = np.argmin(np.sum(np.maximum(np.abs(profiles - 0.5) - 0.05, 0), axis=1))
-    stds = np.std(np.log1p(rdr @ smooth), axis=0)
+    assert smooth is None, "run_cnamaste passes no smooth_mat (Ticket#180)"
+    stds = np.std(np.log1p(rdr), axis=0)
     prior, percent = np.inf, 40
     while True:
         threshold = np.percentile(stds[labels == clone], percent)
