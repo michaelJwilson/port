@@ -34,20 +34,22 @@ import pytest
 import scipy.sparse as sp
 import yaml
 from scipy.special import logsumexp
-from scipy.stats import nbinom
+from scipy.stats import binom, nbinom, poisson
 
 from audit.segments import DROPPED
 from cnamaste.config import YAMLConfig, set_global_config
 from cnamaste.count_encoder import CountEncoder
-from cnamaste.hmm import pipeline_baum_welch
+from cnamaste.hmm import compute_copy_state_posterior, pipeline_baum_welch
 from cnamaste.hmm_emission import Weighted_BetaBinom
 from cnamaste.hmm_initialize import gmm_init
-from cnamaste.hmm_nophasing import betabinom_logpmf_numba, get_log_transmat, hmm_nophasing, nbinom_logpmf_numba
+from cnamaste.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d, betabinom_logpmf_numba, get_log_transmat, hmm_nophasing, nbinom_logpmf_numba
 from cnamaste.hmm_phased import hmm_phased
-from cnamaste.hmrf import compute_loglike_spot_assignment, merge_by_minspots, run_core_inference
+from cnamaste.hmrf import compute_loglike_spot_assignment, merge_by_minspots, reindex_clones, run_core_inference
+from cnamaste.hmrf import logsumexp as hmrf_logsumexp
 from cnamaste.icm import icm_sweep_deque, merge_assignment
+from cnamaste.icm import logsumexp as icm_logsumexp
 from cnamaste.integer_copy import hill_climbing_integer_copynumber_fixdiploid_milp, hill_climbing_integer_copynumber_oneclone
-from cnamaste.io import get_aggregated_barcodes, get_spaceranger_counts, load_input_data
+from cnamaste.io import get_aggregated_barcodes, get_sample_list, get_spaceranger_counts, load_input_data
 from cnamaste.normal_spot import determine_normal_candidates, filter_normal_diffexp
 from cnamaste.omics import assign_initial_blocks, summarize_counts_for_bins
 from cnamaste.recomb import assign_centiMorgans, compute_numbat_phase_switch_prob
@@ -140,6 +142,13 @@ def _(tmp_path: Path, **_: Any) -> None:
     (tmp_path / "barcodes.txt").write_text("AAAC-1_s1\nAAAG-1_s1\nAAAC-1_s2\n")
     found = get_aggregated_barcodes(str(tmp_path / "barcodes.txt"), known_sample_id=None)
     assert list(found["sample_id"]) == ["s1", "s1", "s2"]
+
+
+@row("Ticket#878", "io.get_sample_list", "xfail", "Ticket#878: get_sample_list lists a sample twice on interleaved rows A, B, A, so code 0 holds no spot")
+def _(**_: Any) -> None:
+    adata = anndata.AnnData(np.zeros((3, 1)), obs=pd.DataFrame({"sample": ["A", "B", "A"]}, index=list("xyz")))
+    names, ids = get_sample_list(adata)
+    assert names == ["A", "B"] and ids.tolist() == [0, 1, 0], f"samples {names}, codes {ids.tolist()}"
 
 
 # --- genes, blocks, bins ---------------------------------------------------------
@@ -350,6 +359,28 @@ def _(**_: Any) -> None:
     assert np.array_equal(given, before), "the caller's assignment was rewritten in place"
 
 
+@row("Ticket#879", "icm.icm_sweep_deque (empty clone)", "xfail",
+     "Ticket#879 (Ticket#81): the floor is skipped once any clone is empty: clone_counts.min() counts the empty clone as 0")
+def _(**_: Any) -> None:
+    np.random.seed(879)
+    llf = np.full((30, 3), -50.0)
+    llf[:25, 0] = llf[25:, 1] = 0.0  # NB clone 1 holds 5 spots, under the floor of 10; clone 2 holds none
+    adjacency = sp.csr_matrix((30, 30))
+    labels = np.argmax(llf, axis=1).astype(np.int64)
+    icm_sweep_deque(llf, adjacency.indptr, adjacency.indices, adjacency.data, labels, 0.0, None, min_clone_spots=10)
+    live = np.bincount(labels)[np.bincount(labels) > 0]
+    assert live.size == 1 or live.min() >= 10, f"live clone sizes {live.tolist()} under a floor of 10"
+
+
+@row("Ticket#879", "hmrf.reindex_clones", "xfail",
+     "Ticket#879: reindex_clones checks new_p_binom's column count alone; a per-clone new_log_mu is permuted while new_p_binom is not")
+def _(**_: Any) -> None:
+    res = {"new_assignment": np.array([0, 0, 1, 1, 1]), "pred_cnv": np.array([0, 0, 1, 1, 0, 1]), "new_log_mu": np.zeros((2, 2)),
+           "new_alphas": np.ones((2, 1)), "new_p_binom": np.array([[0.5], [0.2]]), "new_taus": np.ones((2, 1))}
+    with pytest.raises(AssertionError):
+        reindex_clones(res)
+
+
 @row("Ticket#81", "hmrf.run_core_inference", "xfail", "Ticket#81: any clone below 200 spots is merged away, and run_core_inference does not expose the threshold")
 def _(**_: Any) -> None:
     assert "min_clone_spots" in inspect.signature(run_core_inference).parameters
@@ -436,6 +467,23 @@ def _(sim: Any, **_: Any) -> None:
     pipeline_baum_welch(None, x, np.array([6]), 2, np.ones((6, 1)), 2 * np.ones((6, 1)), np.zeros(6), hmmclass=hmm_nophasing, max_iter=1)
 
 
+@row("Ticket#876", "icm.logsumexp / hmrf.logsumexp", "xfail", "Ticket#876 (Ticket#413): icm's and hmrf's logsumexp return NaN, not -inf, on an all -inf row")
+def _(**_: Any) -> None:
+    for f in (icm_logsumexp, hmrf_logsumexp):
+        assert np.isclose(f(np.array([-1.0, 2.0, 0.5])), logsumexp([-1.0, 2.0, 0.5]))
+        assert np.isneginf(f(np.full(3, -np.inf))), f"{f(np.full(3, -np.inf))}; scipy's is -inf"
+
+
+@row("Ticket#876", "hmm.compute_copy_state_posterior / hmm_nophasing.get_state_posteriors", "xfail",
+     "Ticket#876 (Ticket#413): an all -inf posterior column normalizes to NaN: the zero check tests sum(log_gamma) == 0, not logsumexp == -inf")
+def _(**_: Any) -> None:
+    with pytest.raises(RuntimeError):
+        compute_copy_state_posterior(np.array([[0.0, -np.inf], [-1.0, -np.inf]]), np.zeros((2, 2)))
+    emission = np.array([[0.0, -np.inf, 0.0], [-1.0, -np.inf, -1.0]])[:, :, None]
+    with pytest.raises(RuntimeError):
+        hmm_nophasing().get_state_posteriors(np.array([3]), get_log_transmat(2, 0.9), np.log(np.full(2, 0.5)), emission, np.zeros(3))
+
+
 @row("Ticket#30", "hmm_emission.Weighted_BetaBinom (via get_em_solver_params)", "not reproduced",
      "Ticket#30: at the shipped em_ftol (1e-4) this one-state beta-binomial stops within 1e-3 nats of the tight optimum")
 def _(sim: Any, **_: Any) -> None:
@@ -490,6 +538,26 @@ def _(**_: Any) -> None:
     tau, p, n = 1e16, 0.3, 20
     values = [betabinom_logpmf_numba(float(k), float(n), p * tau, (1 - p) * tau) for k in range(n + 1)]
     assert abs(logsumexp(values)) < 1e-6, f"the pmf sums to e^{logsumexp(values):.1f}"
+
+
+@row("Ticket#560", "hmm_nophasing._nb_logpmf_1d", "xfail",
+     "Ticket#560 (Ticket#877): the 1-d NB kernel scores every count at probability 1 once p rounds to 1 (alpha 1e-17, mu 10)")
+def _(**_: Any) -> None:
+    k = np.array([0.0, 1.0, 5.0, 20.0])
+    out = np.empty(k.size)
+    _nb_logpmf_1d(k, np.ones(k.size), 10.0, 1e-17, out)
+    # NB alpha is floored at 1e-10 (r = 1e10): within about 1e-7 nats of Poisson(10) for k <= 20
+    assert np.allclose(out, poisson.logpmf(k, 10.0), atol=1e-6), f"{out} against Poisson's {poisson.logpmf(k, 10.0)}"
+
+
+@row("Ticket#561", "hmm_nophasing._bb_logpmf_1d", "xfail", "Ticket#561 (Ticket#877): the 1-d BB kernel loses precision at large concentration tau")
+def _(**_: Any) -> None:
+    n, p = 20, 0.3
+    k = np.arange(n + 1, dtype=float)
+    out = np.empty(k.size)
+    _bb_logpmf_1d(k, np.full(k.size, float(n)), p, 1e16, out)
+    # NB at tau = 1e16 the beta-binomial is the binomial to about n^2 / tau = 4e-14
+    assert np.allclose(out, binom.logpmf(k, n, p), atol=1e-9), f"max |diff| {np.max(np.abs(out - binom.logpmf(k, n, p))):.3e}"
 
 
 @row("Ticket#241", "hmm_nophasing.nbinom_logpmf_numba", "xfail", "Ticket#241: parameter_terms_only=True is what includes the data term, so the flag does the opposite of its name")
@@ -600,6 +668,41 @@ def _(sim: Any, **_: Any) -> None:
 def _(**_: Any) -> None:
     written = [p for p in PACKAGE.rglob("*.py") if "combined.png" in p.read_text()]
     assert written, "no cnamaste code writes combined.png (the staged run stubs plots; with them on, none writes it either)"
+
+
+@row("Ticket#881", "oxicnamaste (Rust crate)", "departure", "planned departure: cnamaste builds and binds its own Rust crate, oxicnamaste, planned Ticket#881")
+def _(**_: Any) -> None:
+    assert importlib.util.find_spec("cnamaste.oxicnamaste") is not None, "no compiled extension for a kernel to land in"
+
+
+@row("Ticket#882", "run_cnamaste (integer copies)", "departure",
+     "planned departure: integer copies decoded by the fit's likelihood (lattice decode), Ticket#882 / Ticket#362, planned Ticket#882")
+def _(**_: Any) -> None:
+    body = ast.unparse(function_node(source("scripts/run_cnamaste.py"), "run_cnamaste"))
+    assert "hill_climbing_" not in body, "integer copies come from the L1 hill climbs, which decode CalicoST easy's (2, 2) gains as (1, 1)"
+
+
+@row("Ticket#276", "hmm_nophasing coded emission (logmu shift)", "departure",
+     "planned departure: the per-clone library normalizer log Z_c applied in the read-depth emission, Ticket#276, planned Ticket#884")
+def _(**_: Any) -> None:
+    assert "logmu_shifts are not currently supported" not in (PACKAGE / "hmm_nophasing.py").read_text(), "compute_logmu_shifts' value is discarded"
+    calls = [n for n in ast.walk(function_node(source("hmm.py"), "pipeline_baum_welch")) if isinstance(n, ast.Call)]
+    assert any(k.arg == "new_log_mu_shift" for c in calls for k in c.keywords), "the fit records no per-clone shift"
+
+
+@row("Ticket#299", "hmrf.run_core_inference (neutral pin)", "departure",
+     "planned departure: the shifted fit's neutral state pinned to mu = 1, the shifts moved with it, Ticket#293 / Ticket#299, planned Ticket#884")
+def _(**_: Any) -> None:
+    body = function_node(source("hmrf.py"), "run_core_inference")
+    stored = [n for n in ast.walk(body) if isinstance(n, ast.Attribute) and n.attr == "new_log_mu_shift" and isinstance(n.ctx, ast.Store)]
+    assert stored, "the shifted likelihood is flat along mu -> c mu, and nothing fixes the scale"
+
+
+@row("Ticket#547", "hmm_initialize.gmm_init (lattice start)", "departure",
+     "planned departure: the read-depth start from the integer (A, B) lattice at the best tumour fraction and depth scale, Ticket#540 / Ticket#547, planned Ticket#885")
+def _(**_: Any) -> None:
+    body = ast.unparse(function_node(source("hmm_initialize.py"), "gmm_init"))
+    assert "lattice_start" in body, "the read-depth start is a mixture over the observed ratios, not the integer lattice"
 
 
 MARKS = {"xfail": True, "departure": True}
