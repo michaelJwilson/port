@@ -3,8 +3,9 @@
 `audit.callgraph.reached()` is the static graph from `run_cnamaste` (live
 definitions, plots cut). `NOT_EXECUTED` lists the reached functions the easy
 run does not execute (measured once with a profiler over a full run, plots
-stubbed), each with the reason. Every other reached function has at least one
-row in a `test_fn_*.py` table. `python -m test_fn_inventory` (from
+stubbed), each with the reason. Every reached function, executed or not, has at
+least one row in a `test_fn_*.py` table; an unexecuted one's rows build their
+input synthetically. `python -m test_fn_inventory` (from
 `cnamaste/tests`) prints the inventory as a Markdown table.
 """
 
@@ -49,7 +50,7 @@ NOT_EXECUTED: dict[str, str] = {
     "spatio_genomic_counts:SpatioGenomicCounts.copy": "reached only by name (`.copy()` on arrays and frames)",
     "spatio_genomic_counts:SpatioGenomicCounts.items": "reached only by name",
 }
-"""Reached in the static graph, not executed on easy: why. A row may still test one (e.g. unpack_param_errors)."""
+"""Reached in the static graph, not executed on easy: why. Each has a row on a synthetic input all the same."""
 
 ISSUES = (20, 30, 45, 46, 58, 80, 81, 84, 105, 113, 115, 122, 135, 136, 143, 146, 165, 172, 177, 180, 181, 182, 189, 191, 236, 240, 241, 244,
           267, 269, 293, 311, 320, 417, 440, 446, 449, 466, 468, 479, 483, 560, 561, 788, 799, 860, 869, 871)
@@ -66,7 +67,7 @@ def graph() -> Graph:
     return reached()
 
 
-def test_every_reached_function_has_rows_or_a_reason(graph: Graph) -> None:
+def test_reached_have_rows(graph: Graph) -> None:
     """Static graph = tested + not executed on easy; no row names a function outside the graph."""
     keys, tested = graph.keys(), {r.function for r in rows()}
     assert not tested - keys, f"rows for functions run_cnamaste does not reach: {sorted(tested - keys)}"
@@ -75,13 +76,22 @@ def test_every_reached_function_has_rows_or_a_reason(graph: Graph) -> None:
     assert not missing, f"reached and executed, without a row: {sorted(missing)}"
 
 
-def test_every_row_kind_is_known_and_paired(graph: Graph) -> None:
+def test_unexecuted_have_rows() -> None:
+    """A function easy does not execute is tested on a synthetic input: NOT_EXECUTED says why easy cannot, not that nothing does."""
+    rows_ = rows()
+    untested = sorted(set(NOT_EXECUTED) - {r.function for r in rows_})
+    assert not untested, f"not executed on easy, without a row: {untested}"
+    passing = {r.function for r in rows_ if r.defect is None}
+    assert not set(NOT_EXECUTED) - passing, f"only strict-xfail rows: {sorted(set(NOT_EXECUTED) - passing)}"
+
+
+def test_row_kinds_known(graph: Graph) -> None:
     """Each row is one of the three kinds and states what it checks and where its input comes from."""
     for r in rows():
         assert r.kind in ("oracle", "invariant", "captured") and r.what and r.source, r.id
 
 
-def test_live_definitions_are_the_reached_ones(graph: Graph) -> None:
+def test_live_definitions_reached(graph: Graph) -> None:
     """Where a name is defined more than once, the graph entered the live definition, never a dead copy."""
     for key, dead in graph.shadowed.items():
         live = graph.find(key)
@@ -89,12 +99,12 @@ def test_live_definitions_are_the_reached_ones(graph: Graph) -> None:
         assert sorted(dead + [live.line]) == dead_copies(live.module)[live.qualname], f"{key}: every copy is either live or dead"
 
 
-def test_no_dead_copies_remain(graph: Graph) -> None:
+def test_no_dead_copies(graph: Graph) -> None:
     """No reached function has a shadowed or string-literal copy."""
     assert not graph.shadowed, {k: v for k, v in graph.shadowed.items()}
 
 
-def test_every_placed_issue_has_a_row() -> None:
+def test_issues_have_rows() -> None:
     """Each issue in ISSUES is cited by a per-function row (`Ticket#N:`) or has its test_defects.py row."""
     cited = " ".join(r.defect or "" for r in rows()) + " " + " ".join(r.what for r in rows())
     defects = " ".join(r.issue for r in test_defects.ROWS)
@@ -118,7 +128,7 @@ def test_snapshot_returns(row: Row, ctx: Any, request: pytest.FixtureRequest) ->
 
 
 @pytest.mark.snapshot
-def test_snapshot_pins_are_the_rows(sim_hash: str, request: pytest.FixtureRequest) -> None:
+def test_pins_match_rows(sim_hash: str, request: pytest.FixtureRequest) -> None:
     """The pins are exactly the rows': none missing, none for a row that no longer exists."""
     keys = {r.id for r in ROWS}
     assert len(keys) == len(ROWS), "row keys repeat"

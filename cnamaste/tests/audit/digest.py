@@ -3,7 +3,7 @@
 `Digest.of(value)` walks tuples, lists, dicts (keys sorted), namedtuples and
 dataclasses, numpy arrays (dtype, shape, C-order bytes), scipy sparse
 (canonical CSR), pandas frames, series and indexes (index, columns, dtypes,
-values), AnnData, cnamaste's own objects (their attributes), scalars, None
+values), polars frames (columns, dtypes, values), AnnData, cnamaste's own objects (their attributes), scalars, None
 and strings, into two sha256 digests at once:
 
 - **exact:** the bytes;
@@ -220,6 +220,11 @@ class Digest:
             self.feed({k: value.obsm[k] for k in value.obsm}, f"{path}.obsm")
             self.feed({k: value.layers[k] for k in value.layers}, f"{path}.layers")
             self.feed(dict(value.uns), f"{path}.uns")
+        elif type(value).__module__.split(".")[0] == "polars" and type(value).__name__ == "DataFrame":
+            self._tag(f"P{value.shape}{[str(d) for d in value.dtypes]}")
+            self.feed(list(value.columns), f"{path}.columns", leaf=False)
+            for c in value.columns:
+                self._array(value[c].to_numpy(), f"{path}[{c}]")
         elif dataclasses.is_dataclass(value) and not isinstance(value, type):
             self._tag(f"D{type(value).__qualname__}")
             for f in dataclasses.fields(value):
