@@ -564,14 +564,14 @@ def _(**_: Any) -> None:
 
 
 @row("Ticket#348 floor", "icm.icm_sweep_deque", "departure",
-     "planned departure: refinement mask plus floor merge, smallest-first to the best field (sal FloorPolicy), Ticket#348, planned D5 PR #841")
+     "planned departure: refinement mask plus floor merge, smallest-first to the best field (sal FloorPolicy), Ticket#348, planned #836 D5")
 def _(**_: Any) -> None:
     body = ast.unparse(function_node(source("icm.py"), "icm_sweep_deque"))
     assert "np.random.choice(valid_for_spot)" not in body, "a spot of a clone under the floor goes to a random eligible clone"
 
 
 @row("Ticket#348 start", "hmm_initialize.gmm_init", "not reproduced",
-     "planned departure: distinct GMM start, Ticket#348 / Ticket#143, planned D5 PR #841; on a two-valued input gmm_init already returns 5 distinct states")
+     "planned departure: distinct GMM start, Ticket#348 / Ticket#143, planned #836 D5; on a two-valued input gmm_init already returns 5 distinct states")
 def _(sim: Any, **_: Any) -> None:
     run_config(sim)
 
