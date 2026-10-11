@@ -430,13 +430,13 @@ def state_recovery(run: Run, truth: Any) -> dict[str, float]:
 
 
 SCIENCE: dict[str, tuple[Callable[[Run, Any], float], str, float, Any]] = {
-    "BAF clone ARI (recorded 0.7225)": (baf_ari, ">=", 0.7025, None),
-    "RDR clone ARI (recorded 0.9694, the ledger's)": (rdr_ari, ">=", 0.9494, None),
+    "BAF clone ARI (recorded 0.7124; 0.7225 before the symmetric adjacency, Ticket#180)": (baf_ari, ">=", 0.6924, None),
+    "RDR clone ARI (recorded 0.9692; the ledger's 0.9694 before the symmetric adjacency)": (rdr_ari, ">=", 0.9492, None),
     "copy ARI, phase-free (recorded 0.8216, the ledger's)": (lambda r, t: copy_scores(r, t)["copy_ari_pf"], ">=", 0.8016, None),
     "exact altered, phase-free (recorded 0.3794, the ledger's)": (lambda r, t: copy_scores(r, t)["exact_altered_minor"], ">=", 0.3594, None),
-    "normal-candidate purity (recorded 1.0000)": (normal_purity, ">=", 0.98, None),
-    "BAF p recovery, mean |minor p - planted| (recorded 0.0037)": (lambda r, t: state_recovery(r, t)["p_error"], "<=", 0.0237, None),
-    "mu recovery, mean |mu - (A+B)/2| (recorded 0.0664)": (lambda r, t: state_recovery(r, t)["mu_error"], "<=", 0.0864, None),
+    "normal-candidate purity (recorded 0.9970; 1.0000 before the symmetric adjacency)": (normal_purity, ">=", 0.9770, None),
+    "BAF p recovery, mean |minor p - planted| (recorded 0.0038; 0.0037 before)": (lambda r, t: state_recovery(r, t)["p_error"], "<=", 0.0238, None),
+    "mu recovery, mean |mu - (A+B)/2| (recorded 0.0719; 0.0664 before)": (lambda r, t: state_recovery(r, t)["mu_error"], "<=", 0.0919, None),
 }
 """Name -> (score, direction, bound, xfail reason or None). Each bound is the recorded value less (or plus) `MARGIN`.
 The planted defects these scores would show on other fixtures (Ticket#320's impure normal candidates) are `test_defects.py`'s."""
