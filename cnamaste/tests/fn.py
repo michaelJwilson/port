@@ -353,7 +353,8 @@ def final_estep(ctx: Ctx, run: str) -> dict[str, Any]:
     def make() -> dict[str, Any]:
         s, res = final_stack(ctx, run), fitted(ctx, run)["res"]
         rdr, baf = hmm_nophasing.compute_emission_probability_nb_betabinom(
-            s["X"], s["base_nb_mean"], res["new_log_mu"], res["new_alphas"], s["total_bb_RD"], res["new_p_binom"], res["new_taus"])
+            s["X"], s["base_nb_mean"], *(np.asarray(res[k]).reshape(-1, 1) for k in ("new_log_mu", "new_alphas")), s["total_bb_RD"],
+            *(np.asarray(res[k]).reshape(-1, 1) for k in ("new_p_binom", "new_taus")))
         emission = rdr + baf
         args = (s["lengths"], res["new_log_transmat"], res["new_log_startprob"], emission, s["log_sitewise_transmat"])
         alpha, beta = hmm_nophasing.forward_lattice(*args), hmm_nophasing.backward_lattice(*args)

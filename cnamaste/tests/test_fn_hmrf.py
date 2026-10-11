@@ -103,7 +103,7 @@ def _assignment_field_bb(w: dict[str, Any]) -> None:
     res, n_obs = w["res"], w["X"].shape[0]
     labels, llf, total = unchanged(pipeline_clone_assignment, w["X"], w["base"], w["total"], res, w["pred"], w["adjacency"], w["labels"],
                                    np.zeros(w["idx"].size, dtype=int), 1.0, hmmclass=hmm_nophasing)
-    p, taus = np.asarray(res["new_p_binom"]), np.asarray(res["new_taus"])
+    p, taus = np.asarray(res["new_p_binom"]).reshape(-1, 1), np.asarray(res["new_taus"]).reshape(-1, 1)
     n_clones = w["pred"].size // n_obs
     want = np.zeros((w["idx"].size, n_clones))
     for c in range(n_clones):

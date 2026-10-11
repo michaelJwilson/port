@@ -177,7 +177,7 @@ def _phase_majority_vote(d: dict[str, Any]) -> None:
     res, phase, refined = d["out"]
     n_states, n_clones = d["n_states"], d["n_clones"]
     pred = np.argmax(np.asarray(res["log_gamma"]), axis=0).reshape(n_clones, -1)
-    p = np.asarray(res["new_p_binom"])[pred % n_states, 0]
+    p = np.asarray(res["new_p_binom"]).reshape(-1)[pred % n_states]
     model = np.where(pred < n_states, p, 1 - p)
     votes = np.where(np.abs(model - 0.5) < 0.1, np.nan, (pred < n_states).astype(float))
     with np.errstate(invalid="ignore"):

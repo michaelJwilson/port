@@ -160,7 +160,7 @@ def bins_of(u: Units, coarse: str, fine: str, runs: np.ndarray, *, normal: bool)
 def minor_baf(res: Any, n_states: int, n_blocks: int) -> np.ndarray:
     """(clones, blocks) minor BAF of the phasing fit's MAP states, as `initial_phase_given_partition` forms it (phasing.py:140-155)."""
     pred = np.argmax(np.asarray(res["log_gamma"]), axis=0).reshape(-1, n_blocks)
-    p = np.asarray(res["new_p_binom"])[pred % n_states, 0]
+    p = np.asarray(res["new_p_binom"]).reshape(-1)[pred % n_states]
     baf = np.where(pred < n_states, p, 1.0 - p)
     minor: np.ndarray = np.minimum(baf, 1.0 - baf)
     return minor

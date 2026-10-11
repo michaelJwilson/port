@@ -35,6 +35,20 @@ def compute_copy_state_posterior(
     return log_gamma
 
 
+def as_column(param):
+    """A fitted parameter, (n_states,), as the emission kernels and the optimizer hold it: (n_states, 1) (Ticket#267)."""
+    return None if param is None else np.asarray(param).reshape(-1, 1)
+
+
+def as_states(param):
+    """An optimizer's (n_states, 1) parameter as the fit returns it: (n_states,); its second axis is always 1 (Ticket#267)."""
+    if param is None:
+        return None
+    param = np.asarray(param)
+    assert param.ndim == 2 and param.shape[1] == 1, f"a fitted parameter of shape {param.shape}, not (n_states, 1)"
+    return param[:, 0]
+
+
 def pipeline_baum_welch(
     _,
     X,
@@ -69,6 +83,10 @@ def pipeline_baum_welch(
     logger.info(
         f"Solving HMM for X={X.shape} with {hmmclass.__name__} instance and parameters={params}; t={t}."
     )
+
+    # NB a fit's (n_states,) parameters, fed back as initial values, as the optimizer holds them.
+    init_log_mu, init_p_binom = as_column(init_log_mu), as_column(init_p_binom)
+    init_alphas, init_taus = as_column(init_alphas), as_column(init_taus)
 
     # NB initialize emission parameters (for hmm) prior to baum welch, if not provided.
     if ((init_log_mu is None) and ("m" in params)) or (
@@ -195,10 +213,10 @@ def pipeline_baum_welch(
 
     param_errors = (
         HMMParamErrors(
-            new_log_mu_err=res["new_log_mu_err"],
-            new_alphas_err=res["new_alphas_err"],
-            new_p_binom_err=res["new_p_binom_err"],
-            new_taus_err=res["new_taus_err"],
+            new_log_mu_err=as_states(res["new_log_mu_err"]),
+            new_alphas_err=as_states(res["new_alphas_err"]),
+            new_p_binom_err=as_states(res["new_p_binom_err"]),
+            new_taus_err=as_states(res["new_taus_err"]),
             new_log_startprob_err=None,  # TODO
             new_log_transmat_err=None,  # TODO
         )
@@ -209,11 +227,11 @@ def pipeline_baum_welch(
     # NB pred (when clones concatenated along an axis) assumes a clone (order) definition.
     return CnaHMRFResult(
         params=HMMParams(
-            new_log_mu=new_log_mu,
+            new_log_mu=as_states(new_log_mu),
             # new_log_mu_shift=logmu_shift,
-            new_alphas=new_alphas,
-            new_p_binom=new_p_binom,
-            new_taus=new_taus,
+            new_alphas=as_states(new_alphas),
+            new_p_binom=as_states(new_p_binom),
+            new_taus=as_states(new_taus),
             new_log_startprob=new_log_startprob,
             new_log_transmat=new_log_transmat,
         ),

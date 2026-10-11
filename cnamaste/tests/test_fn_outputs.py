@@ -54,7 +54,7 @@ def _profiles_map_baf(d: dict[str, Any]) -> None:
     pred = np.argmax(np.asarray(res["log_gamma"]), axis=0)
     n_clones = np.unique(np.asarray(res["new_assignment"])).size
     pred = pred.reshape(n_clones, -1)
-    p = np.asarray(res["new_p_binom"])[pred % n_states, 0]
+    p = np.asarray(res["new_p_binom"]).reshape(-1)[pred % n_states]
     assert np.array_equal(np.where(pred < n_states, p, 1 - p), d["profiles"]), "the merged BAF clones' model BAF per bin, as run_cnamaste builds it"
 
 
@@ -71,7 +71,7 @@ def _decoder_gets_clone_inputs(d: dict[str, Any]) -> None:
     _, base, _, _ = merge_pseudobulk_by_index_mix(d["single_X"], d["base"], d["total"], [np.where(labels == c)[0] for c in ids], None)
     for s, args in enumerate(d["calls"]):
         log_mu, clone_base, p, pred = (np.asarray(a) for a in args)
-        assert np.array_equal(log_mu, np.asarray(res["new_log_mu"])[:, 0]) and np.array_equal(p, np.asarray(res["new_p_binom"])[:, 0])
+        assert np.array_equal(log_mu, np.asarray(res["new_log_mu"]).reshape(-1)) and np.array_equal(p, np.asarray(res["new_p_binom"]).reshape(-1))
         assert np.array_equal(pred, np.asarray(res["pred_cnv"])[:, s]) and np.allclose(clone_base, base[:, s]), f"clone {s}'s decoder input"
 
 
@@ -87,7 +87,7 @@ def _written_copies_follow_path(d: dict[str, Any]) -> None:
     for s, copies in enumerate(d["copies"]):
         assert np.array_equal(seg[f"clone{s} Z"], pred[:, s])
         assert np.array_equal(seg[f"clone{s} A"], copies[pred[:, s], 0]) and np.array_equal(seg[f"clone{s} B"], copies[pred[:, s], 1])
-        assert np.allclose(seg[f"clone{s} logmu"], np.asarray(res["new_log_mu"])[pred[:, s], 0])
+        assert np.allclose(seg[f"clone{s} logmu"], np.asarray(res["new_log_mu"]).reshape(-1)[pred[:, s]])
         assert np.array_equal(state[f"clone{s} A"], copies[:, 0]) and np.array_equal(state[f"clone{s} B"], copies[:, 1])
     bins = d["bins"][d["bins"]["bin_id"].notna()].groupby("bin_id")
     assert np.array_equal(seg["START"], bins["START"].first()) and np.array_equal(seg["END"], bins["END"].last())

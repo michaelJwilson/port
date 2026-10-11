@@ -35,17 +35,18 @@ OUT = ROOT / "cnamaste" / "python" / "cnamaste"
 ENTRY = "cnaster.scripts.run_cnaster"
 
 DEPARTED: dict[str, str] = {
-    "scripts/run_cnamaste.py": "PR1, #105: a removed bin's genes leave the gene-level output; PR12, #180: no smooth_mat or maxspots_pooling; PR13, #177: the differential-expression filter's result reaches the rebinned counts, its parameters read from quality.diffexp_*",
+    "scripts/run_cnamaste.py": "PR1, #105: a removed bin's genes leave the gene-level output; PR12, #180: no smooth_mat or maxspots_pooling; PR13, #177: the differential-expression filter's result reaches the rebinned counts, its parameters read from quality.diffexp_*; PR24, #267: the fit's log_mu, p_binom, alphas and taus are (n_states,), read so",
     "hmm_emission.py": "PR3: flush_perf writes to <paths.output_dir>/cnamaste.perf; paths.perf_path is gone",
     "spatial.py": "PR1, #692: rectangular clones that admit no assignment are banded; PR12, #180: no smooth_mat or maxspots_pooling",
-    "hmrf.py": "PR12, #180: no smooth_mat pooling in the clone field",
+    "hmrf.py": "PR12, #180: no smooth_mat pooling in the clone field; PR24, #267: the fit's log_mu, p_binom, alphas and taus are (n_states,); reindex_clones permutes no parameter column",
+    "hmm.py": "PR24, #267: the fit's log_mu, p_binom, alphas and taus are (n_states,): pipeline_baum_welch squeezes them at return, as_column restores them at entry",
     "config.py": "PR12, #180: hmrf.maxspots_pooling other than 1 raises",
     "utils.py": "PR1, T- #692: write_fig releases each Text's cached renderer; D-dedup: `from copyreg import pickle` removed, so the cacher's .pkl mode uses the standard pickle",
     "icm.py": "D-dedup: 3 unused string copies of icm_sweep_deque and the shadowed logsumexp import commented out",
     "hmm_initialize.py": "D-dedup: an unused string copy of gmm_init commented out",
     "hmm_nophasing.py": "D-dedup: an unused string copy of compute_emission_probability_nb_betabinom_coded commented out",
     "normal_spot.py": "D-dedup: an unused string copy of filter_normal_diffexp commented out; PR13, #165: filter_normal_diffexp splits INCLUDED_GENES on binned_gene_snp's ',' and returns its filtered genes",
-    "plot_genomic.py": "D-dedup: an unused string copy of plot_clones_genomic commented out",
+    "plot_genomic.py": "D-dedup: an unused string copy of plot_clones_genomic commented out; PR24, #267: the fit's log_mu, p_binom, alphas and taus are (n_states,), read so",
     "recomb.py": "D-dedup: unused string copies of the three recombination functions commented out",
 }
 """Copied file -> the T- #836 PR that edits it. Only grows."""

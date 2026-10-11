@@ -45,11 +45,12 @@ TRACE = "the capture holds no fit trace: waits for the fit-trace capture (per-it
 
 
 def fitted_params(ctx: Any) -> list[dict[str, np.ndarray]]:
-    """Each fit's stored parameters: log_mu, alphas, p, taus, start, transmat, (states, 1) each but the last two."""
+    """Each fit's stored parameters: log_mu, alphas, p, taus, start, transmat, (states, 1) each but the last two (stored (states,), Ticket#267)."""
     out = []
     for f in FITS:
         r = ctx.sim.stored(f"{f}/run_core_inference/out")
-        out.append({k: np.asarray(r[f"new_{k}"]) for k in ("log_mu", "alphas", "p_binom", "taus", "log_startprob", "log_transmat")})
+        params = {k: np.asarray(r[f"new_{k}"]).reshape(-1, 1) for k in ("log_mu", "alphas", "p_binom", "taus")}
+        out.append(params | {k: np.asarray(r[f"new_{k}"]) for k in ("log_startprob", "log_transmat")})
     return out
 
 
