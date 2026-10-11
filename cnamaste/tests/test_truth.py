@@ -25,7 +25,7 @@ the inputs judges the run's outputs.
 - **Integer copies:** clone-bins (`cnv_seglevel.tsv`'s bins at each matched
   clone, as the ledger scores them) split by the planted pair's class, and
   the fraction whose fitted pair is the planted one, either haplotype order.
-  A class recovered at 0.0 is a strict xfail naming the mechanism measured.
+  A class recovered at 0.0 is a strict xfail citing its ticket.
 - **Annotation and H&E:** placeholders that skip until a drawn sample
   carries them; each names the check it will make.
 """
@@ -260,19 +260,19 @@ MOST = 0.5
 """A failing class's row asserts that most of its clone-bins are exact, so a fix fails the strict xfail."""
 
 FAILING: dict[tuple[str, str], str] = {
-    **{(h, "balanced"): ("new: the RDR fit holds the planted (2, 2) at neutral depth (fitted mu / the neutral bins' "
+    **{(h, "balanced"): ("Ticket#903: the RDR fit holds the planted (2, 2) at neutral depth (fitted mu / the neutral bins' "
                          f"{r}), so it decodes (1, 1)") for h, r in (("2d4ce9a9", "1.015"), ("8797710b", "1.022"),
                                                                      ("23acef50", "1.026"))},
-    ("e4bbe03f", "LOH"): ("new: the fitted clones matched to the two LOH clones are mixtures (planted share 0.58, 0.43), "
+    ("e4bbe03f", "LOH"): ("Ticket#904: the fitted clones matched to the two LOH clones are mixtures (planted share 0.58, 0.43), "
                           "their minor BAF 0.35-0.36, so the LOH bins decode (1, 2)"),
 }
-"""(fixture hash, class) -> why the class is recovered at 0.0: a mechanism measured on the capture, not yet a ticket."""
+"""(fixture hash, class) -> why the class is recovered at 0.0: the ticket and the mechanism measured on the capture."""
 
 
 @pytest.mark.parametrize("name", list(CLASSES))
 def test_integer_copies_per_class(sim: Any, truth: Truth, sim_hash: str, name: str, request: pytest.FixtureRequest) -> None:
     """One class's exact (A, B) recovery at its floor: fails where the run loses a class the pooled copy scores hide,
-    e.g. LOH decoded heterozygous. A class recovered at 0.0 asserts `MOST` under a strict xfail naming the mechanism."""
+    e.g. LOH decoded heterozygous. A class recovered at 0.0 asserts `MOST` under a strict xfail citing its ticket."""
     value, count = exact_per_class(sim, truth)[name]
     recorded = RECORDED_COPIES[sim_hash][name]
     assert count > 0, f"{sim_hash}: no {name} clone-bin planted"
