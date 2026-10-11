@@ -7,8 +7,8 @@ even when nothing else does; a count the capture holds no data for is a skip
 with its reason. Tests only: nothing here changes cnamaste.
 
 `hmrf.ari_tolerance` is a configuration key (read at hmrf.py:709), so it is
-not in the table; the Neyman-Pearson thresholds are keys too, and their only
-call sits in a string literal, which the table pins as never binding.
+not in the table; the Neyman-Pearson merge and its thresholds are keys too
+(`hmrf.np_merge`, `hmm.np_threshold`, `hmm.np_eventminlen`).
 """
 
 from __future__ import annotations
@@ -121,15 +121,9 @@ def rectangles_under(ctx: Ctx) -> int:
 
 
 def merged_by_minspots(ctx: Ctx) -> int:
-    """Clones merge_by_minspots folded into another (its UMI floor is n_obs x hmrf.min_avgumi_per_clone, run_cnamaste.py:766, 1193)."""
+    """Clones merge_by_minspots folded into another (its UMI floor is n_obs x hmrf.min_avgumi_per_clone, run_cnamaste.py:768, 1193)."""
     return int(sum(np.unique(np.asarray(r["new_assignment"])).size - len(ctx.sim.stored(f"{f}/merge_by_minspots/out/0"))
                    for f, r in zip(FITS, results(ctx), strict=True)))
-
-
-def neyman_pearson_calls(_: Ctx) -> int:
-    """Live calls to neyman_pearson_similarity in run_cnamaste (both sit in string literals, run_cnamaste.py:731, 1163)."""
-    tree = ast.parse(inspect.getsource(script))
-    return sum(isinstance(n, ast.Call) and getattr(n.func, "id", "") == "neyman_pearson_similarity" for n in ast.walk(tree))
 
 
 EASY = "2d4ce9a9"
@@ -152,11 +146,9 @@ CONSTANTS: list[Constant] = [
     Constant("p clip (use_logit=False only)", 1e-6, "hmm_nophasing.py:651", hmm_nophasing.hmm_nophasing.unpack_params, p_clipped, {EASY: 0}),
     Constant("rectangle test: 20% of an equal share", 0.2, "spatial.py:292, 328", spatial.initialize_rectangular_clones, rectangles_under, {EASY: 0}),
     Constant("rectangle test: rejected draws", 0.2, "spatial.py:328", spatial.initialize_rectangular_clones, trace("the capture holds the accepted partition, not the draws rejected before it")),
-    Constant("merge_by_minspots UMI floor: clones merged", "n_obs * config.hmrf.min_avgumi_per_clone", "run_cnamaste.py:766, 1193",
+    Constant("merge_by_minspots UMI floor: clones merged", "n_obs * config.hmrf.min_avgumi_per_clone", "run_cnamaste.py:768, 1193",
              script.run_cnamaste, merged_by_minspots, {EASY: 0}),
     Constant("merge_by_minspots tumour threshold default", 0.5, "hmrf.py:899", hmrf.merge_by_minspots, merged_by_minspots, {EASY: 0}),
-    Constant("Neyman-Pearson merge (thresholds are keys): live calls", "neyman_pearson_similarity(", "run_cnamaste.py:745, 1174",
-             script.run_cnamaste, neyman_pearson_calls, {EASY: 0}),
     Constant("gmm_init rdr_ratio clip", 1e-6, "hmm_initialize.py:563", hmm_initialize.gmm_init,
              trace("the capture holds gmm_init's outputs, not the ratios it clips: waits for the fit-trace capture")),
 ]

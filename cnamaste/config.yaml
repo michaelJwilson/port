@@ -8,8 +8,6 @@ paths:
   # sample_sheet : /u/mw9568/research/repos/cnaster/vishd_sample_sheet.tsv
   # output_dir : /n/fs/scratch/mw9568/cnaster/vishd/CWRFYX3
 
-  perf_path : logs/cnaster.perf
-
 # tumorprop_file : /n/fs/scratch/mw9568/cnaster/loh_estimator_tumor_prop.tsv
 preprocessing:
   normalidx_file : None
@@ -74,21 +72,16 @@ phasing:
 #           spatial_weight : 1.0 ->
 #           n_clones : 3 ->
 #           n_clones_rdr : 2 ->
-#           maxspots_pooling 7 ->
 #           unit_xsquared 9 ->
 #           unit_ysquared 3 ->
 hmrf:
   n_clones : 4
   n_clones_rdr : 2
-  min_spots_per_clone : 100
+  min_spots_per_clone : 200
   min_avgumi_per_clone : 10
-  maxspots_pooling : 1
   tumorprop_threshold : 0.5
   max_iter_outer : 20
-  nodepotential : max
   initialization_method : rectangle
-  num_hmrf_initialization_start : 0
-  num_hmrf_initialization_end : 1
   spatial_weight : 1.0
   inertia : 0
   construct_adjacency_method : hexagon
