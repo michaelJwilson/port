@@ -1,0 +1,15 @@
+# dev_tree_easy with its spots on a square lattice (T- #836): Visium spots (55 um) on a square
+# lattice, at the simulator's unit spot spacing, four axis neighbours a spot. Counts, coverage,
+# clones, CNA law, spot count (60 x 50 per slice) and slice layout are dev_tree_easy's; only
+# `[array] kind` changes. It models standard Visium spots, not Visium HD bins.
+version = 3
+extends = "dev_tree_easy.toml"
+
+[sample]
+name = "dev_tree_easy_square"
+# NB `tests.sim_stages.realization_hash` of r0 as drawn here; a change to this
+#    manifest or to the simulator that moves it states the new one.
+r0_hash = "23acef50"
+
+[array]
+kind = "square"
