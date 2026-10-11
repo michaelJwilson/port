@@ -376,20 +376,26 @@ def test_the_tree_spans_the_genome_panels_between_its_barcodes(drawn: Drawn) -> 
 
 @pytest.mark.infra
 @pytest.mark.merge
+@pytest.mark.parametrize("spatial", [False, True])
 def test_the_truth_page_writes_byte_for_byte_at_its_size(
-    drawn: Drawn, tmp_path: Path
+    drawn: Drawn, tmp_path: Path, spatial: bool
 ) -> None:
-    """Two writes are byte-equal (#452); MediaBox is the page, to 0.1 pt (T- #733, #740)."""
+    """Two writes are byte-equal (#452); MediaBox is the page, to 0.1 pt (T- #733, #740). The spatial page is as
+    wide, and its height follows the slices' aspect (`_spatial_row`), within the page's."""
 
     r = read(drawn.path)
-    first = write_truth_combined(r, tmp_path / "a.pdf").read_bytes()
-    second = write_truth_combined(r, tmp_path / "b.pdf").read_bytes()
+    first = write_truth_combined(r, tmp_path / "a.pdf", spatial=spatial).read_bytes()
+    second = write_truth_combined(r, tmp_path / "b.pdf", spatial=spatial).read_bytes()
     box = re.search(rb"/MediaBox\s*\[\s*[\d.]+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)", first)
 
     assert first == second
     assert box is not None
     assert float(box.group(1)) == pytest.approx(468.31 / 72.27 * 72.0, abs=0.1)
-    assert float(box.group(2)) == pytest.approx((590.99 / 72.27 - 1.0) * 72.0, abs=0.1)
+    page = (590.99 / 72.27 - 1.0) * 72.0
+    if spatial:
+        assert 0.0 < float(box.group(2)) <= page + 0.1
+    else:
+        assert float(box.group(2)) == pytest.approx(page, abs=0.1)
 
 
 @pytest.fixture(scope="module")
