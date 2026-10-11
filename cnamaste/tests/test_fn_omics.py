@@ -81,7 +81,8 @@ def _blocks_in(ctx: Any) -> dict[str, Any]:
 
 def _bins_in(stage: str) -> Any:
     def build(ctx: Any) -> dict[str, Any]:
-        return loaded(ctx) | {"frame": ctx.sim.stored(f"{stage}/create_bin_ranges/out"), "counts": ctx(f"{stage}/summarize_counts_for_bins/out")}
+        given = ctx(f"{stage}/summarize_counts_for_bins/in")
+        return loaded(ctx) | {"frame": ctx.sim.stored(f"{stage}/create_bin_ranges/out"), "counts": ctx(f"{stage}/summarize_counts_for_bins/out"), "adata": given["args"][1]}
     return build
 
 
@@ -101,7 +102,7 @@ ORACLE: list[Row] = table(
     ("omics:greedy_binning_nobreak", "synthetic: 7 blocks", lambda c: None, _greedy, "the shortest runs meeting the SNP-UMI floor; a failing tail joins the previous bin; no floor, one block per bin"),
     ("omics:summarize_counts_for_blocks", Replay("02_blocks out, load_input_data out (replayed), blocks 0-49"), _blocks_in, _blocks_counts, "A-allele and A+B sums over each block's SNPs; UMIs over its genes"),
     ("omics:summarize_counts_for_bins", Replay("04_bins out, load_input_data out (replayed), bins 0-79"), _bins_in("04_bins"), _bins_counts, "a bin's UMIs are its genes' counts in the AnnData"),
-    ("omics:summarize_counts_for_bins", Replay("07_rebin out, load_input_data out (replayed), bins 0-79"), _bins_in("07_rebin"), _bins_counts, "after re-binning too"),
+    ("omics:summarize_counts_for_bins", Replay("07_rebin in and out, bins 0-79"), _bins_in("07_rebin"), _bins_counts, "after re-binning too"),
     ("omics:binned_gene_snp", "07_rebin/create_bin_ranges out", lambda c: c.sim.stored("07_rebin/create_bin_ranges/out"), _binned,
      "per bin: first CHR and START, last END, distinct SNPs, its genes; no input mutation"),
 )
