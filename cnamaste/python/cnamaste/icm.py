@@ -215,7 +215,9 @@ def merge_assignment(
             if u == v:
                 current_spatial_cost += spatial_weight * edge_weight / 2.0
             else:
-                boundary_gain[u, v] += spatial_weight * edge_weight / 2.0
+                # NB a u-v edge is seen once from u, into [u, v]; merging u into v aligns it,
+                #    gaining its full weight (Ticket#483).
+                boundary_gain[u, v] += spatial_weight * edge_weight
 
     current_unary_cost = 0.0
 
@@ -923,42 +925,54 @@ def icm_sweep_deque(
             f"Completed icm sweep epoch with a sweep edit rate={sweep_edit_rate:.6e}."
         )
 
-        # Minimum Spot Enforcement
+        # Minimum Spot Enforcement: the smallest clone under the floor first, each of its
+        # spots to its best remaining clone by the field (Ticket#81).
         if (min_clone_spots > 0) and (0 < clone_counts.min() < min_clone_spots):
             eligible_clones_global = np.where(clone_counts >= min_clone_spots)[0]
+            visited = np.zeros(n_clones, dtype=np.bool_)
 
-            for c in range(n_clones):
-                if (
-                    clone_counts[c] > 0
-                    and clone_counts[c] < min_clone_spots
-                    and len(eligible_clones_global) > 0
-                ):
-                    spot_indices = np.where(new_assignment == c)[0]
+            while True:
+                below = np.where(
+                    (clone_counts > 0) & (clone_counts < min_clone_spots) & ~visited
+                )[0]
+                remaining_clones = np.where(clone_counts > 0)[0]
 
-                    for idx in spot_indices:
-                        if onehot_allowed_clones is not None:
-                            valid_for_spot = eligible_clones_global[
-                                onehot_allowed_clones[idx, eligible_clones_global]
-                            ]
-                            if len(valid_for_spot) == 0:
-                                continue
-                        else:
-                            valid_for_spot = eligible_clones_global
+                if len(below) == 0 or len(remaining_clones) <= 1:
+                    break
 
-                        new_label = np.random.choice(valid_for_spot)
+                c = below[np.argmin(clone_counts[below])]
+                visited[c] = True
+                remaining_clones = remaining_clones[remaining_clones != c]
 
-                        new_assignment[idx] = new_label
-                        clone_counts[c] -= 1
-                        clone_counts[new_label] += 1
+                spot_indices = np.where(new_assignment == c)[0]
 
-                        # Add forced edit's neighbors to SECOND queue
-                        start_idx = adj_indptr[idx]
-                        end_idx = adj_indptr[idx + 1]
-                        for k in range(start_idx, end_idx):
-                            neighbor = adj_indices[k]
-                            if not in_queue[neighbor]:
-                                q_next.append(neighbor)
-                                in_queue[neighbor] = True
+                for idx in spot_indices:
+                    field = single_llf[idx, remaining_clones].copy()
+
+                    if log_persample_weights is not None:
+                        field += log_persample_weights[remaining_clones, sample_ids[idx]]
+
+                    if onehot_allowed_clones is not None:
+                        field[~onehot_allowed_clones[idx, remaining_clones]] = -np.inf
+
+                    # NB no allowed clone remains for this spot; it keeps its own.
+                    if np.max(field) == -np.inf:
+                        continue
+
+                    new_label = remaining_clones[np.argmax(field)]
+
+                    new_assignment[idx] = new_label
+                    clone_counts[c] -= 1
+                    clone_counts[new_label] += 1
+
+                    # Add forced edit's neighbors to SECOND queue
+                    start_idx = adj_indptr[idx]
+                    end_idx = adj_indptr[idx + 1]
+                    for k in range(start_idx, end_idx):
+                        neighbor = adj_indices[k]
+                        if not in_queue[neighbor]:
+                            q_next.append(neighbor)
+                            in_queue[neighbor] = True
 
             logger.warning(
                 f"For enforcing min_clone_spot={min_clone_spots} with n_spots={n_spots}, found {len(eligible_clones_global)} valid clones. New clone proportion:\n{clone_counts / clone_counts.sum()}"

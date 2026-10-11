@@ -35,7 +35,9 @@ OUT = ROOT / "cnamaste" / "python" / "cnamaste"
 ENTRY = "cnaster.scripts.run_cnaster"
 
 DEPARTED: dict[str, str] = {
-    "scripts/run_cnamaste.py": "PR1, #105: a removed bin's genes leave the gene-level output",
+    "hmrf.py": "PR-clone-floor: #81/#468 the ICM floor is min_clone_spots, threaded from the config; clone_lengths follows re-indexed clones",
+    "icm.py": "PR-clone-floor: #81 floor merges smallest first, each spot to its best remaining clone; #483 full merge boundary gain",
+    "scripts/run_cnamaste.py": "PR1, #105: a removed bin's genes leave the gene-level output; PR-clone-floor, #81/#468: run_core_inference receives hmrf.min_spots_per_clone",
     "spatial.py": "PR1, #692: rectangular clones that admit no assignment are banded",
     "utils.py": "PR1, T- #692: write_fig releases each Text's cached renderer",
 }
