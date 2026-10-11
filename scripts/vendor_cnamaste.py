@@ -62,7 +62,7 @@ ADDED: dict[str, str] = {
     "tests/test_stages.py": "PR2: replay, bookkeeping and science per stage",
     "tests/test_lineage.py": "PR2: the segment and clone hierarchies",
     "tests/test_lookups.py": "PR2: index lookups through merges, reindexing and filtering",
-    "tests/test_roundtrip.py": "PR2: the run's inputs against its outputs",
+    "tests/test_end2end.py": "PR2: the run's inputs against its outputs (PR5: renamed from test_roundtrip.py, marker end2end)",
     "tests/test_defects.py": "PR2: one row per port issue, a strict xfail where cnamaste has the defect",
     "tests/test_runtime.py": "PR2: the runtime goals port measured, as placeholders",
     "tests/data/rectangular_hang.npz": "PR2: port's tests/data copy, #304/#692's coordinates",
