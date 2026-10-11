@@ -1,6 +1,6 @@
 import pprint
 import time
-from math import exp, lgamma, log
+from math import exp, lgamma, log, log1p
 
 import numpy as np
 import scipy.optimize
@@ -15,12 +15,46 @@ from cnamaste.logger import get_logger
 logger = get_logger(__name__, start_time=start_time)
 
 
+STIRLING_MIN = 1.0e6
+"""Shape (r, alpha, beta, tau) above which lgamma(k + r) - lgamma(r) is taken from Stirling's series, not the difference.
+
+At or below it the kernels are unchanged: get_bounds' min_alpha 1e-6 and max_tau 5e3 keep the fit there."""
+
+
+@njit(nogil=True, cache=True, inline="always", fastmath=False, error_model="numpy")
+def _lgamma_ratio_excess(k, a):
+    """lgamma(k + 1/a) - lgamma(1/a) + k log a for a <= 1 / STIRLING_MIN; 0 at a = 0.
+
+    Stirling's series with the 1/(12x) term, whose remainder is below 3e-21 here; the
+    difference of the two lgamma loses about eps * lgamma(1/a), 2e-9 at a = 1e-6.
+    """
+    if a <= 0.0:
+        return 0.0
+    x = k * a
+    return (k - 0.5) * log1p(x) + (log1p(x) / a - k) - x * a / (12.0 * (1.0 + x))
+
+
+@njit(nogil=True, cache=True, inline="always", fastmath=False, error_model="numpy")
+def _lgamma_ratio(k, r):
+    """lgamma(k + r) - lgamma(r), without the cancellation at large r."""
+    if r <= STIRLING_MIN:
+        return lgamma(k + r) - lgamma(r)
+    return k * log(r) + _lgamma_ratio_excess(k, 1.0 / r)
+
+
 @njit(nogil=True, cache=True, inline="always", fastmath=False, error_model="numpy")
 def nbinom_logpmf_numba(k, r, p, parameter_terms_only=True):
+    if p == 1.0 and r > 0.0 and k >= 0:
+        # NB(r, p) -> the point mass at 0 as p -> 1
+        return 0.0 if k == 0 else -np.inf
+
     if p <= 0.0 or p >= 1.0 or r <= 0.0 or k < 0:
         return 0.0
 
-    log_coeff = lgamma(k + r) - lgamma(r)
+    if r <= STIRLING_MIN:
+        log_coeff = lgamma(k + r) - lgamma(r)
+    else:
+        log_coeff = k * log(r) + _lgamma_ratio_excess(k, 1.0 / r)
 
     if parameter_terms_only:
         log_coeff -= lgamma(k + 1)
@@ -33,8 +67,13 @@ def betabinom_logpmf_numba(k, n, alpha, beta, parameter_terms_only=True):
     if alpha <= 0.0 or beta <= 0.0 or n < 0 or k < 0 or k > n:
         return 0.0
 
-    log_beta_num = lgamma(k + alpha) + lgamma(n - k + beta) - lgamma(n + alpha + beta)
-    log_beta_denom = lgamma(alpha) + lgamma(beta) - lgamma(alpha + beta)
+    if alpha + beta <= STIRLING_MIN:
+        log_beta_num = lgamma(k + alpha) + lgamma(n - k + beta) - lgamma(n + alpha + beta)
+        log_beta_denom = lgamma(alpha) + lgamma(beta) - lgamma(alpha + beta)
+    else:
+        # BB -> Binomial as tau = alpha + beta -> inf: the three differences, each without cancellation
+        log_beta_num = _lgamma_ratio(k, alpha) + _lgamma_ratio(n - k, beta) - _lgamma_ratio(n, alpha + beta)
+        log_beta_denom = 0.0
 
     if parameter_terms_only:
         log_binom_coeff = lgamma(n + 1) - lgamma(k + 1) - lgamma(n - k + 1)
@@ -45,7 +84,7 @@ def betabinom_logpmf_numba(k, n, alpha, beta, parameter_terms_only=True):
 
 @njit(nogil=True, cache=True, error_model="numpy")
 def _nb_logpmf_1d(obs, exposure, mu, alpha, out):
-    r = 1.0 / max(alpha, 1.0e-10)
+    r = 1.0 / alpha if alpha > 0.0 else np.inf
 
     for i in range(len(obs)):
         k = obs[i]
@@ -53,6 +92,16 @@ def _nb_logpmf_1d(obs, exposure, mu, alpha, out):
 
         if lambda_i <= 0.0:
             out[i] = 0.0
+            continue
+
+        if r > STIRLING_MIN:
+            # NB -> Poisson(lambda_i) as alpha -> 0, where p = 1 / (1 + alpha lambda_i) rounds to 1
+            a = alpha * lambda_i
+            nb_term = log1p(a) / alpha if alpha > 0.0 else lambda_i
+            out[i] = (
+                _lgamma_ratio_excess(k, max(alpha, 0.0)) - lgamma(k + 1)
+                + k * (log(lambda_i) - log1p(a)) - nb_term
+            )
             continue
 
         p = 1.0 / (1.0 + alpha * lambda_i)

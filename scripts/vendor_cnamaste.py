@@ -38,6 +38,7 @@ DEPARTED: dict[str, str] = {
     "scripts/run_cnamaste.py": "PR1, #105: a removed bin's genes leave the gene-level output",
     "spatial.py": "PR1, #692: rectangular clones that admit no assignment are banded",
     "utils.py": "PR1, T- #692: write_fig releases each Text's cached renderer",
+    "hmm_nophasing.py": "PR-limits, #560/#561: the NB and BB log-pmfs take Stirling's series past shape 1e6, so NB -> Poisson and BB -> Binomial hold",
 }
 """Copied file -> the T- #836 PR that edits it. Only grows."""
 

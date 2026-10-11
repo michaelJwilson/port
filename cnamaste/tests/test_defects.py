@@ -479,13 +479,14 @@ def _(sim: Any, **_: Any) -> None:
 # --- emission kernels ------------------------------------------------------------
 
 
-@row("Ticket#560", "hmm_nophasing.nbinom_logpmf_numba", "xfail",
-     "Ticket#560: nbinom_logpmf_numba scores any count at probability 1 when p rounds to 1: Baum-Welch finds a degenerate state")
+@row("Ticket#560", "hmm_nophasing.nbinom_logpmf_numba", "regression",
+     "Ticket#560: fixed in cnamaste PR-limits; p = 1 is the point mass at 0, and alpha < 1e-6 takes the Poisson limit's form")
 def _(**_: Any) -> None:
     assert nbinom_logpmf_numba(1000.0, 10.0, 1.0) < -100, "1,000 UMIs at mean 0 score log P = 0"
 
 
-@row("Ticket#561", "hmm_nophasing.betabinom_logpmf_numba", "xfail", "Ticket#561: beta-binomial log-pmf loses precision at large concentration tau")
+@row("Ticket#561", "hmm_nophasing.betabinom_logpmf_numba", "regression",
+     "Ticket#561: fixed in cnamaste PR-limits; tau > 1e6 takes lgamma(k + r) - lgamma(r) from Stirling's series")
 def _(**_: Any) -> None:
     tau, p, n = 1e16, 0.3, 20
     values = [betabinom_logpmf_numba(float(k), float(n), p * tau, (1 - p) * tau) for k in range(n + 1)]
