@@ -175,9 +175,9 @@ ROWS: list[Row] = [
     *table(
         "plot",
         ("plot_genomic:plot_clones_genomic", COUNTS, figure_inputs, rendered("pseudobulk_clones_genomic", _pseudobulk),
-         "the all-spot pseudobulk, no result (run_cnamaste.py:214): a non-empty PDF"),
+         "the all-spot pseudobulk, no result (run_cnamaste.py:219): a non-empty PDF"),
         ("plot_genomic:plot_clones_genomic", COUNTS, figure_inputs, rendered("rdr_baf_clones_genomic", _clones),
-         "per clone with the fit, chisel_single (run_cnamaste.py:1143): a non-empty PDF"),
+         "per clone with the fit, chisel_single (run_cnamaste.py:1145): a non-empty PDF"),
         ("plot_genomic:plot_clones_genomic", COUNTS, figure_inputs, rendered("clones_genomic", _segments),
          "per clone with cnv_seglevel.tsv's integer states (run_cnamaste.py:1640): a non-empty PDF"),
         ("plotting:plot_clones_spatial", COUNTS, figure_inputs, rendered("clones_spatial", _spatial),
@@ -201,7 +201,7 @@ ROWS: list[Row] = [
     *table(
         "logging",
         ("logger:get_logger", "the staged config.yaml", lambda c: c, _log_sink,
-         "logs go to stdout, which is where the config says (it names no log file); perf: test_fn_normal's flush_perf row (paths.perf_path ignored)"),
+         "logs go to stdout, which is where the config says (it names no log file); perf: test_fn_normal's flush_perf row (<paths.output_dir>/cnamaste.perf)"),
     ),
 ]
 
