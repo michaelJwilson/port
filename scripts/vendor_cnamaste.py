@@ -92,6 +92,8 @@ ADDED: dict[str, str] = {
     "docs/fixtures/23acef50/truth_combined_spatial.png": "PR8: dev_tree_easy_square r0's planted truth, clones in place",
     "docs/fixtures/e4bbe03f/truth_combined.png": "PR8: dev_tree_easy r0's planted truth",
     "docs/fixtures/e4bbe03f/truth_combined_spatial.png": "PR8: dev_tree_easy r0's planted truth, clones in place",
+    "tests/test_truth.py": "PR9: phasing, slices and integer copies per class against the planted truth",
+    "tests/data/truth_phase_e4bbe03f.npy": "PR9: dev_tree_easy r0's planted phase at the loaded SNPs, square's too",
 }
 """File cnamaste owns beyond the copy and its project files, relative to `cnamaste/` -> the T- #836 PR
 that adds it. Only grows. Every file under `OWNED` must be here."""
