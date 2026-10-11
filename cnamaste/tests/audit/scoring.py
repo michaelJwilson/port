@@ -6,8 +6,9 @@ fitted label it shares the most spots with, one to one, by
 pairs coded `A * 1_000 + B`; `phase_free` codes `(A, B)` and `(B, A)` alike.
 
 `overlap`, `matched`, `integer_clones`, `planted_classes`, `phase_free` and
-`swapped` score a fit; `planted` reads a CalicoST sample's truth
-(`truth_clone_labels.tsv`, `truth_acn_profile.tsv`, plain or `.gz`).
+`swapped` score a fit; `at_truth` reads a run's labels at the planted
+barcodes; `planted` reads a CalicoST sample's truth (`truth_clone_labels.tsv`,
+`truth_acn_profile.tsv`, plain or `.gz`).
 """
 
 from __future__ import annotations
@@ -122,3 +123,8 @@ def planted(sample: Path) -> Truth:
         clones=clones,
         profile=pd.read_csv(_located(sample / "truth_acn_profile.tsv"), sep="\t"),
     )
+
+
+def at_truth(barcodes: np.ndarray, labels: np.ndarray, truth: Truth) -> np.ndarray:
+    """`labels` (in the run's spot order) read at the truth's barcodes; -1 where the run dropped a spot."""
+    return pd.Series(labels, index=np.asarray(barcodes).astype(str)).reindex(truth.barcodes, fill_value=-1).to_numpy()
