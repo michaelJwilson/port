@@ -18,8 +18,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from audit.scoring import matched, overlap
-from audit.segments import DROPPED
+from cnamaste.audit.scoring import matched, overlap
+from cnamaste.audit.segments import DROPPED
 from cnamaste.hmm_nophasing import get_log_transmat, hmm_nophasing
 
 

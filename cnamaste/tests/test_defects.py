@@ -36,7 +36,8 @@ import yaml
 from scipy.special import logsumexp
 from scipy.stats import binom, nbinom, poisson
 
-from audit.segments import DROPPED
+from cnamaste.audit import PROJECT
+from cnamaste.audit.segments import DROPPED
 from cnamaste.config import YAMLConfig, set_global_config
 from cnamaste.count_encoder import CountEncoder
 from cnamaste.hmm import compute_copy_state_posterior, pipeline_baum_welch
@@ -56,7 +57,6 @@ from cnamaste.recomb import assign_centiMorgans, compute_numbat_phase_switch_pro
 from cnamaste.spatial import banded, construct_lattice_adjacency, construct_multislice_lattice_adjacency, initialize_rectangular_clones
 from cnamaste.utils import top_hat_sum
 
-PROJECT = Path(__file__).resolve().parents[1]
 PACKAGE = PROJECT / "python" / "cnamaste"
 
 

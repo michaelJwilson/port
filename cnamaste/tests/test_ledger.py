@@ -2,14 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 from cnamaste import ledger
-
-from audit.sims import NAMES, staged
-
-PROJECT = Path(__file__).resolve().parents[1]
+from cnamaste.audit import PROJECT
+from cnamaste.audit.sims import NAMES, staged
 
 
 @pytest.mark.parametrize("fixture_hash", list(NAMES))

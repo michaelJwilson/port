@@ -16,13 +16,12 @@ import datetime
 import sys
 from pathlib import Path
 
-PROJECT = Path(__file__).resolve().parents[2]
-LEDGER_DIR = PROJECT / "docs" / "ledger"
-sys.path.insert(0, str(PROJECT / "tests"))
+from cnamaste.audit import PROJECT
+from cnamaste.audit.capture import Capture
+from cnamaste.audit.scoring import ledger_scores, planted
+from cnamaste.audit.sims import NAMES, SUPPORTED_SIMS
 
-from audit.capture import Capture  # noqa: E402
-from audit.scoring import ledger_scores, planted  # noqa: E402
-from audit.sims import NAMES, SUPPORTED_SIMS  # noqa: E402
+LEDGER_DIR = PROJECT / "docs" / "ledger"
 
 LEDGER = LEDGER_DIR / "ledger.tsv"
 

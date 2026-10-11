@@ -1,9 +1,9 @@
 """Per-function rows for the HMM: emissions, lattices, posteriors, the M step, initialization, the count encoder, the result type.
 
-Inputs, cheapest first: the fitted runs' final clone stacks (`audit.fn.final_stack`,
+Inputs, cheapest first: the fitted runs' final clone stacks (`fn.final_stack`,
 rebuilt from `run_core_inference`'s input and its final labels) at the stored
 fitted parameters, sliced where a brute force is quadratic; else a few-element
-synthetic input with a closed form. `audit.fn` defines the row and its kinds.
+synthetic input with a closed form. `cnamaste.audit.fn` defines the row and its kinds.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ from cnamaste.hmm_nophasing import (
     numba_logsumexp,
 )
 
-from audit.fn import Replay, Row, final_estep, final_stack, fitted, run, stacked_gamma, table, unchanged
+from fn import Replay, Row, final_estep, final_stack, fitted, run, stacked_gamma, table, unchanged
 
 BAF, RDR = "05_baf", "08_rdr"
 STACK = Replay("final clone stack (run_core_inference in + final labels), fitted parameters")

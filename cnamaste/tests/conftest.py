@@ -32,16 +32,16 @@ import pytest
 import yaml
 from numba import _helperlib
 
-from audit.capture import Capture, digest, file_sha256, grch38, input_files, stage_inputs, unordered
-from audit.criteria import Units, units_of
-from audit.digest import Pins, quiet
-from audit.fn import Ctx
-from audit.scoring import Truth, planted
-from audit.segments import DROPPED, Genes, Segmentation
-from audit.sims import DEFAULT_SIMS, SUPPORTED_SIMS
+from cnamaste.audit import PROJECT
+from cnamaste.audit.capture import Capture, digest, file_sha256, grch38, input_files, stage_inputs, unordered
+from cnamaste.audit.criteria import Units, units_of
+from cnamaste.audit.digest import Pins, quiet
+from fn import Ctx
+from cnamaste.audit.scoring import Truth, planted
+from cnamaste.audit.segments import DROPPED, Genes, Segmentation
+from cnamaste.audit.sims import DEFAULT_SIMS, SUPPORTED_SIMS
 from cnamaste.config import YAMLConfig, set_global_config
 
-PROJECT = Path(__file__).resolve().parents[1]
 REPOSITORY = PROJECT.parent
 
 REPLAY_SKIPPED = {"run_core_inference"}
@@ -54,7 +54,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 PINNED: dict[str, dict[str, Any]] = {}
-"""`--update-digests`: sample -> row key -> pin, from the reports (`audit.fn.snapshot`'s `user_properties`)."""
+"""`--update-digests`: sample -> row key -> pin, from the reports (`fn.snapshot`'s `user_properties`)."""
 ROW_KEYS: dict[str, set[str]] = {}
 """`--update-digests`: sample -> every row's key, where `test_pins_match_rows` ran: pins of other keys are dropped."""
 
@@ -109,7 +109,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         return
     for item in items:
         params = item.callspec.params if hasattr(item, "callspec") else {}
-        # NB a per-function row (`audit.fn.Row`) that slices a replayed stage asks for `replayed` lazily
+        # NB a per-function row (`fn.Row`) that slices a replayed stage asks for `replayed` lazily
         if "replayed" in getattr(item, "fixturenames", ()) or getattr(params.get("row"), "replay", False):
             sim_hash = params.get("sim_hash")
             item.add_marker(pytest.mark.xdist_group(f"replay-{sim_hash}"))
@@ -228,7 +228,7 @@ class Replay:
             _helperlib.rnd_set_state(_helperlib.rnd_get_np_state_ptr(), numba_state)
             random.setstate(py_state)
             start = time.perf_counter()
-            with quiet():  # NB a replay belongs to no per-function row (`audit.digest.QUIET`)
+            with quiet():  # NB a replay belongs to no per-function row (`cnamaste.audit.digest.QUIET`)
                 self.outs[stage] = self.sim.function(stage)(*given["args"], **given["kwargs"])
             self.seconds[stage] = time.perf_counter() - start
             if "write_tsv" in stage:
@@ -257,7 +257,7 @@ def fn_cache(sim: Capture) -> dict[str, Any]:
 
 @pytest.fixture
 def ctx(sim: Capture, fn_cache: dict[str, Any], request: pytest.FixtureRequest, tmp_path: Path) -> Any:
-    """A per-function row's context (`audit.fn.Ctx`): the staged file, the replay on demand, the cache."""
+    """A per-function row's context (`fn.Ctx`): the staged file, the replay on demand, the cache."""
     return Ctx(sim, request, fn_cache, tmp_path)
 
 
@@ -282,7 +282,7 @@ def gene_counts(sim: Any, replayed: Any, lineage: Any) -> np.ndarray:
 
 @pytest.fixture(scope="session")
 def units(sim: Capture, replayed: Replay, lineage: Lineage, gene_counts: np.ndarray) -> Units:
-    """Each level's units and counts, recomputed from the staged inputs (`audit.criteria`)."""
+    """Each level's units and counts, recomputed from the staged inputs (`cnamaste.audit.criteria`)."""
     return units_of(sim, replayed, lineage, gene_counts)
 
 @dataclass

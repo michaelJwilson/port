@@ -1,6 +1,6 @@
 """The per-function tests' tables: a row, its context, and the shared inputs the rows slice.
 
-A `Row` is one check of one reached function (`audit.callgraph`'s key,
+A `Row` is one check of one reached function (`cnamaste.audit.callgraph`'s key,
 `module:qualname`): an input builder, which reads `Ctx`, and a check, which
 receives what the builder returned. Its `kind` is one of `KINDS`; a test file
 holds one parametrized test per kind, over that kind's rows.
@@ -21,7 +21,7 @@ group (`conftest.py`).
 
 `snapshot` runs a row once more with its function recorded (`recording`)
 and asserts the digest of what it returned against the row's pin
-(`audit.digest`, `test_fn_inventory.test_snapshot_returns`), whatever the
+(`cnamaste.audit.digest`, `test_fn_inventory.test_snapshot_returns`), whatever the
 row's kind and verdict.
 """
 
@@ -52,8 +52,9 @@ from cnamaste.hmrf_utils import clone_stack_obs
 from cnamaste.pseudobulk import merge_pseudobulk_by_index_mix
 from numba import _helperlib
 
-from audit.capture import digest, unordered
-from audit.digest import DIGITS, QUIET, Digest, Pins, diff
+from cnamaste.audit import TESTS
+from cnamaste.audit.capture import digest, unordered
+from cnamaste.audit.digest import DIGITS, QUIET, Digest, Pins, diff
 
 KINDS = ("oracle", "invariant", "captured")
 
@@ -61,7 +62,7 @@ KINDS = ("oracle", "invariant", "captured")
 @dataclass(frozen=True)
 class Row:
     function: str
-    """`audit.callgraph`'s key: `module:qualname`."""
+    """`cnamaste.audit.callgraph`'s key: `module:qualname`."""
     kind: str
     source: str
     """Where the input comes from: a stage slice, an earlier function's output, or `synthetic`."""
@@ -143,7 +144,7 @@ def run(row: Row, ctx: Ctx, request: pytest.FixtureRequest) -> None:
 
 UNORDERED: dict[str, str] = {
     "omics:binned_gene_snp": "joins each bin's genes and SNP ids from Python sets, in the order of the process's string hash "
-                             "seed (two runs pinned 2 stable digests): pinned with each joined string sorted (`audit.capture.unordered`)",
+                             "seed (two runs pinned 2 stable digests): pinned with each joined string sorted (`cnamaste.audit.capture.unordered`)",
 }
 """A function whose return orders joined sets by the string hash seed -> the evidence; its returns are digested `unordered`."""
 
@@ -226,7 +227,7 @@ def recording(key: str, sim: Any, strip: tuple[tuple[str, str], ...] = ()) -> It
         new = type(raw)(wrap(raw.__func__))
     else:
         new = wrap(raw)
-    tests = Path(__file__).resolve().parents[1]
+    tests = TESTS
     with pytest.MonkeyPatch.context() as mp:
         if not (jit and inspect.ismodule(owner)):
             mp.setattr(owner, name, new)

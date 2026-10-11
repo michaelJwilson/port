@@ -25,7 +25,7 @@ from cnamaste.integer_copy import (
 )
 from cnamaste.scripts import run_cnamaste as script
 
-from audit.fn import Row, run, table, unchanged
+from fn import Row, run, table, unchanged
 
 CALLS = range(4)
 

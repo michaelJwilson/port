@@ -27,8 +27,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from audit.criteria import Units, bins_of, minor_baf, normal_baf_outside
-from audit.segments import DROPPED, Segmentation
+from cnamaste.audit.criteria import Units, bins_of, minor_baf, normal_baf_outside
+from cnamaste.audit.segments import DROPPED, Segmentation
 
 def overlapping_genes_share_a_block(u: Units) -> None:
     genes = u.lineage.genes
@@ -116,7 +116,7 @@ CHAIN = [
         "(`lengths`), so a re-binned bin need not respect the phase segments."),
 ]
 """(coarse, fine, the rule that built `coarse` from `fine`, its source): every fine segment lies inside one coarse segment,
-and the construction holds of the units recomputed from the staged inputs (`audit.criteria`)."""
+and the construction holds of the units recomputed from the staged inputs (`cnamaste.audit.criteria`)."""
 
 
 @pytest.mark.parametrize("row", CHAIN, ids=[f"{r.coarse}-{r.fine}" for r in CHAIN])

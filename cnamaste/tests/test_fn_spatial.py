@@ -28,7 +28,7 @@ from cnamaste.spatial import (
     rectangle_partition,
 )
 
-from audit.fn import Replay, Row, run, table, unchanged
+from fn import Replay, Row, run, table, unchanged
 
 
 def coords_of(ctx: Any) -> dict[str, Any]:

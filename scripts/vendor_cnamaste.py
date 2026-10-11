@@ -56,10 +56,10 @@ OWNED = ("tests", "docs")
 
 ADDED: dict[str, str] = {
     "tests/conftest.py": "PR2: the session fixtures over a staged run",
-    "tests/audit/capture.py": "PR2: the staged-run file's codec and reader",
-    "tests/audit/segments.py": "PR2: port's extensions/segments.py, trimmed",
-    "tests/audit/criteria.py": "PR2: each level's units and counts, recomputed from the staged inputs",
-    "tests/audit/scoring.py": "PR2: port's qa/scoring.py and the truth reader",
+    "python/cnamaste/audit/capture.py": "PR2: the staged-run file's codec and reader",
+    "python/cnamaste/audit/segments.py": "PR2: port's extensions/segments.py, trimmed",
+    "python/cnamaste/audit/criteria.py": "PR2: each level's units and counts, recomputed from the staged inputs",
+    "python/cnamaste/audit/scoring.py": "PR2: port's qa/scoring.py and the truth reader",
     "tests/data/sim_2d4ce9a9.hdf5": "PR2: CalicoST easy, staged",
     "tests/test_stages.py": "PR2: replay, bookkeeping and science per stage",
     "tests/test_lineage.py": "PR2: the segment and clone hierarchies",
@@ -72,8 +72,8 @@ ADDED: dict[str, str] = {
     "tests/test_constants.py": "PR7: the hard-coded constants, their values and how often each binds",
     "zenodo_sim_config.yaml": "PR3: cnaster 4adad4d's zenodo_sim_config.yaml, less paths.perf_path; np_merge False (unread), min_spots_per_clone 200",
     "config.yaml": "PR3: cnaster 4adad4d's shipped config.yaml, less paths.perf_path and four unread hmrf keys; min_spots_per_clone 200",
-    "tests/audit/callgraph.py": "PR4: the functions run_cnamaste reaches, static graph over the live namespace",
-    "tests/audit/fn.py": "PR4: the per-function rows, their context and shared inputs",
+    "python/cnamaste/audit/callgraph.py": "PR4: the functions run_cnamaste reaches, static graph over the live namespace",
+    "tests/fn.py": "PR4: the per-function rows, their context and shared inputs",
     "tests/test_fn_inventory.py": "PR4: every reached function has rows or a stated reason",
     "tests/test_fn_io.py": "PR4: per-function rows, loading, configuration, logging",
     "tests/test_fn_omics.py": "PR4: per-function rows, the genome segmentation and its counts",
@@ -85,11 +85,11 @@ ADDED: dict[str, str] = {
     "tests/test_fn_hmrf.py": "PR4: per-function rows, the clone field, ICM, merges, re-indexing",
     "tests/test_fn_integer.py": "PR4: per-function rows, the integer copy-number decoder",
     "tests/test_fn_outputs.py": "PR4: per-function rows, the outputs and run_cnamaste's glue",
-    "tests/audit/digest.py": "PR4: a return value's canonical digests and summary, and the per-sample pins",
+    "python/cnamaste/audit/digest.py": "PR4: a return value's canonical digests and summary, and the per-sample pins",
     "tests/data/digests_2d4ce9a9.json": "PR4: easy's pins, each per-function row's returns",
     "tests/test_smoke.py": "PR6: smoke: the figures, the console script, the output tree, logging and perf",
     "tests/test_truth.py": "PR9: phasing, slices and integer copies per class against the planted truth",
-    "tests/audit/sims.py": "PR10: the staged fixtures, and those test_truth.py alone scores",
+    "python/cnamaste/audit/sims.py": "PR10: the staged fixtures, and those test_truth.py alone scores",
     "tests/data/sim_8797710b.hdf5": "PR10: CalicoST hard, staged at efb2e9e, for test_truth.py",
     "tests/data/sim_23acef50.hdf5": "PR10: dev_tree_easy_square r0, staged at efb2e9e, for test_truth.py",
     "tests/data/sim_e4bbe03f.hdf5": "PR10: dev_tree_easy r0, staged at efb2e9e, for test_truth.py",
@@ -99,6 +99,7 @@ ADDED: dict[str, str] = {
     "python/cnamaste/ledger.py": "PR14: the ledger writer, one row per capture commit and fixture, writing docs/ledger/",
     "docs/ledger/ledger.tsv": "PR14: the ledger, append-only",
     "docs/ledger/README.md": "PR14: the ledger's columns",
+    "python/cnamaste/audit/__init__.py": "PR15: the audit library's package, the checkout's roots",
 }
 """File cnamaste owns beyond the copy and its project files, relative to `cnamaste/` -> the T- #836 PR
 that adds it. Only grows. Every file under `OWNED` must be here."""

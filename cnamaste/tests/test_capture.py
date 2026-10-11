@@ -1,7 +1,7 @@
 """The capture's file handling: hard-link deduplication and the staging of a drawn sample (Ticket#836).
 
-`audit.capture.deduplicated` rewrites a staged file with each repeated dataset a hard link to its first copy; a
-reader must not tell the two apart. `audit.capture.stage_inputs` stages a drawn sample (one directory per slice
+`cnamaste.audit.capture.deduplicated` rewrites a staged file with each repeated dataset a hard link to its first copy; a
+reader must not tell the two apart. `cnamaste.audit.capture.stage_inputs` stages a drawn sample (one directory per slice
 beside a shared `snp/`) one sample sheet row per slice, each input linked unchanged.
 """
 
@@ -14,9 +14,9 @@ from typing import Any
 import h5py
 import numpy as np
 import pandas as pd
-from audit.capture import SLICE_INPUTS, SNP_INPUTS, TRUTH, deduplicated, input_files, stage_inputs, truth_files
+from cnamaste.audit import PROJECT
+from cnamaste.audit.capture import SLICE_INPUTS, SNP_INPUTS, TRUTH, deduplicated, input_files, stage_inputs, truth_files
 
-PROJECT = Path(__file__).resolve().parents[1]
 
 EASY = PROJECT / "tests" / "data" / "sim_2d4ce9a9.hdf5"
 

@@ -51,7 +51,7 @@ run_cnamaste = "cnamaste.scripts.run_cnamaste:main"
 
 [tool.setuptools]
 package-dir = { "" = "python" }
-packages = ["cnamaste", "cnamaste.scripts"]
+packages = ["cnamaste", "cnamaste.scripts", "cnamaste.audit"]
 
 [tool.uv]
 # NB the versions `cnaster` 4adad4d's reference rows were measured under, where

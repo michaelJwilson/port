@@ -31,7 +31,7 @@ from cnamaste.plotting import plot_clones_spatial
 from cnamaste.scripts import run_cnamaste as script
 from cnamaste.utils import write_fig
 
-from audit.fn import Replay, Row, fitted, run, table
+from fn import Replay, Row, fitted, run, table
 
 RDR = "08_rdr"
 SCRIPT = Path(script.__file__)
