@@ -51,7 +51,11 @@ quality:
   secondary_min_normal_umi : 100
   max_binlength : 5000000
   local_outlier_filter : True
-  filter_normal_diffexp : True
+  filter_normal_diffexp : False
+  diffexp_logfcthreshold_u : 2
+  diffexp_logfcthreshold_t : 4
+  diffexp_quantile_threshold : 80
+  diffexp_use_kmeans : True
   normalize_gene_outliers : False
   normal_allele_specific_confidence : (0.01, 0.99)
   min_normal_count_perbin : 100

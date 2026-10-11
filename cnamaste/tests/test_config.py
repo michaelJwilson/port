@@ -6,7 +6,9 @@ and its `zenodo_sim_config.yaml`, the CalicoST simulations' configuration
 (the perf rows go to `<paths.output_dir>/cnamaste.perf`) and the unread
 `hmrf.nodepotential`, `maxspots_pooling` and `num_hmrf_initialization_*`; both
 set `hmrf.np_merge: False`, which nothing reads (the merge stays commented
-out), and `hmrf.min_spots_per_clone: 200`, the ICM's floor. `cnamaste/config.py`
+out), and `hmrf.min_spots_per_clone: 200`, the ICM's floor. Both ship the
+differential-expression filter off (`quality.filter_normal_diffexp: False`),
+its options `quality.diffexp_*` at `filter_normal_diffexp`'s defaults (Ticket#440). `cnamaste/config.py`
 holds no defaults: `YAMLConfig` is the YAML as loaded, so a key's default is
 the code's, where a signature carries one, and those join the consistency
 groups below.
@@ -38,6 +40,7 @@ from typing import Any, NamedTuple
 import numpy as np
 import pytest
 import yaml
+from cnamaste.normal_spot import filter_normal_diffexp
 
 PROJECT = Path(__file__).resolve().parents[1]
 PACKAGE = PROJECT / "python" / "cnamaste"
@@ -56,6 +59,9 @@ KEYS = [(f, s, k) for f in CONFIGS for s, keys in load(f).items() if isinstance(
 
 INDIRECT = {("hmm", "gmm_min_binom_prob"), ("hmm", "gmm_max_binom_prob")}
 """Reads through a name bound to `config.hmm` (`hmm_initialize.py:588`), which the AST walk does not see."""
+
+DIFFEXP = [k.removeprefix("diffexp_") for k in load("config.yaml")["quality"] if k.startswith("diffexp_")]
+"""`filter_normal_diffexp`'s options the shipped files set, `quality.diffexp_<name>` each (Ticket#440)."""
 
 
 def reads() -> set[tuple[str, str]]:
@@ -239,6 +245,8 @@ def groups() -> dict[str, list[Member]]:
         "spot_min_snp_umis (spot floor)": [key(f, "quality", "spot_min_snp_umis") for f in both] + [
             Member("io.load_input_data min_snp_umis", default("io.load_input_data", "min_snp_umis"))],
         "min_prob (phase-switch floor)": [key(f, "phasing", "min_prob") for f in both],
+        **{f"diffexp_{n} (the expression filter)": [key(f, "quality", f"diffexp_{n}") for f in both] + [
+            Member(f"normal_spot.filter_normal_diffexp {n}", default("normal_spot.filter_normal_diffexp", n))] for n in DIFFEXP},
     }
 
 
@@ -260,3 +268,14 @@ def test_one_intent_one_value(group: str, request: pytest.FixtureRequest) -> Non
     print(stated)
     values = {float(m.value) for m in members if m.value is not None}
     assert len(values) == 1, stated
+
+
+def test_the_expression_filter_ships_off() -> None:
+    """Both shipped files leave `quality.filter_normal_diffexp` off: the filter is opt-in (Ticket#440)."""
+    assert [load(f)["quality"]["filter_normal_diffexp"] for f in CONFIGS] == [False, False]
+
+
+def test_every_diffexp_option_is_the_filters() -> None:
+    """The shipped `quality.diffexp_<name>` are exactly `filter_normal_diffexp`'s keyword options, so each one set reaches it."""
+    parameters = inspect.signature(filter_normal_diffexp).parameters
+    assert sorted(DIFFEXP) == sorted(n for n, p in parameters.items() if p.default is not inspect.Parameter.empty and n not in ("sample_list", "sample_ids"))

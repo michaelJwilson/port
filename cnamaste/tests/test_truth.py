@@ -276,7 +276,7 @@ def exact_per_class(sim: Any, truth: Truth) -> dict[str, tuple[float, int]]:
 
 
 RECORDED_COPIES: dict[str, dict[str, float]] = {
-    "2d4ce9a9": {"LOH": 0.5333, "balanced": 0.0, "unbalanced": 0.3299},
+    "2d4ce9a9": {"LOH": 0.5455, "balanced": 0.0, "unbalanced": 0.6374},
     "8797710b": {"LOH": 0.3458, "balanced": 0.0, "unbalanced": 0.3673},
     "23acef50": {"LOH": 0.4821, "balanced": 0.0, "unbalanced": 0.9955},
     "e4bbe03f": {"LOH": 0.0, "balanced": 1.0, "unbalanced": 0.7802},
