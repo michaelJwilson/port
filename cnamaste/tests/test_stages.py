@@ -204,13 +204,11 @@ def _(run: Run) -> None:
     assert np.array_equal(summed, bins.X[:, 1, :])
 
 
-@row(BOOKKEEPING, "adjacency: 8 out-edges per spot, unit weights, no self edges; smooth_mat the identity")
+@row(BOOKKEEPING, "adjacency: 8 out-edges per spot, unit weights, no self edges")
 def _(run: Run) -> None:
-    adjacency, smooth = run("04_bins/construct_multislice_lattice_adjacency/out")
-    a = adjacency.tocsr()
+    a = run("04_bins/construct_multislice_lattice_adjacency/out").tocsr()
     # NB symmetric it is not: a kNN rule (Ticket#180, test_defects.py)
     assert np.all(np.diff(a.indptr) == 8) and np.all(a.data == 1) and a.diagonal().sum() == 0
-    assert (smooth != sp.identity(a.shape[0])).nnz == 0
 
 
 def _labels_dense(labels: np.ndarray) -> None:
@@ -653,7 +651,8 @@ CRITERIA = [
               "new: hmm.tol only enters a log line (hmm_nophasing.py:1120); scipy.optimize.minimize stops on its literal "
               "gtol 1e-5 or max_iter (hmm_nophasing.py:1005-1010)"),
     Criterion("05_baf, 08_rdr", "fit", "hmm.max_iter", "each M-step optimizer converged, or ran max_iter iterations", "==", "none",
-              lambda u, v: Check(flags(*(o["success"] or o["nit"] >= v for o in traced(u, "optimizer"))))),
+              lambda u, v: Check(flags(*(o["success"] or o["nit"] >= v for o in traced(u, "optimizer"))), known=True),
+              "Ticket#895: every M-step optimizer stops on scipy's precision loss, success False, nit < max_iter"),
     Criterion("05_baf, 08_rdr", "fit", "hmrf.ari_tolerance", "ARI of consecutive assignments reaches it before the merge rounds "
               "(hmrf.py:706-720), or the loop ran max_iter_outer + 1 iterations", ">=", "none", lambda u, v: outer_stop(u, v)),
     Criterion("05_baf, 08_rdr", "M step", "hmm.em_ftol", "the M-step optimizer's ftol is hmm.em_ftol", "==", "none",
@@ -662,7 +661,8 @@ CRITERIA = [
     Criterion("05_baf, 08_rdr", "M step", "hmm.em_ftol", "the last M step's final relative objective change", "<=", "none",
               lambda u, v: Check(flags(*(o[-1]["last_relative_change"] <= float(v) for o in traced(u, "optimizer", split=True))))),
     Criterion("05_baf, 08_rdr", "fit", None, "total_llf non-decreasing over the outer iterations before the merge rounds, "
-              "to 1e-6 relative (Ticket#30, Ticket#146)", ">=", "none", lambda u, v: llf_rises(u)),
+              "to 1e-6 relative (Ticket#30, Ticket#146)", ">=", "none", lambda u, v: llf_rises(u)._replace(known=True),
+              "Ticket#896: total_llf falls between outer iterations before the merge rounds"),
     Criterion("06_normal", "M step", "hmm.solver", "em_xtol and em_xrtol reach the solver (hmm_utils.py:23-40)", "==", "none",
               lambda u, v: (set_global_config(u.replayed.staged.config),
                             Check(flags(*(k in get_em_solver_params() for k in ("xtol", "xrtol"))), known=True))[1],

@@ -310,8 +310,8 @@
   "calls": 1
  },
  "config:YAMLConfig.issue_warnings | silent on easy; names each departure": {
-  "stable": "803dfefff28bd712b0fae5f69e36a63938ff267600b222fcd0a9d51a492a5978",
-  "exact": "37d0228d5b288bb779c6467488e70c707651596c781b092ac4d6698c73461123",
+  "stable": "e7f77702ca7d54ba296323784f07fdaba50de71465820fbaf55479fc4075263c",
+  "exact": "f92a0d8ae03f0e685c4054de8e36174f3b82494315d4f7445908b4bd53396859",
   "summary": {
    "call0['mutated'][0][0].betabinom.run_default": "False",
    "call0['mutated'][0][0].betabinom.start_disp": "float 1000",
@@ -325,7 +325,7 @@
    "call0['mutated'][0][0].hmm.fix_BB_dispersion": "False",
    "call0['mutated'][0][0].hmm.fix_NB_dispersion": "False",
    "call0['mutated'][0][0].hmm.gmm_max_binom_prob": "float 1",
-   "...": "134 more leaves"
+   "...": "132 more leaves"
   },
   "calls": 2
  },
@@ -1211,16 +1211,6 @@
   },
   "calls": 1
  },
- "hmrf:pool_spatio_genomic_counts | pooled counts are the smoothing matrix times the counts": {
-  "stable": "9c31c390e5e000b5fd9a54b9f525eb3f89b4e25bb656a872f69a09c9e54fabd6",
-  "exact": "29366af206184fa28db0f7e37762471401fcef5180fbf7d428a9c84d76fa82ec",
-  "summary": {
-   "call0[0]": "int64 (5, 2, 6) min=0 max=27 sum=739",
-   "call0[1]": "float64 (5, 6) min=0.0395929 max=2.95684 mean=1.63207 sum=48.9622",
-   "call0[2]": "int64 (5, 6) min=0 max=28 sum=474"
-  },
-  "calls": 1
- },
  "hmrf:reindex_clones | a label permutation; paths and posteriors move with it; the rest by size": {
   "stable": "034a5ed44aa7a90d414f3d5b20edf7f1460d6103ba6e6b4e7c846caa7736cee0",
   "exact": "86eac4dedccb5c50f30559417b2489c514e6c171b43b0ea55d1514bf38531f98",
@@ -1262,8 +1252,8 @@
   "calls": 1
  },
  "hmrf:run_core_inference | labels 0..M-1, the last ICM labels re-indexed; prev the last input labels": {
-  "stable": "60f518b6083b07e11d645cc8fbe798889e6e19efb0c4c3bd1445de4c7eb36b73",
-  "exact": "21fd29b15e53da4c7d459b76da27227424f07c00b349b4647371b70973fe1408",
+  "stable": "c245d9238a02c6e5c22bd6180ec2b4728924fcbb7f700d7995357b8985b99531",
+  "exact": "c6fb2315b8845420434d7cfb313d1a3c0785bdaec6121477f9ea7611a7aac622",
   "summary": {
    "['judged'][0].params.new_log_mu": "float64 (7, 1) min=-0.1 max=0.1 mean=-3.96508e-18 sum=-2.77556e-17",
    "['judged'][0].params.new_alphas": "float64 (7, 1) min=0.5 max=0.5 mean=0.5 sum=3.5",
@@ -1277,7 +1267,7 @@
    "['judged'][0].n_states": "int 7",
    "['judged'][0].assignment.prev_assignment": "int64 (3000,) min=0 max=3 sum=3999",
    "['judged'][0].assignment.new_assignment": "int64 (3000,) min=0 max=3 sum=3999",
-   "...": "30 more leaves"
+   "...": "210 more leaves"
   },
   "calls": 0
  },
@@ -1371,22 +1361,22 @@
   "calls": 1
  },
  "icm:merge_assignment | the recorded merges map the ICM labels to the raw labels the run kept": {
-  "stable": "31eda98025ef849a1c99ba07da02ae5d810ee3b18eb7d4eecd8a9ead060257c6",
-  "exact": "ab1f573edfe5071e10a16ce15cf9014225c0392691de939b2bcdaec26df8bf89",
+  "stable": "ff9661a770b68f85ee049397732ed6e56f5637b80938bd13d0e7dcbc2d3afb05",
+  "exact": "8c38c7e73530a966060364baa7562cdac3c5ea9134cea70c855030915d4492bf",
   "summary": {
-   "['judged']['internal']['icm']": "int16 (3000,) min=0 max=3 sum=4467",
-   "['judged']['internal']['iterations']": "int 12",
-   "['judged']['internal']['prev']": "int16 (3000,) min=0 max=3 sum=4465",
-   "['judged']['internal']['raw']": "int16 (3000,) min=0 max=3 sum=4467",
-   "['judged']['internal']['re_indexing']['0']": "int 0",
-   "['judged']['internal']['re_indexing']['1']": "int 1",
-   "['judged']['internal']['re_indexing']['2']": "int 2",
-   "['judged']['internal']['re_indexing']['3']": "int 3",
-   "['judged']['res'].params.new_log_mu": "float64 (7, 1) min=-1.65621 max=0.268449 mean=-0.299667 sum=-2.09767",
-   "['judged']['res'].params.new_alphas": "float64 (7, 1) min=0.70935 max=0.70935 mean=0.70935 sum=4.96545",
-   "['judged']['res'].params.new_p_binom": "float64 (7, 1) min=0.0823708 max=0.639775 mean=0.433669 sum=3.03568",
-   "['judged']['res'].params.new_taus": "float64 (7, 1) min=3553.26 max=3553.26 mean=3553.26 sum=24872.8",
-   "...": "9 more leaves"
+   "['judged']['internal']['ari'][0]": "float 0.757448",
+   "['judged']['internal']['ari'][1]": "float 0.910253",
+   "['judged']['internal']['ari'][2]": "float 0.933852",
+   "['judged']['internal']['ari'][3]": "float 0.925412",
+   "['judged']['internal']['ari'][4]": "float 0.985468",
+   "['judged']['internal']['ari'][5]": "float 0.989635",
+   "['judged']['internal']['ari'][6]": "float 0.997952",
+   "['judged']['internal']['ari'][7]": "float 0.969494",
+   "['judged']['internal']['ari'][8]": "float 0.993357",
+   "['judged']['internal']['ari'][9]": "float 1",
+   "['judged']['internal']['ari'][10]": "float 0.884919",
+   "['judged']['internal']['ari'][11]": "float 0.998209",
+   "...": "111 more leaves"
   },
   "calls": 0
  },
@@ -1621,8 +1611,8 @@
   "calls": 3
  },
  "io:load_input_data | aligned shapes; every spot over the SNP-UMI floor, every gene over the expressed fraction, filtered genes gone": {
-  "stable": "2015785e54c8a300ed6aa12f2e9eb7ff11a59ef329bd6ee5b2e8956f5df9627d",
-  "exact": "d65294dc951f2473a249d49da501b190dae32addb21ed259605c159cf03eb13d",
+  "stable": "76059f6bcc9d3ec4eb9adcd7d7635448d4165d8ca7b5a51ad3adea10b14b80b9",
+  "exact": "694f03ebb21bbcbea9e62d694b43b2bb52e283e475535931c33146a71af4ef10",
   "summary": {
    "['judged']['config'].betabinom.run_default": "False",
    "['judged']['config'].betabinom.start_disp": "float 1000",
@@ -1636,7 +1626,7 @@
    "['judged']['config'].hmm.fix_BB_dispersion": "False",
    "['judged']['config'].hmm.fix_NB_dispersion": "False",
    "['judged']['config'].hmm.gmm_max_binom_prob": "float 1",
-   "...": "7308 more leaves"
+   "...": "7307 more leaves"
   },
   "calls": 0
  },
@@ -1968,8 +1958,8 @@
   "calls": 0
  },
  "phasing:initial_phase_given_partition | phase = majority vote of non-balanced clones; refined lengths split at minor-BAF jumps (recomputed)": {
-  "stable": "99127d7204455195f624aecf925214bdccbfbf2f10d1600eb600f6cd77ef9388",
-  "exact": "bd0a827363a2cf101fe5d7271a72858655b87f43907d641acc91e80412189b41",
+  "stable": "822f54e19afc40f6da687e219cc8979d1632370cb55232c8d71b75a8a9f7bca8",
+  "exact": "13289cb532e084d3d4d1af61a276014d72e5d23c862d4b76ea60aba6e959e0db",
   "summary": {
    "['judged']['config'].betabinom.run_default": "False",
    "['judged']['config'].betabinom.start_disp": "float 1000",
@@ -1983,7 +1973,7 @@
    "['judged']['config'].hmm.fix_BB_dispersion": "False",
    "['judged']['config'].hmm.fix_NB_dispersion": "False",
    "['judged']['config'].hmm.gmm_max_binom_prob": "float 1",
-   "...": "76 more leaves"
+   "...": "75 more leaves"
   },
   "calls": 0
  },
@@ -2248,29 +2238,23 @@
   },
   "calls": 3
  },
- "spatial:construct_lattice_adjacency | each spot's out-edges are its 8 nearest neighbours in the scaled metric; smooth is the identity": {
-  "stable": "17ec5ad6f1376cde52005dc6e0ca7e7d028bc56ad0be562eabd6e6981359ef6d",
-  "exact": "86a6fad1919dd570cc5c896ffe6c3551f75eb4d14fc393ddc59342ff6f094c3c",
+ "spatial:construct_lattice_adjacency | each spot's out-edges are its 8 nearest neighbours in the scaled metric": {
+  "stable": "606df81be149b9d16bf3f722ac334c130988e3dcb861f7ae94f5824b883e5a83",
+  "exact": "e19eaed543147a47e79d4d953679bcd12b81599196d24c3e76445f5cc0146a7f",
   "summary": {
-   "call0[0].data": "int8 (60,) min=1 max=1 sum=60",
-   "call0[0].indices": "int64 (60,) min=0 max=59 sum=1770",
-   "call0[0].indptr": "int64 (61,) min=0 max=60 sum=1830",
-   "call0[1].data": "float64 (480,) min=1 max=1 mean=1 sum=480",
-   "call0[1].indices": "int64 (480,) min=0 max=59 sum=13448",
-   "call0[1].indptr": "int64 (61,) min=0 max=480 sum=14640"
+   "call0.data": "float64 (480,) min=1 max=1 mean=1 sum=480",
+   "call0.indices": "int64 (480,) min=0 max=59 sum=13448",
+   "call0.indptr": "int64 (61,) min=0 max=480 sum=14640"
   },
   "calls": 1
  },
  "spatial:construct_multislice_lattice_adjacency | block diagonal of the per-slice adjacencies; no input mutation": {
-  "stable": "bc322a998112ed59b00c7db67bf5ed929af440bc6c0a2a7ae7c3af28ce413ce8",
-  "exact": "78eee8a9660e0fd8c99a5c53385b1f3ee83c1faf64a901afe6191a307c8d5c13",
+  "stable": "923a5c064808b09f8f9bf7b726a9e663cc2b598fe7a864922169409b334a2a9f",
+  "exact": "5530f97d16725d010430782351ecb2a5fb15bc25265dc314d827aad6fc99040b",
   "summary": {
-   "call0.adjacency_mat.data": "float64 (400,) min=1 max=1 mean=1 sum=400",
-   "call0.adjacency_mat.indices": "int64 (400,) min=0 max=49 sum=9751",
-   "call0.adjacency_mat.indptr": "int64 (51,) min=0 max=400 sum=10200",
-   "call0.smooth_mat.data": "int8 (50,) min=1 max=1 sum=50",
-   "call0.smooth_mat.indices": "int64 (50,) min=0 max=49 sum=1225",
-   "call0.smooth_mat.indptr": "int64 (51,) min=0 max=50 sum=1275"
+   "call0.data": "float64 (400,) min=1 max=1 mean=1 sum=400",
+   "call0.indices": "int64 (400,) min=0 max=49 sum=9751",
+   "call0.indptr": "int64 (51,) min=0 max=400 sum=10200"
   },
   "calls": 1
  },
@@ -2571,8 +2555,8 @@
   "calls": 2
  },
  "utils:pause | returns at once unless run.pause": {
-  "stable": "fb4deeeda105139f76e9b1766259dc774c3871bcb7804c002e6909c23daf03ad",
-  "exact": "d7378aff373f3965ccef37faa46a5ccddf590c1caa5cf36be2ded7d236b2012d",
+  "stable": "ed58b82993aa70588ff24bff00b633cf8e67327ffc9c7b28b0009fa9294cef3d",
+  "exact": "267548a29dd41d574f6dc06d9d32bca0a21217018dd6f58930424a6725931638",
   "summary": {
    "call0['mutated'][0][0].betabinom.run_default": "False",
    "call0['mutated'][0][0].betabinom.start_disp": "float 1000",
@@ -2586,7 +2570,7 @@
    "call0['mutated'][0][0].hmm.fix_BB_dispersion": "False",
    "call0['mutated'][0][0].hmm.fix_NB_dispersion": "False",
    "call0['mutated'][0][0].hmm.gmm_max_binom_prob": "float 1",
-   "...": "62 more leaves"
+   "...": "61 more leaves"
   },
   "calls": 2
  },
