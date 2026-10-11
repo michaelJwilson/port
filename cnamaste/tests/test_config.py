@@ -41,7 +41,6 @@ import numpy as np
 import pytest
 import yaml
 from cnamaste.normal_spot import filter_normal_diffexp
-from cnamaste.scripts.run_cnamaste import DIFFEXP_OPTIONS
 
 PROJECT = Path(__file__).resolve().parents[1]
 PACKAGE = PROJECT / "python" / "cnamaste"
@@ -58,9 +57,11 @@ def load(name: str) -> dict[str, Any]:
 
 KEYS = [(f, s, k) for f in CONFIGS for s, keys in load(f).items() if isinstance(keys, dict) for k in keys]
 
-INDIRECT = {("hmm", "gmm_min_binom_prob"), ("hmm", "gmm_max_binom_prob")} | {("quality", f"diffexp_{n}") for n in DIFFEXP_OPTIONS}
-"""Reads through a name bound to `config.hmm` (`hmm_initialize.py:588`), and `quality.diffexp_<name>` read by name into
-`filter_normal_diffexp` (`run_cnamaste.DIFFEXP_OPTIONS`), which the AST walk does not see."""
+INDIRECT = {("hmm", "gmm_min_binom_prob"), ("hmm", "gmm_max_binom_prob")}
+"""Reads through a name bound to `config.hmm` (`hmm_initialize.py:588`), which the AST walk does not see."""
+
+DIFFEXP = [k.removeprefix("diffexp_") for k in load("config.yaml")["quality"] if k.startswith("diffexp_")]
+"""`filter_normal_diffexp`'s options the shipped files set, `quality.diffexp_<name>` each (Ticket#440)."""
 
 
 def reads() -> set[tuple[str, str]]:
@@ -245,7 +246,7 @@ def groups() -> dict[str, list[Member]]:
             Member("io.load_input_data min_snp_umis", default("io.load_input_data", "min_snp_umis"))],
         "min_prob (phase-switch floor)": [key(f, "phasing", "min_prob") for f in both],
         **{f"diffexp_{n} (the expression filter)": [key(f, "quality", f"diffexp_{n}") for f in both] + [
-            Member(f"normal_spot.filter_normal_diffexp {n}", default("normal_spot.filter_normal_diffexp", n))] for n in DIFFEXP_OPTIONS},
+            Member(f"normal_spot.filter_normal_diffexp {n}", default("normal_spot.filter_normal_diffexp", n))] for n in DIFFEXP},
     }
 
 
@@ -275,6 +276,6 @@ def test_the_expression_filter_ships_off() -> None:
 
 
 def test_every_diffexp_option_is_the_filters() -> None:
-    """Each `quality.diffexp_<name>` names a keyword `filter_normal_diffexp` takes, so an option set reaches it."""
+    """The shipped `quality.diffexp_<name>` are exactly `filter_normal_diffexp`'s keyword options, so each one set reaches it."""
     parameters = inspect.signature(filter_normal_diffexp).parameters
-    assert all(parameters[n].default is not inspect.Parameter.empty for n in DIFFEXP_OPTIONS)
+    assert sorted(DIFFEXP) == sorted(n for n, p in parameters.items() if p.default is not inspect.Parameter.empty and n not in ("sample_list", "sample_ids"))

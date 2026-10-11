@@ -310,8 +310,8 @@
   "calls": 1
  },
  "config:YAMLConfig.issue_warnings | silent on easy; names each departure": {
-  "stable": "e7f77702ca7d54ba296323784f07fdaba50de71465820fbaf55479fc4075263c",
-  "exact": "f92a0d8ae03f0e685c4054de8e36174f3b82494315d4f7445908b4bd53396859",
+  "stable": "c3a1c0ad299a73a2d44658f0e47fde23941a6140b59bc84b7ce11027b96252b5",
+  "exact": "692cf0b2d3ffb0453f5de152fe8f941b11dec6ee41d5d15da1a3dfd899bdd3d8",
   "summary": {
    "call0['mutated'][0][0].betabinom.run_default": "False",
    "call0['mutated'][0][0].betabinom.start_disp": "float 1000",
@@ -325,7 +325,7 @@
    "call0['mutated'][0][0].hmm.fix_BB_dispersion": "False",
    "call0['mutated'][0][0].hmm.fix_NB_dispersion": "False",
    "call0['mutated'][0][0].hmm.gmm_max_binom_prob": "float 1",
-   "...": "132 more leaves"
+   "...": "140 more leaves"
   },
   "calls": 2
  },
@@ -1631,8 +1631,8 @@
   "calls": 3
  },
  "io:load_input_data | aligned shapes; every spot over the SNP-UMI floor, every gene over the expressed fraction, filtered genes gone": {
-  "stable": "76059f6bcc9d3ec4eb9adcd7d7635448d4165d8ca7b5a51ad3adea10b14b80b9",
-  "exact": "694f03ebb21bbcbea9e62d694b43b2bb52e283e475535931c33146a71af4ef10",
+  "stable": "d3a24a59bb54e86fe72174b955da458b795e1cea83834dcdb2e8780b9ba6ff28",
+  "exact": "c4864579a2e45035836969cafaa6fa86e6f9b3c1b360c04935ced48ce4d0fa1e",
   "summary": {
    "['judged']['config'].betabinom.run_default": "False",
    "['judged']['config'].betabinom.start_disp": "float 1000",
@@ -1646,7 +1646,7 @@
    "['judged']['config'].hmm.fix_BB_dispersion": "False",
    "['judged']['config'].hmm.fix_NB_dispersion": "False",
    "['judged']['config'].hmm.gmm_max_binom_prob": "float 1",
-   "...": "7307 more leaves"
+   "...": "7311 more leaves"
   },
   "calls": 0
  },
@@ -1979,8 +1979,8 @@
   "calls": 0
  },
  "phasing:initial_phase_given_partition | phase = majority vote of non-balanced clones; refined lengths split at minor-BAF jumps (recomputed)": {
-  "stable": "822f54e19afc40f6da687e219cc8979d1632370cb55232c8d71b75a8a9f7bca8",
-  "exact": "13289cb532e084d3d4d1af61a276014d72e5d23c862d4b76ea60aba6e959e0db",
+  "stable": "bb73cf3f9b1d355b86f450821b457bdd8c5581c52d7e4a8a5e40992eac25438e",
+  "exact": "d98d665fb4f427d8330ff80e79c85c4f8d80698451361cd05b2cbfcadb9ebff6",
   "summary": {
    "['judged']['config'].betabinom.run_default": "False",
    "['judged']['config'].betabinom.start_disp": "float 1000",
@@ -1994,7 +1994,7 @@
    "['judged']['config'].hmm.fix_BB_dispersion": "False",
    "['judged']['config'].hmm.fix_NB_dispersion": "False",
    "['judged']['config'].hmm.gmm_max_binom_prob": "float 1",
-   "...": "75 more leaves"
+   "...": "79 more leaves"
   },
   "calls": 0
  },
@@ -2576,8 +2576,8 @@
   "calls": 2
  },
  "utils:pause | returns at once unless run.pause": {
-  "stable": "ed58b82993aa70588ff24bff00b633cf8e67327ffc9c7b28b0009fa9294cef3d",
-  "exact": "267548a29dd41d574f6dc06d9d32bca0a21217018dd6f58930424a6725931638",
+  "stable": "b106fb7a48df23af4fcaa8f888aaa7f5d3b1cb597f50d096647dd81f0b905dee",
+  "exact": "bc415465960015fc0161fafbc0012ae42e207aadf73e25ad3086b2c02785fa79",
   "summary": {
    "call0['mutated'][0][0].betabinom.run_default": "False",
    "call0['mutated'][0][0].betabinom.start_disp": "float 1000",
@@ -2591,7 +2591,7 @@
    "call0['mutated'][0][0].hmm.fix_BB_dispersion": "False",
    "call0['mutated'][0][0].hmm.fix_NB_dispersion": "False",
    "call0['mutated'][0][0].hmm.gmm_max_binom_prob": "float 1",
-   "...": "61 more leaves"
+   "...": "65 more leaves"
   },
   "calls": 2
  },
