@@ -5,7 +5,8 @@ and its `zenodo_sim_config.yaml`, the CalicoST simulations' configuration
 (copied to `cnamaste/zenodo_sim_config.yaml`). Both drop `paths.perf_path`
 (the perf rows go to `<paths.output_dir>/cnamaste.perf`) and the unread
 `hmrf.nodepotential`, `maxspots_pooling` and `num_hmrf_initialization_*`; both
-set `hmrf.np_merge: False` and `hmrf.min_spots_per_clone: 200`, the ICM's floor. `cnamaste/config.py`
+set `hmrf.np_merge: False`, which nothing reads (the merge stays commented
+out), and `hmrf.min_spots_per_clone: 200`, the ICM's floor. `cnamaste/config.py`
 holds no defaults: `YAMLConfig` is the YAML as loaded, so a key's default is
 the code's, where a signature carries one, and those join the consistency
 groups below.
@@ -21,8 +22,7 @@ For every key in each file:
   one, overridden by a literal, below a floor that merges first, or set past
   where it can act. Each is a strict xfail.
 
-Two keys are also changed and replayed, to show the stage they name moves,
-and the Neyman-Pearson merge `hmrf.np_merge` gates is run on planted clones.
+Two keys are also changed and replayed, to show the stage they name moves.
 `GROUPS` sets the keys and code defaults that share an intent side by side;
 a group whose values differ is a strict xfail stating each.
 """
@@ -87,11 +87,12 @@ DEFECTS: dict[str, str] = {
     "hmrf.initialization_method": "unread",
     "hmrf.construct_adjacency_method": "unread",
     "hmrf.construct_adjacency_w": "unread",
+    "hmrf.np_merge": "unread: the Neyman-Pearson merge is commented out (run_cnamaste.py:741-756, 1168-1182)",
     "hmm.params": "unread: run_cnamaste passes 'sp' and 'smp' as literals",
     "hmm.max_workers": "unread",
-    "hmm.np_threshold": "read only when hmrf.np_merge is on, and config.yaml sets it False (run_cnamaste.py:745, :1171)",
-    "hmm.np_eventminlen": "read only when hmrf.np_merge is on, and config.yaml sets it False (run_cnamaste.py:745, :1171)",
-    "hmm.np_merge_threshold": "unread: CalicoST's merge_threshold for combine_similar_states_across_clones, not for the Neyman-Pearson merge hmrf.np_merge gates",
+    "hmm.np_threshold": "unread",
+    "hmm.np_eventminlen": "unread",
+    "hmm.np_merge_threshold": "unread",
     "hmm.em_xtol": "string '1e-4', and unread by L-BFGS-B",
     "hmm.em_ftol": "string '1e-4' (get_em_solver_params casts it)",
     "hmm.em_xrtol": "string '1e-4', and unread by L-BFGS-B",
@@ -259,57 +260,3 @@ def test_one_intent_one_value(group: str, request: pytest.FixtureRequest) -> Non
     print(stated)
     values = {float(m.value) for m in members if m.value is not None}
     assert len(values) == 1, stated
-
-
-def planted(event: int) -> tuple[Any, ...]:
-    """Three clones of ten spots over 60 bins, BAF only, decoded at their planted states.
-
-    Clone 1 is clone 0 but for its first `event` bins (state 0 for 1); clone 2 differs from both on bins 0-29
-    (state 2). Allele counts are binomial at the planted state's BAF, 100 trials per bin, seeded.
-    """
-    from cnamaste.cna_hmrf_result import CloneAssignment, CnaHMRFResult, HMMParams, HMMProfile
-
-    n_obs, n_clones, n_states = 60, 3, 3
-    states = np.ones((n_obs, n_clones), dtype=int)
-    states[:event, 1] = 0
-    states[:30, 2] = 2
-    p_binom = np.array([[0.1], [0.5], [0.9]])
-    total_bb_RD = np.full((n_obs, n_clones), 100.0)
-    X = np.zeros((n_obs, 2, n_clones))
-    X[:, 1, :] = np.random.default_rng(0).binomial(100, p_binom[states, 0])
-    log_gamma = np.log(np.where(np.arange(n_states)[:, None] == states.T.reshape(-1), 1.0, 1e-12))
-    res = CnaHMRFResult(
-        params=HMMParams(np.zeros((n_states, 1)), np.full((n_states, 1), 0.1), p_binom, np.full((n_states, 1), 50.0),
-                         np.log(np.full(n_states, 1 / n_states)), np.zeros((n_states, n_states))),
-        param_errors=None,
-        profile=HMMProfile(log_gamma, states.T.reshape(-1)),
-        llf=0.0,
-        n_states=n_states,
-        assignment=CloneAssignment(new_assignment=np.repeat(np.arange(n_clones), 10)),
-    )
-    return X, np.zeros((n_obs, n_clones)), total_bb_RD, res
-
-
-@pytest.mark.parametrize(("event", "expected"), [(3, [[0, 1], [2]]), (10, [[0], [1], [2]])], ids=["3-bin event", "10-bin event"])
-def test_np_merge_coarsens_the_clones(event: int, expected: list[list[int]]) -> None:
-    """With `hmrf.np_merge` on, at config.yaml's `hmm.np_threshold` and `hmm.np_eventminlen`, the merge joins the
-    clones that differ only on an event shorter than `np_eventminlen`, and keeps those a longer one separates: the
-    merged labels coarsen the input's, each group keeps its first clone's states, and the input is untouched."""
-    from cnamaste.hmm_nophasing import hmm_nophasing
-    from cnamaste.hmrf import neyman_pearson_similarity
-
-    hmm = load("config.yaml")["hmm"]
-    assert hmm["np_eventminlen"] == 5, "the planted events straddle np_eventminlen"
-    X, base_nb_mean, total_bb_RD, res = planted(event)
-    before = res["new_assignment"].copy(), res["pred_cnv"].copy()
-    groups, merged = neyman_pearson_similarity(
-        X, base_nb_mean, total_bb_RD, res, threshold=hmm["np_threshold"], minlength=hmm["np_eventminlen"],
-        params="sp", tumor_prop=None, hmmclass=hmm_nophasing,
-    )
-    assert groups == expected
-    new = merged["new_assignment"]
-    assert {(int(a), int(b)) for a, b in zip(before[0], new)} == {(c, g) for g, group in enumerate(groups) for c in group}
-    assert np.array_equal(merged["pred_cnv"], np.concatenate([before[1][60 * g[0] : 60 * (g[0] + 1)] for g in groups]))
-    assert merged["log_gamma"].shape == (3, 60 * len(groups))
-    assert np.array_equal(res["new_assignment"], before[0]) and np.array_equal(res["pred_cnv"], before[1])
-

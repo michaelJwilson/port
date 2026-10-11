@@ -40,8 +40,6 @@ NOT_EXECUTED: dict[str, str] = {
     "cna_hmrf_result:CnaHMRFResult.values": "reached only by name (`.values` on a frame elsewhere); no caller",
     "he:join_tables_xy": "the staged sample has no H&E image; get_he_image returns before the join",
     "hmm_nophasing:hmm_nophasing.unpack_param_errors": "propagate_hmm_param_errors is False in both fits",
-    "hmrf:maximal_cliques": "hmrf.np_merge is False in the staged configuration; test_config.py runs the merge on planted clones",
-    "hmrf:neyman_pearson_similarity": "hmrf.np_merge is False in the staged configuration; test_config.py runs the merge on planted clones",
     "integer_copy:hill_climbing_integer_copynumber_oneclone": "only for a stated ploidy; run_cnamaste breaks after the first (None) ploidy",
     "spatial:banded": "admits_assignment holds for every RDR split on easy",
     "spatial:best_equal_partition": "initial_clone_index_baf is never None (initialize_clones sets it)",
