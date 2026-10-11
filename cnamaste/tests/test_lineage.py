@@ -97,22 +97,22 @@ class Row(NamedTuple):
 
 CHAIN = [
     Row("blocks", "genes", overlapping_genes_share_a_block,
-        "`omics.assign_initial_blocks` (run_cnamaste.py:172-179): gene ranges that overlap on one contig merge "
+        "`omics.assign_initial_blocks` (run_cnamaste.py:177-184): gene ranges that overlap on one contig merge "
         "(omics.py:557-575); consecutive ranges then extend, never across a contig (omics.py:634-700, Ticket#466). "
         "The SNP-UMI floor is `test_stages.py`'s CRITERIA."),
     Row("phase_segments", "blocks", phase_segments_break_at_contigs_and_baf_steps,
         "`phasing.initial_phase_given_partition` (phasing.py:140-155, 290-332): `refined_lengths` breaks at every contig end "
         "and at block i when i > s + phasing.min_new_segment_size and some clone's minor BAF steps by phasing.baf_change_threshold."),
     Row("bins", "blocks", bins_stay_inside_their_runs,
-        "The first `omics.create_bin_ranges` (run_cnamaste.py:425): runs cut at cumsum(refined_lengths) and either side of a "
+        "The first `omics.create_bin_ranges` (run_cnamaste.py:430): runs cut at cumsum(refined_lengths) and either side of a "
         "block over quality.max_binlength (omics.py:867-874); `greedy_binning_nobreak` bins inside each run (omics.py:16-105)."),
     Row("phase_segments", "bins", None,
         "The same binning: a run never crosses a phase segment, so neither does a bin."),
     Row("bins", "kept_bins", bins_leave_where_normal_baf_is_off_balance,
-        "`normal_spot.normal_baf_bin_filter` (run_cnamaste.py:939): a bin leaves when its pooled normal-spot B count is outside "
+        "`normal_spot.normal_baf_bin_filter` (run_cnamaste.py:941): a bin leaves when its pooled normal-spot B count is outside "
         "the beta-binomial interval at quality.normal_allele_specific_confidence (normal_spot.py:954-1000); survivors re-rank."),
     Row("rebinned", "kept_bins", rebins_stay_inside_contigs,
-        "The second `create_bin_ranges` (run_cnamaste.py:983, key=bin_id, normal candidates): runs cut only at contigs "
+        "The second `create_bin_ranges` (run_cnamaste.py:985, key=bin_id, normal candidates): runs cut only at contigs "
         "(`lengths`), so a re-binned bin need not respect the phase segments."),
 ]
 """(coarse, fine, the rule that built `coarse` from `fine`, its source): every fine segment lies inside one coarse segment,
