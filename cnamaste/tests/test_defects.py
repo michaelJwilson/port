@@ -245,7 +245,7 @@ def _(**_: Any) -> None:
     assert np.isclose(p[0], (1 - np.exp(-2 * 0.01)) / 2), f"1 cM switches at {p[0]:.3f}, Haldane's is 0.0099"
 
 
-@row("Ticket#20", "recomb.assign_centiMorgans", "xfail", "Ticket#20: assign_centiMorgans sorts its caller's list in place")
+@row("Ticket#20", "recomb.assign_centiMorgans", "regression", "Ticket#20: fixed in cnamaste; assign_centiMorgans sorts a copy, its caller sorts explicitly")
 def _(**_: Any) -> None:
     given = [(1, 300), (1, 100)]
     assign_centiMorgans(given, pd.DataFrame({"chrom": [1, 1], "pos": [0, 1000], "pos_cm": [0.0, 1.0]}))

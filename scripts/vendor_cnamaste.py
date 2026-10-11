@@ -46,7 +46,7 @@ DEPARTED: dict[str, str] = {
     "hmm_nophasing.py": "D-dedup: an unused string copy of compute_emission_probability_nb_betabinom_coded commented out",
     "normal_spot.py": "D-dedup: an unused string copy of filter_normal_diffexp commented out; PR13, #165: filter_normal_diffexp splits INCLUDED_GENES on binned_gene_snp's ',' and returns its filtered genes",
     "plot_genomic.py": "D-dedup: an unused string copy of plot_clones_genomic commented out",
-    "recomb.py": "D-dedup: unused string copies of the three recombination functions commented out",
+    "recomb.py": "D-dedup: unused string copies of the three recombination functions commented out; PR20, #20: assign_centiMorgans sorts a copy, get_sitewise_transmat sorts its list explicitly",
 }
 """Copied file -> the T- #836 PR that edits it. Only grows."""
 
