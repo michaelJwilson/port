@@ -12,7 +12,6 @@ from typing import Any
 
 import numpy as np
 import pytest
-import scipy.sparse as sp
 import scipy.special
 import scipy.stats
 from cnamaste import hmrf, icm
@@ -201,9 +200,8 @@ def _field_relabel(_: Any) -> None:
     pred = rng.integers(0, n_states, size=(n_obs, n_clones))
     nb, bb = rng.integers(1, 5, size=n_spots), rng.integers(1, 5, size=n_spots)
     perm = np.array([1, 2, 0])
-    smooth = sp.identity(n_spots, format="csr")
-    found = compute_loglike_spot_assignment(n_spots, nb, bb, np.empty(0), False, rdr, baf, pred, n_obs, n_clones, smooth.indices, smooth.indptr)
-    moved = compute_loglike_spot_assignment(n_spots, nb, bb, np.empty(0), False, rdr, baf, pred[:, perm], n_obs, n_clones, smooth.indices, smooth.indptr)
+    found = compute_loglike_spot_assignment(n_spots, nb, bb, np.empty(0), False, rdr, baf, pred, n_obs, n_clones)
+    moved = compute_loglike_spot_assignment(n_spots, nb, bb, np.empty(0), False, rdr, baf, pred[:, perm], n_obs, n_clones)
     assert np.array_equal(moved, found[:, perm])
 
 
@@ -283,6 +281,7 @@ NO_INPUT = "synthetic"
 LIMIT_TAU = "Ticket#561: beta-binomial log-pmf loses precision at large concentration tau: lgamma cancellation leaves 5e-5 at tau 1e10, 0.41 at 1e14"
 LIMIT_PHI = ("Ticket#560: nbinom_logpmf_numba scores any count at probability 1 when p rounds to 1: r = 1/max(phi, 1e-10) caps the dispersion "
              "and p = 1/(1 + phi lambda) rounds to 1, a gap of 4e-5 at phi 1e-10 and 867 nats at 1e-12")
+LLF_FALLS = "Ticket#896: total_llf falls between outer iterations before the merge rounds"
 NAN_LSE = "Ticket#411: icm.logsumexp and hmrf.logsumexp return NaN on an all -inf row, where scipy returns -inf"
 POSTERIOR = ("Ticket#411: the posterior check tests sum(log_gamma) == 0 (hmm.py:28, hmm_nophasing.py:442), a sum of logs; an all -inf column "
              "passes it and normalises to NaN")
@@ -311,7 +310,8 @@ ROWS: list[Row] = [
     ),
     *table(
         "monotone",
-        ("hmrf:run_core_inference", "/internal/<fit>/total_llf", _llf_rises, _monotone, "total_llf non-decreasing over outer iterations, 1e-6 relative (Ticket#30, Ticket#146)"),
+        ("hmrf:run_core_inference", "/internal/<fit>/total_llf", _llf_rises, _monotone, "total_llf non-decreasing over outer iterations, 1e-6 relative (Ticket#30, Ticket#146)",
+         LLF_FALLS),
     ),
     *table(
         "phase",

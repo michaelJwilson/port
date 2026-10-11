@@ -138,7 +138,7 @@ CONSTANTS: list[Constant] = [
     Constant("icm clone floor min_clone_spots", 200, "icm.py:819", icm.icm_sweep_deque, under_floor, {EASY: 0}),
     Constant("icm clone floor: clones lost over the fit (upper bound)", 200, "icm.py:819", icm.icm_sweep_deque, clones_lost, {EASY: 4}),
     Constant("max_rdr: X / base above it zeroes the baseline", 5.0, "hmm_nophasing.py:807",
-             hmm_nophasing.hmm_nophasing._run_optimization_pipeline, rdr_capped, {EASY: 208}, replay=True),
+             hmm_nophasing.hmm_nophasing._run_optimization_pipeline, rdr_capped, {EASY: 107}, replay=True),
     Constant("optimizer gtol", 1e-5, "hmm_nophasing.py:1007", hmm_nophasing.hmm_nophasing._run_optimization_pipeline, trace(OPTIMIZER)),
     Constant("optimizer ftol (BFGS does not read it)", 1e-6, "hmm_nophasing.py:1006", hmm_nophasing.hmm_nophasing._run_optimization_pipeline, trace(OPTIMIZER)),
     Constant("NB dispersion floor phi", 1e-10, "hmm_nophasing.py:48", hmm_nophasing._nb_logpmf_1d,
