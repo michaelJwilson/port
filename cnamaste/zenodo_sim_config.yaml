@@ -6,7 +6,6 @@
 paths:
   sample_sheet : zenodo_sample_sheet.tsv
   output_dir : /Users/mw9568/Work/ragr/sim/nomixing_cnaster_related/numcnas3.3_cnasize5e7_ploidy2_random4/
-  perf_path : logs/cnaster.perf
 
 # tumorprop_file : /n/fs/scratch/mw9568/cnaster/loh_estimator_tumor_prop.tsv
 # DEPRECATE
@@ -73,7 +72,6 @@ phasing:
 #           spatial_weight : 0.1 -> 1.0 -> 0.65 ...
 #           n_clones : 3 ->
 #           n_clones_rdr : 2 ->
-#           maxspots_pooling 7 ->
 #           unit_xsquared 9 ->
 #           unit_ysquared 3 ->
 #           ari_tolerance 0.99 ->
@@ -81,13 +79,14 @@ phasing:
 hmrf:
   n_clones : 3
   n_clones_rdr : 2
-  min_spots_per_clone : 100
+  min_spots_per_clone : 200
   min_avgumi_per_clone : 10
   tumorprop_threshold : 0.5 # DEPRECATE
   max_iter_outer : 25
   ari_tolerance : 1.0
   spatial_weight : 1.0
   inertia : 0
+  np_merge : False
   fixed_assignment : False
   unit_xsquared : 1
   unit_ysquared : 1

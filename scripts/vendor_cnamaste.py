@@ -35,7 +35,9 @@ OUT = ROOT / "cnamaste" / "python" / "cnamaste"
 ENTRY = "cnaster.scripts.run_cnaster"
 
 DEPARTED: dict[str, str] = {
-    "scripts/run_cnamaste.py": "PR1, #105: a removed bin's genes leave the gene-level output",
+    "scripts/run_cnamaste.py": "PR1, #105: a removed bin's genes leave the gene-level output; PR3: hmrf.np_merge gates the Neyman-Pearson merge",
+    "hmm_emission.py": "PR3: flush_perf writes to <paths.output_dir>/cnamaste.perf; paths.perf_path is gone",
+    "hmrf.py": "PR3: neyman_pearson_similarity, CalicoST's merge unphased, which run_cnamaste calls",
     "spatial.py": "PR1, #692: rectangular clones that admit no assignment are banded",
     "utils.py": "PR1, T- #692: write_fig releases each Text's cached renderer",
 }
@@ -60,8 +62,8 @@ ADDED: dict[str, str] = {
     "tests/test_runtime.py": "PR2: the runtime goals port measured, as placeholders",
     "tests/data/rectangular_hang.npz": "PR2: port's tests/data copy, #304/#692's coordinates",
     "tests/test_config.py": "PR3: the shipped configurations, key by key",
-    "zenodo_sim_config.yaml": "PR3: cnaster 4adad4d's zenodo_sim_config.yaml, unmodified",
-    "config.yaml": "PR3: cnaster 4adad4d's shipped config.yaml, unmodified",
+    "zenodo_sim_config.yaml": "PR3: cnaster 4adad4d's zenodo_sim_config.yaml, less paths.perf_path; np_merge False, min_spots_per_clone 200",
+    "config.yaml": "PR3: cnaster 4adad4d's shipped config.yaml, less paths.perf_path and four unread hmrf keys; min_spots_per_clone 200",
 }
 """File cnamaste owns beyond the copy and its project files, relative to `cnamaste/` -> the T- #836 PR
 that adds it. Only grows. Every file under `OWNED` must be here."""
