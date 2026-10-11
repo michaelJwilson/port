@@ -135,7 +135,7 @@ def test_reindex_keeps_each_spots_decoded_profile(sim: Any) -> None:
 
 def test_a_baf_state_reads_its_p_and_the_mirrored_branch_is_unreached(sim: Any) -> None:
     """The profiles handed to the normal search read state k's p at each bin: `run_cnamaste` maps a state `k + C` to
-    `1 - p[k]`, but the BAF fit is `hmm_nophasing` (`run_cnamaste.py:574`), whose C states never reach `k + C`."""
+    `1 - p[k]`, but the BAF fit is `hmm_nophasing` (`run_cnamaste.py:579`), whose C states never reach `k + C`."""
     _, merged = sim.stored("05_baf/merge_by_minspots/out")
     c = np.asarray(merged["new_p_binom"]).shape[0]
     log_gamma = np.asarray(merged["log_gamma"])

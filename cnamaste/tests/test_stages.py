@@ -682,7 +682,7 @@ CRITERIA = [
     Criterion("03_phasing", "clones", "hmrf.n_clones", "initial BAF clones", "==", "none",
               lambda u, v: Check(flags(len(u.sim.stored("03_phasing/initialize_clones/out")) == v), known=True),
               "new: hmrf.n_clones only names the output directory (utils.py:245); the BAF round starts from "
-              "phasing.npart_phasing^2 rectangles (run_cnamaste.py:250-256, 276)"),
+              "phasing.npart_phasing^2 rectangles (run_cnamaste.py:255-261, 281)"),
     Criterion("08_rdr", "clones", "hmrf.n_clones_rdr", "initial RDR clones == merged BAF clones x n_clones_rdr", "==", "none",
               lambda u, v: Check(flags(np.unique(u.sim.stored("08_rdr/initialize_rdr_clone_refininement/out/0")).size
                                        == len(u.sim.stored("05_baf/merge_by_minspots/out/0")) * v))),
