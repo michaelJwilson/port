@@ -25,7 +25,7 @@ import pytest
 from cnamaste import hmm_initialize, hmm_nophasing, hmrf, icm, spatial
 from cnamaste.scripts import run_cnamaste as script
 
-from audit.fn import Ctx, final_stack, fitted
+from fn import Ctx, final_stack, fitted
 
 FITS = ("05_baf", "08_rdr")
 TRACE = "the capture holds one ICM input and output per fit, no per-iteration trace: waits for the fit-trace capture"

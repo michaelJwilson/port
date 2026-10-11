@@ -45,13 +45,13 @@ import pandas as pd
 import pytest
 from sklearn.metrics import adjusted_rand_score
 
-from audit.capture import Capture
-from audit.scoring import Truth, at_truth, matched, overlap, phase_free, planted, planted_classes, swapped
-from audit.sims import SUPPORTED_SIMS, TRUTH_SIMS
+from cnamaste.audit import PROJECT
+from cnamaste.audit.capture import Capture
+from cnamaste.audit.scoring import Truth, at_truth, matched, overlap, phase_free, planted, planted_classes, swapped
+from cnamaste.audit.sims import SUPPORTED_SIMS, TRUTH_SIMS
 
 pytestmark = pytest.mark.end2end
 
-PROJECT = Path(__file__).resolve().parents[1]
 REPOSITORY = PROJECT.parent
 
 MARGIN = 0.02
@@ -248,7 +248,7 @@ def test_clones_per_slice(sim: Any, truth: Truth, staged_hash: str, slice_index:
 
 
 CLASSES = {"LOH": "loh", "balanced": "balanced_gain", "unbalanced": "unbalanced_gain"}
-"""This file's class -> `audit.scoring.planted_classes`' key: LOH a pair with a zero, balanced `A == B > 1`,
+"""This file's class -> `cnamaste.audit.scoring.planted_classes`' key: LOH a pair with a zero, balanced `A == B > 1`,
 unbalanced `A != B`, both nonzero."""
 
 

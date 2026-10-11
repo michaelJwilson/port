@@ -17,7 +17,7 @@ from cnamaste.io import construct_df_clone_label
 from cnamaste.pseudobulk import merge_pseudobulk_by_index_mix
 from cnamaste.utils import write_tsv
 
-from audit.fn import Replay, Row, run, table, unchanged
+from fn import Replay, Row, run, table, unchanged
 
 GLUE = "scripts.run_cnamaste:run_cnamaste"
 

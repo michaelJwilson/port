@@ -1,6 +1,6 @@
 """The inventory: every function `run_cnamaste` reaches has per-function rows, or a stated reason it has none.
 
-`audit.callgraph.reached()` is the static graph from `run_cnamaste` (live
+`cnamaste.audit.callgraph.reached()` is the static graph from `run_cnamaste` (live
 definitions, plots cut). `NOT_EXECUTED` lists the reached functions the easy
 run does not execute (measured once with a profiler over a full run, plots
 stubbed), each with the reason. Every reached function, executed or not, has at
@@ -27,9 +27,9 @@ import test_fn_omics
 import test_fn_outputs
 import test_fn_phasing
 import test_fn_spatial
-from audit.callgraph import Graph, dead_copies, reached
-from audit.digest import Pins
-from audit.fn import Row, snapshot
+from cnamaste.audit.callgraph import Graph, dead_copies, reached
+from cnamaste.audit.digest import Pins
+from fn import Row, snapshot
 
 MODULES = (test_fn_io, test_fn_omics, test_fn_phasing, test_fn_spatial, test_fn_normal, test_fn_hmm, test_fn_hmrf, test_fn_integer, test_fn_outputs)
 
@@ -118,7 +118,7 @@ ROWS = rows()
 @pytest.mark.snapshot
 @pytest.mark.parametrize("row", ROWS, ids=[r.id for r in ROWS])
 def test_snapshot_returns(row: Row, ctx: Any, request: pytest.FixtureRequest) -> None:
-    """Every row's function returns what its pin records, on every input the row gives it (`audit.fn.snapshot`).
+    """Every row's function returns what its pin records, on every input the row gives it (`fn.snapshot`).
 
     A snapshot is not validation: the pin is what the function returns today, defects included, with no
     judgement attached. A change means "state why", not "wrong": the PR that moves a pin says why the output
