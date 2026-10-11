@@ -428,7 +428,7 @@ def _(**_: Any) -> None:
     assert calls and all(any(k.arg == "min_clone_spots" for k in c.keywords) for c in calls)
 
 
-@row("Ticket#483", "icm.merge_assignment", "xfail", "Ticket#483: cnaster's merge gain is halved")
+@row("Ticket#483", "icm.merge_assignment", "regression", "Ticket#483: fixed in cnamaste; merging aligns each boundary edge, gaining its full weight")
 def _(**_: Any) -> None:
     llf = np.zeros((2, 2))
     spots, neighbours, weights = np.array([0, 1]), np.array([1, 0]), np.array([1.0, 1.0])
@@ -455,8 +455,8 @@ def _(sim: Any, **_: Any) -> None:
     assert np.array_equal(np.asarray(res["new_assignment"]), before), "the caller's result now carries the merged labels"
 
 
-@row("new: stale clone_lengths", "hmrf.run_core_inference", "xfail",
-     "Ticket#267 (the clone axis), new: clone_lengths is computed once (hmrf.py:564) and is stale after a clone drops out")
+@row("new: stale clone_lengths", "hmrf.run_core_inference", "regression",
+     "Ticket#267 (the clone axis): fixed in cnamaste; clone_lengths is recomputed with the clone stack in the outer loop")
 def _(**_: Any) -> None:
     body = function_node(source("hmrf.py"), "run_core_inference")
     loop = next(n for n in ast.walk(body) if isinstance(n, ast.While))

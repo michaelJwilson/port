@@ -216,7 +216,7 @@ def merge_assignment(
             if u == v:
                 current_spatial_cost += spatial_weight * edge_weight / 2.0
             else:
-                boundary_gain[u, v] += spatial_weight * edge_weight / 2.0
+                boundary_gain[u, v] += spatial_weight * edge_weight
 
     current_unary_cost = 0.0
 

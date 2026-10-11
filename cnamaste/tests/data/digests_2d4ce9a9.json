@@ -1339,22 +1339,22 @@
   "calls": 1
  },
  "icm:merge_assignment | the best merge's cost is the merged labels' Potts energy": {
-  "stable": "fc30f1244f9943716636f5463dcd47ddc6129369f83d2464d4122171b442eb05",
-  "exact": "7d7426636606678fe884ffc5014b4d9f28b5e28272fd76d6ba56bbae96606029",
+  "stable": "36273d60e5ac8f17164a990ce65faa32af633ed67cd040ca2c74e0bb5beb773e",
+  "exact": "672eea496d183afc9c96b3a57eea95cdc84ef4e6c92a6b2ea7184f0bdc336da1",
   "summary": {
    "call0[0]": "float64 11.3141",
-   "call0[1]": "float64 43.1747",
+   "call0[1]": "float64 53.6747",
    "call0[2][0]": "int 2",
    "call0[2][1]": "int 0"
   },
   "calls": 1
  },
  "icm:merge_assignment | the current cost is the Potts energy (unary + weight x aligned edges)": {
-  "stable": "fc30f1244f9943716636f5463dcd47ddc6129369f83d2464d4122171b442eb05",
-  "exact": "7d7426636606678fe884ffc5014b4d9f28b5e28272fd76d6ba56bbae96606029",
+  "stable": "36273d60e5ac8f17164a990ce65faa32af633ed67cd040ca2c74e0bb5beb773e",
+  "exact": "672eea496d183afc9c96b3a57eea95cdc84ef4e6c92a6b2ea7184f0bdc336da1",
   "summary": {
    "call0[0]": "float64 11.3141",
-   "call0[1]": "float64 43.1747",
+   "call0[1]": "float64 53.6747",
    "call0[2][0]": "int 2",
    "call0[2][1]": "int 0"
   },
