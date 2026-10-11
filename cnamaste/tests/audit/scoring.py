@@ -10,8 +10,9 @@ pairs coded `A * 1_000 + B`; `phase_free` codes `(A, B)` and `(B, A)` alike.
 (`truth_clone_labels.tsv`, `truth_acn_profile.tsv`): from a directory, plain
 or `.gz`, or from the bytes a staged file stores under `/truth`.
 
-`at_truth` and `copy_rows` read a run's labels at the truth's barcodes and
-score its copy pairs: the phase-free copy ARI and exact altered rate.
+`integer_merged`, `copy_rows` and `ledger_scores` give a staged run's ledger
+row (`docs/ledger/`): the clone ARI, the integer clone ARI at merge agreements
+0.99 and 1.0, the phase-free copy ARI and the phase-free exact altered rate.
 """
 
 from __future__ import annotations
@@ -137,7 +138,23 @@ def planted(sample: Path | Mapping[str, bytes]) -> Truth:
     )
 
 
-# --- a staged run's copy rows ------------------------------------------------
+# --- a staged run's ledger row ----------------------------------------------
+
+
+def integer_merged(seglevel: pd.DataFrame, agreement: float) -> np.ndarray:
+    """Each fitted clone's group: in id order, a clone joins the first earlier group whose `(A, B)` agree with its own
+    at no less than `agreement` of `seglevel`'s bins, and names a group otherwise. At 1.0, every bin."""
+    n = sum(1 for c in seglevel.columns if c.startswith("clone") and c.endswith(" A"))
+    named: list[tuple[int, np.ndarray]] = []
+    merged = np.arange(n)
+    for clone in range(n):
+        profile = seglevel[[f"clone{clone} A", f"clone{clone} B"]].to_numpy(dtype=np.int64)
+        match = next((name for name, other in named if float(np.mean(np.all(profile == other, axis=1))) >= agreement), None)
+        if match is None:
+            named.append((clone, profile))
+            match = clone
+        merged[clone] = match
+    return merged
 
 
 def at_truth(barcodes: np.ndarray, labels: np.ndarray, truth: Truth) -> np.ndarray:
@@ -163,4 +180,26 @@ def copy_rows(fitted: np.ndarray, seglevel: pd.DataFrame, truth: Truth) -> dict[
     return {
         "copy_ari_pf": float(adjusted_rand_score(phase_free(t_all), phase_free(ab_all))),
         "exact_altered_pf": float(np.mean(either[altered])),
+    }
+
+
+def ledger_scores(sim: Any, truth: Truth) -> dict[str, float | int]:
+    """A staged run (`audit.capture.Capture`) scored against `truth`: the ledger's columns but date, commit and names."""
+    barcodes = np.asarray(sim.stored("00_inputs/load_input_data/out/1")).astype(str)
+    final = np.asarray(sim.result("08_rdr/reindex_clones/out/0")["new_assignment"])
+    seglevel = pd.read_csv(io.BytesIO(sim.file("cnv_seglevel.tsv")), sep="\t")
+    fitted = at_truth(barcodes, final, truth)
+    scored = fitted >= 0
+
+    def ari(labels: np.ndarray) -> float:
+        return float(adjusted_rand_score(truth.labels[scored], labels[scored]))
+
+    return {
+        "spots": int(barcodes.size),
+        "bins": len(seglevel),
+        "clone_ari": ari(fitted),
+        "clone_ari_int_099": ari(np.where(scored, integer_merged(seglevel, 0.99)[np.maximum(fitted, 0)], -1)),
+        "clone_ari_int_100": ari(np.where(scored, integer_merged(seglevel, 1.0)[np.maximum(fitted, 0)], -1)),
+        **copy_rows(fitted, seglevel, truth),
+        "run_seconds": float(sim.config["run_seconds"]),
     }

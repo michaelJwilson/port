@@ -16,7 +16,7 @@ writes nothing and exits 1 where a file differs from the copy without a
 declaration, where a declared file no longer differs, or where a file is
 missing or extra: the committed tree is this script's output plus the declared
 edits. `ADDED` declares each file cnamaste owns beyond the copy, under
-`cnamaste/tests/`, and `--check` refuses one there it does not declare. The
+`cnamaste/tests/` and `cnamaste/docs/`, and `--check` refuses one there it does not declare. The
 capture that writes its staged-run file is port's, `scripts/capture_cnamaste.py`.
 """
 
@@ -42,8 +42,8 @@ DEPARTED: dict[str, str] = {
 """Copied file -> the T- #836 PR that edits it. Only grows."""
 
 PROJECT = ROOT / "cnamaste"
-OWNED = ("tests",)
-"""cnamaste's own directory beside the copy: every file in it is declared in `ADDED`."""
+OWNED = ("tests", "docs")
+"""cnamaste's own directories beside the copy: every file in them is declared in `ADDED`."""
 
 ADDED: dict[str, str] = {
     "tests/conftest.py": "PR2: the session fixtures over a staged run",
@@ -83,6 +83,10 @@ ADDED: dict[str, str] = {
     "tests/data/digests_23acef50.json": "PR6: dev_tree_easy_square r0's pins, each per-function row's returns",
     "tests/data/digests_e4bbe03f.json": "PR6: dev_tree_easy r0's pins, each per-function row's returns",
     "tests/data/digests_8797710b.json": "PR6: CalicoST hard's pins, each per-function row's returns",
+    "tests/test_ledger.py": "PR7: the ledger's latest row per fixture against its staged file",
+    "docs/ledger/ledger.py": "PR7: the ledger writer, one row per capture commit and fixture",
+    "docs/ledger/ledger.tsv": "PR7: the ledger, append-only",
+    "docs/ledger/README.md": "PR7: the ledger's columns",
 }
 """File cnamaste owns beyond the copy and its project files, relative to `cnamaste/` -> the T- #836 PR
 that adds it. Only grows. Every file under `OWNED` must be here."""
