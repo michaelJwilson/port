@@ -730,7 +730,7 @@ def _(sim: Any, **_: Any) -> None:
     assert "clone_labels_integer.tsv" in json.loads(sim.config["files"])
 
 
-@row("Ticket#836 F1-F3", "run_cnamaste outputs", "regression", "Ticket#836 F1-F3: delivered in cnamaste PR23; run_cnamaste writes plots/combined.png via utils.write_combined")
+@row("Ticket#836 F1-F3", "run_cnamaste outputs", "regression", "Ticket#836 F1-F3: delivered in cnamaste PR23; run_cnamaste writes plots/combined.png via layout.plot_combined_page")
 def _(**_: Any) -> None:
     written = [p for p in PACKAGE.rglob("*.py") if "combined.png" in p.read_text()]
     assert written, "no cnamaste code writes combined.png (the staged run stubs plots; with them on, none writes it either)"

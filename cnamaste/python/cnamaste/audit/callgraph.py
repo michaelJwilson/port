@@ -30,9 +30,10 @@ from pathlib import Path
 from typing import Any
 
 ROOT = ("cnamaste.scripts.run_cnamaste", "run_cnamaste")
-PLOTS = {"plot_clones_genomic", "plot_clones_spatial", "plot_copy_number_profile", "plot_he", "write_fig", "write_combined"}
+PLOTS = {"plot_clones_genomic", "plot_clones_spatial", "plot_copy_number_profile", "plot_he", "plot_combined_page", "plot_he_page", "write_fig",
+         "write_page"}
 """`capture.py` stubs these: they read and draw, and nothing downstream reads what they return."""
-PLOT_MODULES = {"cnamaste.plotting", "cnamaste.plot_genomic", "cnamaste.plot_copy_number_profile", "cnamaste.palette"}
+PLOT_MODULES = {"cnamaste.plotting", "cnamaste.plot_genomic", "cnamaste.plot_copy_number_profile", "cnamaste.palette", "cnamaste.layout"}
 IMPLICIT_CALLS: dict[str, tuple[str, str]] = {
     "logger:RuntimeFormatter.format": ("logger:warning_once", "logging formats every record with the formatter get_logger installs"),
     "logger:RuntimePhaseFilter.filter": ("logger:warning_once", "logging filters every record through the filter get_logger installs"),

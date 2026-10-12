@@ -248,9 +248,12 @@ def plot_clones_spatial(
     base_width=4,
     base_height=4,
     palette="rocket",  # "Set2"
+    ax=None,
 ):
     """
     Plot the spatial distribution of assigned clones for multiple slices/samples.
+
+    Given `ax`, it draws there, on that axes' figure, rather than on a new one (T- #836 F1-F3).
     """
     logger.info(f"Plotting inferred positions for all clones.")
 
@@ -287,9 +290,12 @@ def plot_clones_spatial(
     n_points = coords.shape[0]
     marker_size = np.clip(12_000.0 / n_points, 0.1, 25.0)
 
-    fig, ax = plt.subplots(
-        1, 1, figsize=(base_width, base_height), dpi=300, facecolor="white"
-    )
+    if ax is None:
+        fig, ax = plt.subplots(
+            1, 1, figsize=(base_width, base_height), dpi=300, facecolor="white"
+        )
+    else:
+        fig = ax.figure
 
     if "clone 0" in final_clone_ids:
         colorlist = ["lightgrey"] + sns.color_palette(

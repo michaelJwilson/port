@@ -59,6 +59,15 @@ packages = ["cnamaste", "cnamaste.scripts", "cnamaste.audit"]
 #    (Ticket#836): unconstrained, polars resolves 2.0.0.
 constraint-dependencies = ["anndata==0.13.3.post0", "numba==0.67.0", "polars==1.44.2"]
 
+[tool.cnamaste.figures]
+# The face and size of every text on a page `cnamaste.layout` draws: port's
+# `[tool.port.figures]` face, and one size throughout (T- #836 F1-F3). STIX
+# ships with matplotlib, and its math fonts are the same face.
+family = "serif"
+font = "STIXGeneral"
+mathtext = "stix"
+font_size = 8.0
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # NB two markers: `end2end`, a test that reads the run's input files and its

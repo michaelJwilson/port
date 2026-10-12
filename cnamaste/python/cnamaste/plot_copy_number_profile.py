@@ -2,7 +2,9 @@ import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from matplotlib.collections import LineCollection
 from matplotlib.patches import Rectangle
+from matplotlib.transforms import IdentityTransform
 
 from cnamaste.palette import get_full_palette
 from cnamaste.utils import cast_clone_label
@@ -360,3 +362,134 @@ def plot_copy_number_profile(
         ax.set_title(title)
 
     return fig
+
+
+# --- hatched profile (T- #836 F1-F3) ---------------------------------------------------
+#
+# NB a standalone version of port's profile: one row per clone, a normal (1, 1) segment faint, any other A's colour
+#    hatched with B's, rising right where A >= B and left where A < B, so mirrored segments hatch opposite ways.
+
+COPY_COLOURS = {2: "#feb24c", 3: "#fd8d3c", 4: "#fc4e2a", 5: "#e31a1c", 6: "#bd0026", "7+": "#660013"}
+"""Copies 2 to 7+ along ColorBrewer's YlOrRd, over `chisel_single`'s, as port draws them."""
+
+HATCH_ANGLE = 35.0
+"""Degrees from the horizontal."""
+
+HATCH_SPACING = 0.10
+"""Inches between hatch lines, along the row."""
+
+HATCH_LINEWIDTH = 72.0 * HATCH_SPACING * float(np.sin(np.radians(HATCH_ANGLE))) / 2.0
+"""Points: half the line period across the lines, so A's and B's stripes match."""
+
+HATCHED_NORMAL_OPACITY = 0.35
+"""Copy 1's opacity over white, for a normal segment and a hatch's 1."""
+
+OUTLINE = 0.5
+"""Points, for row outlines and an aberration's ends."""
+
+MIRROR = "Local Mirror"
+
+
+def hatched_palette():
+    """`chisel_single`, `COPY_COLOURS` over it."""
+    style, _ = get_full_palette("chisel_single")
+    return {**style, **COPY_COLOURS}
+
+
+def swatch(style, copies):
+    """Copy number `copies`'s colour, opaque over white: copy 1 at `HATCHED_NORMAL_OPACITY`."""
+    key = "7+" if copies not in style and copies >= 7 else copies
+    rgb = np.asarray(mcolors.to_rgb(style.get(key, style["default"])))
+    alpha = HATCHED_NORMAL_OPACITY if copies == 1 else 1.0
+    return tuple(float(v) for v in alpha * rgb + (1.0 - alpha))
+
+
+class Hatch(LineCollection):
+    """Lines over one fill, laid out at draw time in page pixels, clipped to it."""
+
+    def __init__(self, fill, colour, orientation):
+        super().__init__([], colors=[colour], linewidths=HATCH_LINEWIDTH, zorder=1.5)
+        self.fill, self.orientation = fill, orientation
+        self.set_transform(IdentityTransform())
+
+    def draw(self, renderer):
+        box = self.fill.get_window_extent(renderer)
+        spacing = HATCH_SPACING * self.figure.dpi
+        run = box.height / np.tan(np.radians(HATCH_ANGLE))
+        starts = np.arange(box.x0 - run, box.x1 + run + spacing, spacing)
+        self.set_segments([[(x0, box.y0), (x0 + self.orientation * run, box.y1)] for x0 in starts])
+        super().draw(renderer)
+
+
+def hatch(ax, fill, colour, orientation):
+    """`colour`'s lines over `fill`, rising right for `orientation` 1, left for -1."""
+    lines = Hatch(fill, colour, orientation)
+    ax.add_collection(lines, autolim=False)
+    # NB a path clip, after add_collection, which would replace a clip box with the axes'.
+    lines.set_clip_path(fill.get_path(), fill.get_transform())
+    return lines
+
+
+def clone_order(df_cnv):
+    """`cnaster`'s clone ids from `df_cnv`, least aberrant first, by segment deviation (as plot_copy_number_profile)."""
+    clone_ids = [c.split(" ")[0][5:] for c in df_cnv.columns if c.endswith(" A")]
+    deviations = []
+    for cid in clone_ids:
+        a, b = df_cnv[f"clone{cid} A"].fillna(1).to_numpy(), df_cnv[f"clone{cid} B"].fillna(1).to_numpy()
+        starts = [s for s, _ in get_intervals(a * 1_000 + b)[0]]
+        deviations.append(np.sum(np.abs(a[starts] - 1) + np.abs(b[starts] - 1)))
+    return [clone_ids[i] for i in np.argsort(deviations)]
+
+
+def plot_hatched_profile(df_cnv, ax, genome, order=None):
+    """One row per clone on `genome`'s axis (a `cnamaste.layout.GenomicAxis`), `order`'s ids top to bottom (`None`:
+    least aberrant first), named as cnaster names them; a normal segment faint, an aberration A's colour hatched with
+    B's (T- #836 F1-F3)."""
+    style = hatched_palette()
+    order = clone_order(df_cnv) if order is None else [str(cid) for cid in order]
+    contig = np.repeat(np.arange(len(genome.lengths)), genome.lengths)
+    assert contig.size == len(df_cnv), f"the genomic axis has {contig.size} bins, the profile {len(df_cnv)}"
+    h = 1.0 / len(order)
+    for k, cid in enumerate(order):
+        y0, height = 1.0 - (k + 1) * h + 0.1 * h, 0.8 * h
+        a = df_cnv[f"clone{cid} A"].fillna(1).to_numpy().astype(int)
+        b = df_cnv[f"clone{cid} B"].fillna(1).to_numpy().astype(int)
+        for s, e in get_intervals((contig * 1_000 + a) * 1_000 + b)[0]:
+            if a[s] == 1 and b[s] == 1:
+                ax.add_patch(Rectangle((s, y0), e - s, height, facecolor=swatch(style, 1), edgecolor="none", linewidth=0))
+                continue
+            fill = Rectangle((s, y0), e - s, height, facecolor=swatch(style, a[s]), edgecolor="none", linewidth=0)
+            ax.add_patch(fill)
+            hatch(ax, fill, swatch(style, b[s]), 1 if a[s] >= b[s] else -1)
+            ax.vlines([s, e], ymin=y0, ymax=y0 + height, linewidth=OUTLINE, colors="black", zorder=3)
+        ax.add_patch(Rectangle((0, y0), genome.n_bins, height, facecolor="none", edgecolor="black", linewidth=OUTLINE, zorder=3))
+    genome.frame(ax, labels=False)
+    ax.set_ylim(0.0, 1.0)
+    ax.set_yticks([1.0 - (k + 0.5) * h for k in range(len(order))])
+    ax.set_yticklabels([cast_clone_label(f"clone {cid}") for cid in order])
+    ax.tick_params(axis="y", length=0)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    return order
+
+
+def plot_hatched_key(ax, box=0.18):
+    """Above the profile, in inches on `ax`: the two hatch directions stacked and `MIRROR` on the left; the copy
+    numbers' colours, titled on their left, on the right."""
+    width, height = ax.get_position().width * ax.figure.get_size_inches()[0], ax.get_position().height * ax.figure.get_size_inches()[1]
+    ax.set_xlim(0.0, width)
+    ax.set_ylim(0.0, height)
+    ax.axis("off")
+    for k, orientation in enumerate((1, -1)):
+        fill = Rectangle((0.0, height / 2.0 - k * height / 2.0), box, height / 2.0, facecolor="white", edgecolor="black", linewidth=OUTLINE)
+        ax.add_patch(fill)
+        hatch(ax, fill, "black", orientation)
+    ax.text(box + 0.05, height / 2.0, MIRROR, ha="left", va="center")
+    style = hatched_palette()
+    copies = [0, 1, 2, 3, 4, 5, 6, "7+"]
+    x0 = width - len(copies) * box
+    for i, c in enumerate(copies):
+        ax.add_patch(Rectangle((x0 + i * box, height / 2.0), box, height / 2.0, facecolor=swatch(style, 7 if c == "7+" else c),
+                               edgecolor="black", linewidth=OUTLINE))  # fmt: skip
+        ax.text(x0 + (i + 0.5) * box, height / 2.0 - 0.02, str(c), ha="center", va="top")
+    ax.text(x0 - 0.05, 3.0 * height / 4.0, r"$\mathbb{N}$-CNA", ha="right", va="center")
