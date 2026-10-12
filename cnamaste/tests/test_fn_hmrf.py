@@ -11,6 +11,7 @@ from __future__ import annotations
 import ast
 import inspect
 import textwrap
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -19,7 +20,8 @@ import scipy.sparse as sp
 import scipy.stats
 from cnamaste.cna_hmrf_result import CloneAssignment, CnaHMRFResult, HMMParams, HMMProfile
 from cnamaste.hmm_nophasing import hmm_nophasing
-from cnamaste.hmrf import compute_loglike_spot_assignment, merge_by_minspots, pipeline_clone_assignment, reindex_clones, run_core_inference
+from cnamaste.hmm_phased import hmm_phased
+from cnamaste.hmrf import compute_loglike_spot_assignment, fused_loglike_spot_assignment, merge_by_minspots, pipeline_clone_assignment, reindex_clones, run_core_inference
 from cnamaste.hmrf_utils import cast_csr, clone_stack_obs, get_clone_assignment, get_clone_indices
 from cnamaste.icm import icm_sweep_deque, merge_assignment, unpack_adjacency
 from cnamaste.pseudobulk import merge_pseudobulk_by_index_mix
@@ -113,6 +115,53 @@ def _assignment_field_bb(w: dict[str, Any]) -> None:
     assert np.allclose(llf, want, atol=1e-6), "the spot field is the BB log-likelihood of each spot under each clone's MAP path (RDR zero)"
 
 
+def fused_case(seed: int = 206) -> dict[str, Any]:
+    """300 spots, 50 bins, 4 states, 6 clones: RDR and BAF counts, a continuous baseline zero in a fifth of bins,
+    a NaN tumor proportion every seventh spot."""
+    rng = np.random.default_rng(seed)
+    n_obs, n_spots, n_states = 50, 300, 4
+    total = rng.poisson(4.0, size=(n_obs, n_spots)).astype(float)
+    base = rng.gamma(2.0, 2.0, size=(n_obs, n_spots)) * (rng.random((n_obs, n_spots)) > 0.2)
+    x = np.stack([rng.poisson(base * 1.3), rng.binomial(total.astype(int), 0.3)], axis=1).astype(float)
+    tumor = rng.random(n_spots)
+    tumor[::7] = np.nan
+    params = (np.log(np.linspace(0.5, 2.5, n_states))[:, None], np.full((n_states, 1), 0.05), np.linspace(0.1, 0.5, n_states)[:, None], np.full((n_states, 1), 40.0))
+    return {"X": x, "base": base, "total": total, "tumor": tumor, "params": params, "n_clones": 6, "rng": rng}
+
+
+def _fused_is_two_step(hmmclass: Any) -> Callable[[dict[str, Any]], None]:
+    def check(f: dict[str, Any]) -> None:
+        x, base, total, (log_mu, alphas, p, taus), n_clones = f["X"], f["base"], f["total"], f["params"], f["n_clones"]
+        n_obs, _, n_spots = x.shape
+        phased = hmmclass is hmm_phased
+        rdr, baf = hmmclass.compute_emission_probability_nb_betabinom(x, base, log_mu, alphas, total, p, taus)
+        nb, bb = (base > 0).sum(axis=0), (total > 0).sum(axis=0)
+        n_paired = rdr.shape[0]
+        for pred in (f["rng"].integers(0, n_paired, size=n_obs * n_clones), f["rng"].integers(0, n_paired, size=(n_obs, n_clones))):
+            for mixed, tumor in ((False, np.empty(0)), (True, f["tumor"])):
+                want = compute_loglike_spot_assignment(n_spots, nb, bb, tumor, mixed, rdr, baf, pred, n_obs, n_clones)
+                found = fused_loglike_spot_assignment(n_spots, nb, bb, tumor, mixed, x[:, 0, :], base, log_mu, alphas, x[:, 1, :], total, p, taus,
+                                                      phased, pred, n_obs, n_clones)
+                assert np.array_equal(found, want), f"pred.ndim={pred.ndim}, mixed={mixed}: {np.max(np.abs(found - want)):.3e}"
+    return check
+
+
+def _assignment_field_switched_bb(w: dict[str, Any]) -> None:
+    res, n_obs = w["res"], w["X"].shape[0]
+    n_states = np.asarray(res["new_p_binom"]).size
+    switched = w["pred"] + n_states
+    labels, llf, total = unchanged(pipeline_clone_assignment, w["X"], w["base"], w["total"], res, switched, w["adjacency"], w["labels"],
+                                   np.zeros(w["idx"].size, dtype=int), 1.0, hmmclass=hmm_phased)
+    p, taus = np.asarray(res["new_p_binom"]).reshape(-1, 1), np.asarray(res["new_taus"]).reshape(-1, 1)
+    n_clones = w["pred"].size // n_obs
+    want = np.zeros((w["idx"].size, n_clones))
+    for c in range(n_clones):
+        state = w["pred"][c * n_obs:(c + 1) * n_obs]
+        b = scipy.stats.betabinom.logpmf(w["X"][:, 1, :], w["total"], ((1 - p[state, 0]) * taus[state, 0])[:, None], (p[state, 0] * taus[state, 0])[:, None])
+        want[:, c] = b.sum(axis=0)
+    assert np.allclose(llf, want, atol=1e-6), "a switched state's field is the BB log-likelihood with a and b exchanged (RDR zero)"
+
+
 def _assignment_objective_potts(w: dict[str, Any]) -> None:
     labels, llf, total = unchanged(pipeline_clone_assignment, w["X"], w["base"], w["total"], w["res"], w["pred"], w["adjacency"], w["labels"],
                                    np.zeros(w["idx"].size, dtype=int), 1.0, hmmclass=hmm_nophasing)
@@ -195,6 +244,12 @@ ORACLE: list[Row] = table(
     "oracle",
     ("hmrf:compute_loglike_spot_assignment", "synthetic: 5 spots, 2 clones", lambda c: None, _spot_field_by_hand, "the field is w_s * RDR + BAF summed over each clone's states, w_s = valid BAF / valid RDR bins"),
     ("hmrf:pipeline_clone_assignment", WINDOW, window, _assignment_field_bb, "the field is scipy's BB log-likelihood under each clone's MAP path"),
+    ("hmrf:fused_loglike_spot_assignment", "synthetic: 300 spots, 6 clones, RDR and BAF", lambda c: fused_case(), _fused_is_two_step(hmm_nophasing),
+     "bitwise compute_loglike_spot_assignment of hmm_nophasing's emission: pred 1-D and 2-D, tumor-mixed or not"),
+    ("hmrf:fused_loglike_spot_assignment", "synthetic: 300 spots, 6 clones, RDR and BAF", lambda c: fused_case(),
+     _fused_is_two_step(hmm_phased), "bitwise compute_loglike_spot_assignment of hmm_phased's emission, both phases: pred 1-D and 2-D, tumor-mixed or not"),
+    ("hmrf:pipeline_clone_assignment", WINDOW, window, _assignment_field_switched_bb,
+     "with hmm_phased, a switched state's field is scipy's BB log-likelihood with a and b exchanged"),
     ("hmrf:pipeline_clone_assignment", WINDOW, window, _assignment_objective_potts, "the returned objective is the Potts energy (w / 2 per stored edge)",
      "Ticket#918: the returned objective counts each aligned stored edge with row < column once, unweighted (hmrf.py:275), not w / 2 per stored edge"),
     ("icm:icm_sweep_deque", "synthetic: 8x8 grid, 3 clones", lambda c: field_case(), _icm_gains_energy, "the reported cost is the Potts energy gained, and every spot ends at its conditional maximum"),
