@@ -1,5 +1,6 @@
 import copy
 import time
+from math import exp
 
 import numpy as np
 import scipy.special
@@ -11,12 +12,17 @@ from cnamaste.hmm import as_column, pipeline_baum_welch
 
 # from cnamaste.wolff import wolff_sweep
 from cnamaste.hmm_initialize import cna_mixture_init, gmm_init
-from cnamaste.hmm_phased import hmm_phased
+from cnamaste.hmm_phased import _switch_betabinom_1d, hmm_phased
 from cnamaste.hmrf_utils import cast_csr, clone_stack_obs
 from cnamaste.icm import icm_sweep_deque, merge_assignment, unpack_adjacency
 from cnamaste.logger import get_logger
 from cnamaste.pseudobulk import merge_pseudobulk_by_index_mix
-from cnamaste.hmm_nophasing import get_log_transmat
+from cnamaste.hmm_nophasing import (
+    _bb_logpmf_1d,
+    _nb_logpmf_1d,
+    get_log_transmat,
+    hmm_nophasing,
+)
 
 logger = get_logger(__name__, start_time=start_time)
 
@@ -83,6 +89,96 @@ def compute_loglike_spot_assignment(
     return loglike_spot_clone_assignment
 
 
+@njit(parallel=True, cache=True)
+def fused_loglike_spot_assignment(
+    n_spots,
+    num_valid_nb_spotwise,
+    num_valid_bb_spotwise,
+    single_tumor_prop,
+    is_tumor_mixed,
+    X_nb,
+    base_nb_mean,
+    log_mu,
+    alphas,
+    X_bb,
+    total_bb_RD,
+    p_binom,
+    taus,
+    phased,
+    pred,
+    n_obs,
+    n_clones,
+):
+    """
+    compute_loglike_spot_assignment of hmmclass.compute_emission_probability_nb_betabinom, bitwise, without
+    the (n_states, n_obs, n_spots) emission arrays: each spot's (n_states, n_obs) emission is scored and
+    summed over each clone's states before the next spot (T- #206). phased selects hmm_phased's paired states,
+    i + n_states being state i with its BAF phase switched. Parameters are (n_states, 1), shared by every spot.
+    """
+    n_states = p_binom.shape[0]
+
+    loglike_spot_clone_assignment = np.zeros((n_spots, n_clones))
+    rel_valid_emision_weight = np.ones(n_spots, dtype=np.float64)
+
+    # NB as compute_loglike_spot_assignment, with non_zero_weight=True.
+    for i in prange(n_spots):
+        if is_tumor_mixed:
+            if np.isnan(single_tumor_prop[i]):
+                continue
+
+        if num_valid_nb_spotwise[i] > 0 and num_valid_bb_spotwise[i] > 0:
+            rel_valid_emision_weight[i] = (
+                num_valid_bb_spotwise[i] / num_valid_nb_spotwise[i]
+            )
+
+    is_1d_pred = pred.ndim == 1
+
+    for spot in prange(n_spots):
+        log_emission_rdr = np.zeros((n_states, n_obs))
+        log_emission_baf = np.zeros((2 * n_states if phased else n_states, n_obs))
+
+        for i in range(n_states):
+            _nb_logpmf_1d(
+                X_nb[:, spot],
+                base_nb_mean[:, spot],
+                exp(log_mu[i, 0]),
+                alphas[i, 0],
+                log_emission_rdr[i],
+            )
+            _bb_logpmf_1d(
+                X_bb[:, spot],
+                total_bb_RD[:, spot],
+                p_binom[i, 0],
+                taus[i, 0],
+                log_emission_baf[i],
+            )
+
+        if phased:
+            log_emission_baf[n_states:] = _switch_betabinom_1d(
+                log_emission_baf[:n_states],
+                X_bb[:, spot],
+                total_bb_RD[:, spot],
+                p_binom[:, 0],
+                taus[:, 0],
+            )
+
+        for c in range(n_clones):
+            spot_log_like_rdr, spot_log_like_baf = 0.0, 0.0
+
+            for o in range(n_obs):
+                copy_state = pred[c * n_obs + o] if is_1d_pred else pred[o, c]
+
+                # NB a phased pair shares its RDR emission.
+                spot_log_like_rdr += log_emission_rdr[copy_state % n_states, o]
+                spot_log_like_baf += log_emission_baf[copy_state, o]
+
+            loglike_spot_clone_assignment[spot, c] = (
+                rel_valid_emision_weight[spot] * spot_log_like_rdr + spot_log_like_baf
+            )
+
+    return loglike_spot_clone_assignment
+
+
 # NB with tumor/normal mix, spot reassignment, concatenated by clone?
 def pipeline_clone_assignment(
     single_X,
@@ -128,19 +224,9 @@ def pipeline_clone_assignment(
         f"Solving (pooled) emission likelihood for X.shape={single_X.shape}, n_states={n_states} and {n_clones} clones with {hmmclass.__name__}, is_tumor_mixed={is_tumor_mixed} and merge={merge}."
     )
 
-    # NB emission shape: (n_states, n_obs, n_spots)
-    (
-        tmp_log_emission_rdr,
-        tmp_log_emission_baf,
-    ) = hmmclass.compute_emission_probability_nb_betabinom(
-        single_X,
-        single_base_nb_mean,
-        as_column(res["new_log_mu"]),
-        as_column(res["new_alphas"]),
-        single_total_bb_RD,
-        as_column(res["new_p_binom"]),
-        as_column(res["new_taus"]),
-    )
+    # NB the fused kernel scores hmm_nophasing's and hmm_phased's emissions only (T- #206).
+    if hmmclass not in (hmm_nophasing, hmm_phased):
+        raise ValueError(f"no fused emission for {hmmclass.__name__}")
 
     _tumor_prop = single_tumor_prop if single_tumor_prop is not None else np.empty(0)
 
@@ -151,14 +237,22 @@ def pipeline_clone_assignment(
 
     # NB computes the log likelihood for each spot, for all clones, given the "pooling" strategy,
     #    no longer IID and erroneously weights rdr and baf according to number of non-zero segments.
-    loglike_spot_clone_assignment = compute_loglike_spot_assignment(
+    #    Fused with the emission: no (n_states, n_obs, N) array is held (T- #206).
+    loglike_spot_clone_assignment = fused_loglike_spot_assignment(
         N,
         num_valid_nb_spotwise,
         num_valid_bb_spotwise,
         _tumor_prop,
         is_tumor_mixed,
-        tmp_log_emission_rdr,
-        tmp_log_emission_baf,
+        single_X[:, 0, :],
+        single_base_nb_mean,
+        as_column(res["new_log_mu"]),
+        as_column(res["new_alphas"]),
+        single_X[:, 1, :],
+        single_total_bb_RD,
+        as_column(res["new_p_binom"]),
+        as_column(res["new_taus"]),
+        hmmclass is hmm_phased,
         pred,
         n_obs,
         n_clones,

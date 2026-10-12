@@ -3,7 +3,6 @@ from math import exp, lgamma
 import numpy as np
 from numba import njit
 
-from cnamaste.count_encoder import CountEncoder
 from cnamaste.hmm_nophasing import (
     _bb_logpmf_1d,
     _nb_logpmf_1d,
@@ -79,24 +78,29 @@ class hmm_phased(hmm_nophasing):
     def __init__(self, params="stmp", t=1 - 1e-4):
         super().__init__(params=params, t=t)
 
-    @classmethod
+    @staticmethod
     def compute_emission_probability_nb_betabinom(
-        cls,
-        X,
-        base_nb_mean,
-        log_mu,
-        alphas,
-        total_bb_RD,
-        p_binom,
-        taus,
-        clone_stack=False,
+        X, base_nb_mean, log_mu, alphas, total_bb_RD, p_binom, taus
     ):
-        # TODO
-        nbEncoder = CountEncoder(X[:, 0, :], base_nb_mean)
-        bbEncoder = CountEncoder(X[:, 1, :], total_bb_RD)
+        """
+        hmm_nophasing's dense (n_states, n_obs, n_spots) emission, with each state's phase-switched BAF stacked
+        as states n_states..2 * n_states - 1; RDR is shared by a pair. Parameters are (n_states, 1), shared by
+        every spot. Departs from the coded emission it replaced: no CountEncoder, so no rounding of the
+        baseline to hmm.compression_decimals (T- #206).
+        """
+        log_emit_rdr, log_emit_baf = hmm_nophasing.compute_emission_probability_nb_betabinom(
+            X, base_nb_mean, log_mu, alphas, total_bb_RD, p_binom, taus
+        )
+        switched = np.empty_like(log_emit_baf)
 
-        return cls.compute_emission_probability_nb_betabinom_coded(
-            nbEncoder, bbEncoder, log_mu, alphas, p_binom, taus, clone_stack=clone_stack
+        for s in range(X.shape[2]):
+            switched[:, :, s] = _switch_betabinom_1d(
+                log_emit_baf[:, :, s], X[:, 1, s], total_bb_RD[:, s], p_binom[:, 0], taus[:, 0]
+            )
+
+        return (
+            np.concatenate((log_emit_rdr, log_emit_rdr)),
+            np.concatenate((log_emit_baf, switched)),
         )
 
     @staticmethod
