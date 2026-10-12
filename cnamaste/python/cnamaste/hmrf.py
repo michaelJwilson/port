@@ -134,13 +134,13 @@ def opengm_assignment(
             f"OpenGM {algorithm} left a clone under min_clone_spots={min_clone_spots} ({counts.tolist()}): icm_sweep_deque enforces it."
         )
         more, _ = icm_sweep_deque(
-            single_llf,
-            adjacency_mat.indptr,
-            adjacency_mat.indices,
-            adjacency_mat.data,
-            new_assignment,
-            spatial_weight,
-            None,
+            single_llf=single_llf,
+            adj_indptr=adjacency_mat.indptr,
+            adj_indices=adjacency_mat.indices,
+            adj_weights=adjacency_mat.data,
+            new_assignment=new_assignment,
+            spatial_weight=spatial_weight,
+            posterior=None,
             min_clone_spots=min_clone_spots,
         )
         niter += more
