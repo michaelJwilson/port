@@ -40,6 +40,7 @@ DEPARTED: dict[str, str] = {
     "spatial.py": "PR1, #692: rectangular clones that admit no assignment are banded; PR12, #180: no smooth_mat or maxspots_pooling",
     "hmrf.py": "PR12, #180: no smooth_mat pooling in the clone field; PR24, #267: the fit's log_mu, p_binom, alphas and taus are (n_states,); reindex_clones permutes no parameter column",
     "hmm.py": "PR24, #267: the fit's log_mu, p_binom, alphas and taus are (n_states,): pipeline_baum_welch squeezes them at return, as_column restores them at entry",
+    "phasing.py": "PR23, #267: initial_phase_given_partition returns the fit's log_mu, p_binom, alphas and taus as (n_states,)",
     "config.py": "PR12, #180: hmrf.maxspots_pooling other than 1 raises",
     "utils.py": "PR1, T- #692: write_fig releases each Text's cached renderer; D-dedup: `from copyreg import pickle` removed, so the cacher's .pkl mode uses the standard pickle",
     "icm.py": "D-dedup: 3 unused string copies of icm_sweep_deque and the shadowed logsumexp import commented out",

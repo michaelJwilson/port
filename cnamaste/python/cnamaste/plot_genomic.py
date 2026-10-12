@@ -667,10 +667,9 @@ def plot_clones_genomic(
             segments, labels = get_intervals(this_pred)
 
             # 1. Pre-compute exponential math ONCE, not inside the loop
-            # NB (n_states,) from pipeline_baum_welch (Ticket#267), (n_states, 1) from phasing's hmm_phased fit.
-            exp_log_mu = np.exp(np.asarray(res_combine["new_log_mu"]).reshape(-1))
-            p_binom_arr = np.asarray(res_combine["new_p_binom"]).reshape(-1)
-            assert p_binom_arr.size == res_combine["new_log_mu"].shape[0], "one parameter per state"
+            exp_log_mu = np.exp(res_combine["new_log_mu"])
+            p_binom_arr = res_combine["new_p_binom"]
+            assert exp_log_mu.ndim == 1 and p_binom_arr.ndim == 1, "the fit's parameters are (n_states,) (Ticket#267)"
 
             # 2. Build coordinate lists for LineCollection
             rdr_lines, baf_major_lines, baf_minor_lines = [], [], []

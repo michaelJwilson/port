@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from cnamaste.config import YAMLConfig
-from cnamaste.hmrf_utils import get_clone_indices
+from cnamaste.hmrf_utils import get_clone_assignment, get_clone_indices
 from cnamaste.logger import get_logger
 from cnamaste.plot_copy_number_profile import plot_copy_number_profile
 from cnamaste.plot_genomic import plot_clones_genomic
@@ -35,7 +35,7 @@ from fn import Replay, Row, fitted, run, table
 
 RDR = "08_rdr"
 SCRIPT = Path(script.__file__)
-COUNTS = Replay("08_rdr/run_core_inference in (counts, lengths), 08_rdr/reindex_clones out, get_sample_list out")
+COUNTS = Replay("08_rdr/run_core_inference in (counts, lengths), 08_rdr/reindex_clones out, get_sample_list out, 03_phasing out")
 STUBBED = "the capture stubs plots, so the staged listing holds no figure; the plotting rows render each from staged inputs"
 
 
@@ -48,7 +48,8 @@ def figure_inputs(ctx: Any) -> dict[str, Any]:
         return {"lengths": f["lengths"], "X": f["single_X"], "base": f["single_base_nb_mean"], "total": f["single_total_bb_RD"], "res": res,
                 "coords": np.asarray(ctx.sim.stored("09_outputs/construct_df_clone_label/in/args/1")), "sample_list": sample_list,
                 "sample_ids": np.asarray(sample_ids), "seg": pd.read_csv(io.BytesIO(ctx.sim.file("cnv_seglevel.tsv")), sep="\t"),
-                "initial": ctx.sim.stored("03_phasing/initialize_clones/out")}
+                "initial": ctx.sim.stored("03_phasing/initialize_clones/out"),
+                "phasing": ctx("03_phasing/initial_phase_given_partition/out/0")}
     return ctx.once("smoke/figures", make) | {"tmp": ctx.tmp_path}
 
 
@@ -79,14 +80,13 @@ def _segments(d: dict[str, Any]) -> Any:
                                sample_list=d["sample_list"], chrtext_shift=-0.3)
 
 
-def _phasing_shaped(d: dict[str, Any]) -> Any:
-    """The fit with its parameters (n_states, 1), as phasing's hmm_phased fit returns them (run_cnamaste.py's
-    post-phasing figure): the segment lines draw from either shape."""
-    res = dict(d["res"]) | {k: np.asarray(d["res"][k]).reshape(-1, 1) for k in ("new_log_mu", "new_alphas", "new_p_binom", "new_taus")}
-    labels = np.asarray(res["new_assignment"])
-    return plot_clones_genomic(lengths=d["lengths"], single_X=d["X"], single_base_nb_mean=d["base"], single_total_bb_RD=d["total"], df_cnv=None,
-                               clone_index=get_clone_indices(labels, np.unique(labels)), res_combine=res, single_tumor_prop=None,
-                               sample_list=d["sample_list"])
+def _postphasing(d: dict[str, Any]) -> Any:
+    """run_cnamaste.py:406's figure from phasing's own result: its parameters (n_states,), as every fit returns them."""
+    res = dict(d["phasing"])
+    assert all(np.ndim(res[k]) == 1 for k in ("new_log_mu", "new_alphas", "new_p_binom", "new_taus")), "phasing's parameters (n_states,)"
+    res["new_assignment"] = get_clone_assignment(d["coords"], d["initial"])
+    return plot_clones_genomic(df_cnv=None, lengths=d["lengths"], single_X=d["X"], single_base_nb_mean=d["base"], single_total_bb_RD=d["total"],
+                               clone_index=d["initial"], res_combine=res, single_tumor_prop=None, sample_list=d["sample_list"])
 
 
 def _spatial(d: dict[str, Any]) -> Any:
@@ -169,7 +169,6 @@ def _he_page(d: dict[str, Any]) -> None:
     """he_clones.png on easy's spots: a synthetic slide over them, each spot's H&E class as get_he_image gives it, and
     the run's initial clones (03_phasing/initialize_clones)."""
     from cnamaste.he import get_he_image
-    from cnamaste.hmrf_utils import get_clone_assignment
     from cnamaste.layout import plot_he_page
 
     coords = d["coords"]
@@ -290,8 +289,9 @@ ROWS: list[Row] = [
          "per clone with the fit, chisel_single (run_cnamaste.py:1145): a non-empty PDF"),
         ("plot_genomic:plot_clones_genomic", COUNTS, figure_inputs, rendered("clones_genomic", _segments),
          "per clone with cnv_seglevel.tsv's integer states (run_cnamaste.py:1640): a non-empty PDF"),
-        ("plot_genomic:plot_clones_genomic", COUNTS, figure_inputs, rendered("postphasing_clones_genomic", _phasing_shaped),
-         "the fit's parameters (n_states, 1), as phasing returns them (run_cnamaste.py:406): a non-empty PDF"),
+        ("plot_genomic:plot_clones_genomic", COUNTS + "; 03_phasing/initial_phase_given_partition out", figure_inputs,
+         rendered("postphasing_clones_genomic", _postphasing),
+         "phasing's result, its parameters (n_states,), on the initial clones (run_cnamaste.py:406): a non-empty PDF"),
         ("plotting:plot_clones_spatial", COUNTS, figure_inputs, rendered("clones_spatial", _spatial),
          "the final labels on the coordinates (run_cnamaste.py:1699): a non-empty PDF"),
         ("plot_copy_number_profile:plot_copy_number_profile", COUNTS, figure_inputs, rendered("copy_number_profile", _profile),
