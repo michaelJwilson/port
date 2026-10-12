@@ -178,6 +178,37 @@ def compute_logmu_shifts(log_mus, copy_states, normal_log_lambda, clone_lengths)
         
     return logmu_shifts
 
+
+def clone_log_normalizers(log_mu, paths, single_base_nb_mean):
+    """Each clone's library normalizer `log Z_c = log sum_g lambda_g mu_{s_c(g)}`, `(n_clones,)` (L1, Ticket#276).
+
+    `lambda` is the spot-summed baseline, normalized to sum to 1, as `run_core_inference` forms `normal_lambda`;
+    `paths` is `(n_obs, n_clones)`, each clone's decoded state per bin. `compute_logmu_shifts` computes it, repeated
+    along each clone's bins: this is its first entry per clone. None where the baseline has no mass. Nothing reads it
+    yet: L2 applies it in the read-depth emission.
+    """
+    profile = np.asarray(single_base_nb_mean, dtype=np.float64).sum(axis=1)
+    total = profile.sum()
+
+    if total <= 0.0:
+        return None
+
+    paths = np.asarray(paths, dtype=np.int64).reshape(profile.size, -1)
+    n_obs, n_clones = paths.shape
+
+    with np.errstate(divide="ignore"):
+        log_lambda = np.log(profile / total)
+
+    lengths = np.full(n_clones, n_obs, dtype=np.int64)
+    shifts = compute_logmu_shifts(
+        np.asarray(log_mu, dtype=np.float64).reshape(-1),
+        np.ascontiguousarray(paths.T).reshape(-1),
+        np.tile(log_lambda, n_clones),
+        lengths,
+    )
+
+    return shifts[::n_obs].copy()
+
 class hmm_nophasing:
     def __init__(self, params="stmp", t=1 - 1e-4):
         self.params = params
