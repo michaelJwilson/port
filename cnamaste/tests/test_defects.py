@@ -128,6 +128,7 @@ def _(tmp_path: Path, **_: Any) -> None:
 @row("Ticket#176", "io.load_input_data", "xfail", "Ticket#176: both filter-file branches of load_input_data crash on a plausible input (a Path gene file)", TypeError)
 def _(replayed: Any, **_: Any) -> None:
     config = replayed.staged.config
+    set_global_config(config)  # NB load_input_data reads visium.* from the global config, which another row may not have installed
     load_input_data(config, filter_gene_file=Path(config.references.filtergenelist_file), filter_range_file=None)
 
 
@@ -664,7 +665,7 @@ def _(**_: Any) -> None:
     assert importlib.util.find_spec("pyarrow") is not None, "polars' to_pandas needs pyarrow (he.py:125)"
 
 
-@row("Ticket#311", "he.get_he_image", "xfail", "Ticket#311: get_he_image(num_labels=4) labels the brightest pixel 5, an extra initial clone")
+@row("Ticket#311", "he.get_he_image", "regression", "Ticket#311: fixed in cnamaste; get_he_image digitizes on the inner percentile edges, num_labels labels")
 def _(**_: Any) -> None:
     body = ast.unparse(function_node(source("he.py"), "get_he_image"))
     assert "np.digitize(cropped_gray, bins=bins[1:-1])" in body or "right=True" in body, \

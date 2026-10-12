@@ -48,6 +48,7 @@ DEPARTED: dict[str, str] = {
     "plot_genomic.py": "D-dedup: an unused string copy of plot_clones_genomic commented out",
     "recomb.py": "D-dedup: unused string copies of the three recombination functions commented out; PR20, #20: assign_centiMorgans and get_sitewise_transmat assert (chr, pos) in logical order rather than sort",
     "reference.py": "PR20, #438: get_reference_recomb_rates keys contigs as integers, ordered 1, 2, ..., 22",
+    "he.py": "PR21, #311: get_he_image digitizes on the inner percentile edges, num_labels labels from 0",
 }
 """Copied file -> the T- #836 PR that edits it. Only grows."""
 
