@@ -16,7 +16,7 @@ from cnamaste.hmrf_utils import cast_csr, clone_stack_obs
 from cnamaste.icm import icm_sweep_deque, merge_assignment, unpack_adjacency
 from cnamaste.logger import get_logger
 from cnamaste.pseudobulk import merge_pseudobulk_by_index_mix
-from cnamaste.hmm_nophasing import get_log_transmat
+from cnamaste.hmm_nophasing import get_log_transmat, hmm_nophasing
 
 logger = get_logger(__name__, start_time=start_time)
 
@@ -447,6 +447,11 @@ def run_core_inference(
     # NB [num_segments, num_segments ..., num_segments] of length num_clones.
     clone_lengths = X.shape[0] * np.ones(X.shape[2], dtype=int)
 
+    # NB L2 (T- #276): each clone's read depth under its own library normalizer, from the second fit on.
+    apply_logmu_shift = bool(getattr(get_global_config().hmrf, "apply_logmu_shift", False))
+    if apply_logmu_shift and hmmclass is not hmm_nophasing:
+        raise ValueError(f"hmrf.apply_logmu_shift needs hmm_nophasing, not {hmmclass.__name__}.")
+
     # NB convoluted loop logic to achieve merge on last iteration.
     while r <= max_iter_outer:
         logger.info(
@@ -479,7 +484,7 @@ def run_core_inference(
             tol=tol,
             normal_lambda=normal_lambda,
             clone_lengths=clone_lengths,
-            init_log_gamma=None,  # res.get("log_gamma", None)
+            init_log_gamma=res["log_gamma"] if apply_logmu_shift and r > 0 else None,
         )
 
         # NB MAP copy state, irrespective of phasing. contrast to "pred_cnv".
@@ -660,7 +665,7 @@ def run_core_inference(
         tol=tol,
         normal_lambda=normal_lambda,
         clone_lengths=clone_lengths,
-        init_log_gamma=None,  # res.get("log_gamma", None)
+        init_log_gamma=res["log_gamma"] if apply_logmu_shift else None,
         propagate_errors=propagate_hmm_param_errors,
     )
 
