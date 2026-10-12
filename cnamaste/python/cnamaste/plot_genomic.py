@@ -429,10 +429,15 @@ def plot_clones_genomic(
     plot_rdr_errors: str = "poisson",
     phased_integer_copies: bool = False,
     known_nb_baseline=None,
+    axes: Optional[list] = None,
+    genome=None,
 ):
     """
     Plots aggregated rdr and baf (with error models) and best-fit continuous copy states (mu, p).
     If df_cnv is None, functions as a raw data plotter without categorical integer states.
+
+    Given `axes`, one per track (RDR then BAF per clone), it draws into them and their figure rather than a new one;
+    given `genome`, a `cnamaste.layout.GenomicAxis`, every track takes its x axis (T- #836 F1-F3).
     """
     logger.info("Plotting aggregated rdr and baf for clones.")
 
@@ -491,9 +496,14 @@ def plot_clones_genomic(
     has_rdr = base_nb_mean is not None and np.max(base_nb_mean) > 0
     axes_per_clone = 2 if has_rdr else 1
 
-    fig, axes = _create_clone_gridspec(
-        len(nonempty_clones), axes_per_clone, base_height, sample_list
-    )
+    if axes is None:
+        fig, axes = _create_clone_gridspec(
+            len(nonempty_clones), axes_per_clone, base_height, sample_list
+        )
+        own_figure = True
+    else:
+        assert len(axes) == axes_per_clone * len(nonempty_clones), f"{len(axes)} axes for {len(nonempty_clones)} clones"
+        fig, own_figure = axes[0].figure, False
     x_vals = np.arange(n_obs)
 
     for s, c in enumerate(nonempty_clones):
@@ -659,6 +669,7 @@ def plot_clones_genomic(
             # 1. Pre-compute exponential math ONCE, not inside the loop
             exp_log_mu = np.exp(res_combine["new_log_mu"])
             p_binom_arr = res_combine["new_p_binom"]
+            assert exp_log_mu.ndim == 1 and p_binom_arr.ndim == 1, "the fit's parameters are (n_states,) (Ticket#267)"
 
             # 2. Build coordinate lists for LineCollection
             rdr_lines, baf_major_lines, baf_minor_lines = [], [], []
@@ -740,8 +751,15 @@ def plot_clones_genomic(
             paired_ax=ax_baf if has_rdr else None,
         )
 
-    _draw_chromosome_boundaries(axes, lengths, unique_chrs, chrtext_shift)
-    fig.tight_layout()
+    if genome is None:
+        _draw_chromosome_boundaries(axes, lengths, unique_chrs, chrtext_shift)
+    else:
+        assert genome.n_bins == n_obs, f"the genomic axis has {genome.n_bins} bins, the tracks {n_obs}"
+        for ax in axes:
+            genome.frame(ax, labels=ax is axes[-1])
+
+    if own_figure:
+        fig.tight_layout()
 
     return fig
 

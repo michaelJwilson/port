@@ -35,21 +35,24 @@ OUT = ROOT / "cnamaste" / "python" / "cnamaste"
 ENTRY = "cnaster.scripts.run_cnaster"
 
 DEPARTED: dict[str, str] = {
-    "scripts/run_cnamaste.py": "PR1, #105: a removed bin's genes leave the gene-level output; PR12, #180: no smooth_mat or maxspots_pooling; PR13, #177: the differential-expression filter's result reaches the rebinned counts, its parameters read from quality.diffexp_*; PR24, #267: the fit's log_mu, p_binom, alphas and taus are (n_states,), read so",
+    "scripts/run_cnamaste.py": "PR1, #105: a removed bin's genes leave the gene-level output; PR12, #180: no smooth_mat or maxspots_pooling; PR13, #177: the differential-expression filter's result reaches the rebinned counts, its parameters read from quality.diffexp_*; PR24, #267: the fit's log_mu, p_binom, alphas and taus are (n_states,), read so; PR23: combined.png and he_clones.png, pages from cnamaste.layout",
     "hmm_emission.py": "PR3: flush_perf writes to <paths.output_dir>/cnamaste.perf; paths.perf_path is gone",
     "spatial.py": "PR1, #692: rectangular clones that admit no assignment are banded; PR12, #180: no smooth_mat or maxspots_pooling",
     "hmrf.py": "PR12, #180: no smooth_mat pooling in the clone field; PR24, #267: the fit's log_mu, p_binom, alphas and taus are (n_states,); reindex_clones permutes no parameter column",
     "hmm.py": "PR24, #267: the fit's log_mu, p_binom, alphas and taus are (n_states,): pipeline_baum_welch squeezes them at return, as_column restores them at entry",
+    "phasing.py": "PR23, #267: initial_phase_given_partition returns the fit's log_mu, p_binom, alphas and taus as (n_states,)",
     "config.py": "PR12, #180: hmrf.maxspots_pooling other than 1 raises",
     "utils.py": "PR1, T- #692: write_fig releases each Text's cached renderer; D-dedup: `from copyreg import pickle` removed, so the cacher's .pkl mode uses the standard pickle",
     "icm.py": "D-dedup: 3 unused string copies of icm_sweep_deque and the shadowed logsumexp import commented out",
     "hmm_initialize.py": "D-dedup: an unused string copy of gmm_init commented out",
     "hmm_nophasing.py": "D-dedup: an unused string copy of compute_emission_probability_nb_betabinom_coded commented out",
     "normal_spot.py": "D-dedup: an unused string copy of filter_normal_diffexp commented out; PR13, #165: filter_normal_diffexp splits INCLUDED_GENES on binned_gene_snp's ',' and returns its filtered genes",
-    "plot_genomic.py": "D-dedup: an unused string copy of plot_clones_genomic commented out; PR24, #267: the fit's log_mu, p_binom, alphas and taus are (n_states,), read so",
+    "plot_genomic.py": "D-dedup: an unused string copy of plot_clones_genomic commented out; PR24, #267: the fit's log_mu, p_binom, alphas and taus are (n_states,), read so; PR23: draws into given axes on a cnamaste.layout page, and reads the fit's parameters (n_states,) or (n_states, 1)",
     "recomb.py": "D-dedup: unused string copies of the three recombination functions commented out; PR20, #20: assign_centiMorgans and get_sitewise_transmat assert (chr, pos) in logical order rather than sort",
     "reference.py": "PR20, #438: get_reference_recomb_rates keys contigs as integers, ordered 1, 2, ..., 22",
-    "he.py": "PR21, #311: get_he_image digitizes on the inner percentile edges, num_labels labels from 0",
+    "he.py": "PR21, #311: get_he_image digitizes on the inner percentile edges, num_labels labels from 0; PR22, #113: get_he_image returns pandas column by column, without pyarrow",
+    "plotting.py": "PR22, #113: plot_gene_snp_spatial makes genes/; plot_recombination_rates derives recomb_rate from the map; PR23: draws into given axes on a cnamaste.layout page",
+    "plot_copy_number_profile.py": "PR23: plot_hatched_profile and plot_hatched_key, port's hatched profile, standalone",
 }
 """Copied file -> the T- #836 PR that edits it. Only grows."""
 
@@ -58,6 +61,8 @@ OWNED = ("tests", "docs")
 """cnamaste's own directories beside the copy: every file in them is declared in `ADDED`."""
 
 ADDED: dict[str, str] = {
+    "tests/test_pages.py": "PR23: combined.png's artists read back against cnv_seglevel.tsv, the fit, the lineage, the truth and clone_labels.tsv",
+    "python/cnamaste/layout.py": "PR23: the pages run_cnamaste writes, combined.png and he_clones.png, on one genomic axis",
     "tests/conftest.py": "PR2: the session fixtures over a staged run",
     "python/cnamaste/audit/capture.py": "PR2: the staged-run file's codec and reader",
     "python/cnamaste/audit/segments.py": "PR2: port's extensions/segments.py, trimmed",

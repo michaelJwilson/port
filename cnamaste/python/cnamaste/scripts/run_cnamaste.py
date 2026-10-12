@@ -52,6 +52,7 @@ from cnamaste.spatial import (
     initialize_rdr_clone_refininement,
     construct_multislice_lattice_adjacency,
 )
+from cnamaste.layout import plot_combined_page, plot_he_page, write_page
 from cnamaste.utils import configure_output_dir, pause, write_fig, write_tsv
 from cnamaste.annotation import load_clone_labels, load_clone_ranges, assign_clone_ranges
 
@@ -274,6 +275,9 @@ def run_cnamaste(config_path, over_rides=None):
 
     # TODO
     initial_clone_index_baf = initial_clone_for_phasing
+
+    # NB the slide and each spot's class, where the run has an H&E image: drawn on the final pages (T- #836 F1-F3).
+    he_frame, he_assignment = None, None
 
     # NB utilize initial spot assignment based on h&e image; potts model may (will!) merge, or blur h&e boundaries.
     if "he_label" in adata.obsm:
@@ -586,6 +590,7 @@ def run_cnamaste(config_path, over_rides=None):
     assignment = pd.Series(
         [f"clone {x}" for x in get_clone_assignment(coords, initial_clone_index_baf)]
     )
+    initial_assignment = assignment
 
     initial_clones_fig = plot_clones_spatial(
         coords,
@@ -1721,6 +1726,32 @@ def run_cnamaste(config_path, over_rides=None):
         transparent=True,
         bbox_inches="tight",
     )
+
+    # NB one page: the slide and the clones in space, over the copy-number profile, over the clones' RDR and BAF.
+    combined_fig = plot_combined_page(
+        lengths,
+        single_X,
+        single_base_nb_mean,
+        single_total_bb_RD,
+        df_seglevel_cnv,
+        res_combine,
+        coords,
+        assignment,
+        single_tumor_prop=single_tumor_prop,
+        sample_list=sample_list,
+        sample_ids=sample_ids,
+        he_frame=he_frame,
+    )
+
+    write_page(f"{plots_dir}/combined.png", combined_fig)
+
+    # NB a third of a page: each spot's h&e class beside the initial clones it refined.
+    if he_assignment is not None:
+        he_fig = plot_he_page(
+            coords, he_assignment, initial_assignment, single_tumor_prop=single_tumor_prop
+        )
+
+        write_page(f"{plots_dir}/he_clones.png", he_fig)
 
     logger.info(f"Done in {(time.time() - start_time)/60.:.2f} minutes.")
 

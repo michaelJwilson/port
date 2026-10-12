@@ -3,6 +3,7 @@ import time
 import numpy as np
 
 from cnamaste.config import get_global_config, start_time
+from cnamaste.hmm import as_states
 from cnamaste.hmm_initialize import cna_mixture_init, gmm_init
 
 # from collections import namedtuple
@@ -335,6 +336,9 @@ def initial_phase_given_partition(
     logger.info(
         f"Solved for {len(refined_lengths)} phase-refined lengths () given {len(lengths)} input lengths with sum={sum(lengths)} in {(end_time - start_time):.2f} seconds."
     )
+
+    # NB the fit's parameters as pipeline_baum_welch returns them, (n_states,), for every reader of res (Ticket#267).
+    res = res | {k: as_states(res[k]) for k in ("new_log_mu", "new_alphas", "new_p_binom", "new_taus")}
 
     return res, phase_indicator, refined_lengths
 
