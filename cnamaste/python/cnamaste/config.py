@@ -127,6 +127,15 @@ class YAMLConfig:
             raise ValueError(
                 "hmrf.maxspots_pooling is deprecated: spots are not pooled; remove it or set it to 1."
             )
+        # NB the clone-labelling solver (S3): cnaster's ICM, or one of OpenGM's through cnamaste.external.
+        if getattr(self.hmrf, "label_solver", "icm") not in LABEL_SOLVERS:
+            raise ValueError(
+                f"hmrf.label_solver {self.hmrf.label_solver!r} is not one of {LABEL_SOLVERS}."
+            )
+
+
+LABEL_SOLVERS = ("icm", "opengm_icm", "opengm_expansion", "opengm_trws")
+"""`hmrf.label_solver`: cnaster's ICM (absent, the default), or OpenGM's ICM, alpha expansion or TRW-S (S3)."""
 
 
 class JSONConfig:

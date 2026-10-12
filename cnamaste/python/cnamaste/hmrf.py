@@ -1,3 +1,4 @@
+import atexit
 import copy
 import time
 
@@ -13,7 +14,9 @@ from cnamaste.hmm import as_column, pipeline_baum_welch
 from cnamaste.hmm_initialize import cna_mixture_init, gmm_init
 from cnamaste.hmm_phased import hmm_phased
 from cnamaste.hmrf_utils import cast_csr, clone_stack_obs
+from cnamaste import external
 from cnamaste.icm import icm_sweep_deque, merge_assignment, unpack_adjacency
+from cnamaste.potts import potts_energy, potts_problem, problem_energy
 from cnamaste.logger import get_logger
 from cnamaste.pseudobulk import merge_pseudobulk_by_index_mix
 from cnamaste.hmm_nophasing import get_log_transmat
@@ -84,6 +87,72 @@ def compute_loglike_spot_assignment(
 
 
 # NB with tumor/normal mix, spot reassignment, concatenated by clone?
+_SESSION: list = []
+"""The run's one OpenGM worker, started on the first labelling that asks for it and shut at exit (S3)."""
+
+STARTS = ("icm", "expansion", "swap")
+"""The OpenGM algorithms that start from the current labelling; the rest take none."""
+
+
+def opengm_session():
+    """The run's OpenGM session, started anew if none or the last one closed."""
+    if not _SESSION or _SESSION[0].process is None:
+        _SESSION[:] = [external.session()]
+        atexit.register(_SESSION[0].close)
+    return _SESSION[0]
+
+
+def opengm_assignment(
+    single_llf,
+    adjacency_mat,
+    new_assignment,
+    spatial_weight,
+    algorithm,
+    log_persample_weights=None,
+    sample_ids=None,
+    min_clone_spots=200,
+    max_iterations=1000,
+    tolerance=1e-9,
+):
+    """`icm_sweep_deque`'s contract with OpenGM's `algorithm` (S3): `new_assignment` updated in place to the solver's
+    labelling of `potts.potts_energy`; returns the iterations and the energy lowered, as ICM returns its cost gained.
+
+    The 200-spot floor is cnaster's: where a non-empty clone falls under `min_clone_spots`, the labelling is handed to
+    `icm_sweep_deque`, which enforces it."""
+    problem = potts_problem(single_llf, adjacency_mat, spatial_weight, log_persample_weights, sample_ids)
+    before = problem_energy(problem, new_assignment)
+    start = new_assignment if algorithm in STARTS else None
+    run = opengm_session().solve(problem, algorithm, max_iterations=max_iterations, tolerance=tolerance, start=start)
+    new_assignment[:] = run.labels
+    niter = run.iterations
+
+    logger.info(
+        f"OpenGM {algorithm}: energy {run.energy:.6e} from {before:.6e}, lower bound {run.bound:.6e}, {run.iterations} iterations."
+    )
+
+    counts = np.bincount(new_assignment, minlength=single_llf.shape[1])
+    if min_clone_spots > 0 and 0 < counts[counts > 0].min() < min_clone_spots:
+        logger.warning(
+            f"OpenGM {algorithm} left a clone under min_clone_spots={min_clone_spots} ({counts.tolist()}): icm_sweep_deque enforces it."
+        )
+        more, _ = icm_sweep_deque(
+            single_llf,
+            adjacency_mat.indptr,
+            adjacency_mat.indices,
+            adjacency_mat.data,
+            new_assignment,
+            spatial_weight,
+            None,
+            log_persample_weights=log_persample_weights,
+            sample_ids=sample_ids,
+            min_clone_spots=min_clone_spots,
+        )
+        niter += more
+
+    after = potts_energy(single_llf, adjacency_mat, new_assignment, spatial_weight, log_persample_weights, sample_ids)
+    return niter, before - after
+
+
 def pipeline_clone_assignment(
     single_X,
     single_base_nb_mean,
@@ -189,19 +258,33 @@ def pipeline_clone_assignment(
             sample_ids=sample_ids,
         )
         """
-        niter, new_cost = icm_sweep_deque(
-            single_llf=loglike_spot_clone_assignment,
-            adj_indptr=adjacency_mat.indptr,
-            adj_indices=adjacency_mat.indices,
-            adj_weights=adjacency_mat.data,
-            new_assignment=new_assignment,
-            spatial_weight=spatial_weight,
-            posterior=None,
-            onehot_allowed_clones=None,
-            # tol=0.1,  # MAGIC TODO
-            log_persample_weights=log_persample_weights,
-            sample_ids=sample_ids,
-        )
+        solver = getattr(get_global_config().hmrf, "label_solver", "icm")
+
+        if solver == "icm":
+            niter, new_cost = icm_sweep_deque(
+                single_llf=loglike_spot_clone_assignment,
+                adj_indptr=adjacency_mat.indptr,
+                adj_indices=adjacency_mat.indices,
+                adj_weights=adjacency_mat.data,
+                new_assignment=new_assignment,
+                spatial_weight=spatial_weight,
+                posterior=None,
+                onehot_allowed_clones=None,
+                # tol=0.1,  # MAGIC TODO
+                log_persample_weights=log_persample_weights,
+                sample_ids=sample_ids,
+            )
+        else:
+            # NB OpenGM's solver on the same energy, through one worker for the run (S3).
+            niter, new_cost = opengm_assignment(
+                loglike_spot_clone_assignment,
+                adjacency_mat,
+                new_assignment,
+                spatial_weight,
+                solver.removeprefix("opengm_"),
+                log_persample_weights=log_persample_weights,
+                sample_ids=sample_ids,
+            )
 
         logger.info(f"Ready for potential merging of clones?  {merge}.")
 
