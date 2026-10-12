@@ -37,7 +37,7 @@ ENTRY = "cnaster.scripts.run_cnaster"
 DEPARTED: dict[str, str] = {
     "scripts/run_cnamaste.py": "PR1, #105: a removed bin's genes leave the gene-level output; PR12, #180: no smooth_mat or maxspots_pooling; PR13, #177: the differential-expression filter's result reaches the rebinned counts, its parameters read from quality.diffexp_*; PR24, #267: the fit's log_mu, p_binom, alphas and taus are (n_states,), read so; PR23: combined.png and he_clones.png, pages from cnamaste.layout",
     "hmm_emission.py": "PR3: flush_perf writes to <paths.output_dir>/cnamaste.perf; paths.perf_path is gone",
-    "spatial.py": "PR1, #692: rectangular clones that admit no assignment are banded; PR12, #180: no smooth_mat or maxspots_pooling",
+    "spatial.py": "PR1, #692: rectangular clones that admit no assignment are banded; PR12, #180: no smooth_mat or maxspots_pooling; S3: construct_multislice_lattice_adjacency refuses a self-loop",
     "hmrf.py": "PR12, #180: no smooth_mat pooling in the clone field; PR24, #267: the fit's log_mu, p_binom, alphas and taus are (n_states,); reindex_clones permutes no parameter column; S3: hmrf.label_solver routes the clone labelling to OpenGM through cnamaste.external, cnaster's floor kept",
     "hmm.py": "PR24, #267: the fit's log_mu, p_binom, alphas and taus are (n_states,): pipeline_baum_welch squeezes them at return, as_column restores them at entry",
     "phasing.py": "PR23, #267: initial_phase_given_partition returns the fit's log_mu, p_binom, alphas and taus as (n_states,)",
