@@ -245,15 +245,19 @@ def _(**_: Any) -> None:
     assert np.isclose(p[0], (1 - np.exp(-2 * 0.01)) / 2), f"1 cM switches at {p[0]:.3f}, Haldane's is 0.0099"
 
 
-@row("Ticket#20", "recomb.assign_centiMorgans", "regression", "Ticket#20: fixed in cnamaste; assign_centiMorgans sorts a copy, its caller sorts explicitly")
+@row("Ticket#20", "recomb.assign_centiMorgans", "regression",
+     "Ticket#20: fixed in cnamaste; assign_centiMorgans neither sorts nor reorders: it refuses pairs out of logical order (chr 2 before 10)")
 def _(**_: Any) -> None:
-    given = [(1, 300), (1, 100)]
-    assign_centiMorgans(given, pd.DataFrame({"chrom": [1, 1], "pos": [0, 1000], "pos_cm": [0.0, 1.0]}))
-    assert given == [(1, 300), (1, 100)]
+    table_ = pd.DataFrame({"chrom": [2, 10], "pos": [1000, 1000], "pos_cm": [1.0, 1.0]})
+    given = [(10, 100), (2, 100)]
+    with pytest.raises(AssertionError):
+        assign_centiMorgans(given, table_)
+    assert given == [(10, 100), (2, 100)]
+    assert np.allclose(assign_centiMorgans([(2, 100), (10, 100)], table_), [0.1, 0.1], rtol=0, atol=1e-12)
 
 
-@row("Ticket#172", "recomb.get_sitewise_transmat", "not reproduced",
-    "Ticket#172: on easy (min_prob 0.01) 32% of bins are at log 1/2; 67% sit at the min_prob floor, end-to-start gaps")
+@row("Ticket#172", "recomb.get_sitewise_transmat", "xfail",
+    "Ticket#172: on easy (min_prob 0.01), with contigs in order (Ticket#438), 61% of bins are at log 1/2 and carry no phase information")
 def _(sim: Any, **_: Any) -> None:
     log_switch = np.asarray(sim.stored("04_bins/get_sitewise_transmat/out"))
     saturated = np.mean(np.isclose(log_switch, np.log(0.5)))

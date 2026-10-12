@@ -68,6 +68,12 @@ def compute_numbat_phase_switch_prob(
     return phase_switch_prob
 
 
+def assert_logical_order(chr_pos_vector):
+    """(chr, pos) pairs non-decreasing in logical order: integer contigs 1, 2, ..., 22, then position (Ticket#20, Ticket#438)."""
+    keys = [(int(chrom), pos) for chrom, pos in chr_pos_vector]
+    assert all(a <= b for a, b in zip(keys, keys[1:])), "(chr, pos) pairs are not in logical order"
+
+
 def assign_centiMorgans(chr_pos_vector, ref_positions_cM):
     logger.info_once("Assigning centiMorgan recombination rates.")
 
@@ -75,8 +81,8 @@ def assign_centiMorgans(chr_pos_vector, ref_positions_cM):
     ref_pos = np.array(ref_positions_cM.pos)
     ref_cm = np.array(ref_positions_cM.pos_cm)
 
-    # NB a sorted copy: the caller's list is not reordered (Ticket#20).
-    chr_pos_vector = sorted(chr_pos_vector)
+    # NB the caller's order, asserted rather than imposed: position_cM is aligned to it (Ticket#20).
+    assert_logical_order(chr_pos_vector)
 
     # NB find the centimorgan values (linear interpolation between (k-1)-th and k-th rows of table.
     position_cM = np.ones(len(chr_pos_vector)) * np.nan
@@ -147,16 +153,19 @@ def get_sitewise_transmat(
     )
 
     # NB [(chr1, start1), (chr1, end1), (chr2, start2), (chr2, end2), ...]) construct ...
-    tmp_sorted_chr_pos = sorted(
+    chr_pos = [
         val for pair in zip(sorted_chr_pos_first, sorted_chr_pos_last) for val in pair
-    )
+    ]
+
+    # NB blocks disjoint and in logical order, so [1::2] below selects each block's end (Ticket#20).
+    assert_logical_order(chr_pos)
 
     # NB positions in cM of [(chr1, start1), (chr1, end1), (chr2, start2), (chr2, end2), ...])
-    position_cM = assign_centiMorgans(tmp_sorted_chr_pos, ref_positions_cM)
+    position_cM = assign_centiMorgans(chr_pos, ref_positions_cM)
 
-    # NB tmp_sorted_chr_pos used to identify chromosome switches.
+    # NB chr_pos used to identify chromosome switches.
     phase_switch_prob = compute_numbat_phase_switch_prob(
-        position_cM, tmp_sorted_chr_pos, nu
+        position_cM, chr_pos, nu
     )
 
     # NB transition matrix for phasing.
