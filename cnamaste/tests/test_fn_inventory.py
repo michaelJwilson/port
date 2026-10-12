@@ -21,6 +21,7 @@ import test_defects
 import test_fn_hmm
 import test_fn_hmrf
 import test_fn_integer
+import test_fn_labelling
 import test_fn_io
 import test_fn_normal
 import test_fn_omics
@@ -31,9 +32,23 @@ from cnamaste.audit.callgraph import Graph, dead_copies, reached
 from cnamaste.audit.digest import Pins
 from fn import Row, snapshot
 
-MODULES = (test_fn_io, test_fn_omics, test_fn_phasing, test_fn_spatial, test_fn_normal, test_fn_hmm, test_fn_hmrf, test_fn_integer, test_fn_outputs)
+MODULES = (test_fn_io, test_fn_omics, test_fn_phasing, test_fn_spatial, test_fn_normal, test_fn_hmm, test_fn_hmrf, test_fn_labelling, test_fn_integer,
+           test_fn_outputs)
 
 NOT_EXECUTED: dict[str, str] = {
+    "external:Session.__init__": "hmrf.label_solver is icm on easy: the OpenGM path is posed directly (test_fn_labelling)",
+    "external:Session._block": "hmrf.label_solver is icm on easy: the OpenGM path is posed directly (test_fn_labelling)",
+    "external:Session._reply": "hmrf.label_solver is icm on easy: the OpenGM path is posed directly (test_fn_labelling)",
+    "external:Session.close": "hmrf.label_solver is icm on easy: the OpenGM path is posed directly (test_fn_labelling)",
+    "external:Session.solve": "hmrf.label_solver is icm on easy: the OpenGM path is posed directly (test_fn_labelling)",
+    "external:home": "hmrf.label_solver is icm on easy: the OpenGM path is posed directly (test_fn_labelling)",
+    "external:library": "hmrf.label_solver is icm on easy: the OpenGM path is posed directly (test_fn_labelling)",
+    "external:session": "hmrf.label_solver is icm on easy: the OpenGM path is posed directly (test_fn_labelling)",
+    "hmrf:opengm_assignment": "hmrf.label_solver is icm on easy: the OpenGM path is posed directly (test_fn_labelling)",
+    "hmrf:opengm_session": "hmrf.label_solver is icm on easy: the OpenGM path is posed directly (test_fn_labelling)",
+    "potts:potts_energy": "hmrf.label_solver is icm on easy: the OpenGM path is posed directly (test_fn_labelling)",
+    "potts:potts_problem": "hmrf.label_solver is icm on easy: the OpenGM path is posed directly (test_fn_labelling)",
+    "potts:problem_energy": "hmrf.label_solver is icm on easy: the OpenGM path is posed directly (test_fn_labelling)",
     "annotation:load_clone_labels": "annotation.clone_label is None on easy",
     "annotation:load_clone_ranges": "annotation.clone_ranges is None on easy",
     "annotation:assign_clone_ranges": "annotation.clone_ranges is None on easy",

@@ -309,6 +309,22 @@
   },
   "calls": 1
  },
+ "config:YAMLConfig.issue_warnings | a non-zero hmrf.inertia is refused (deprecated)": {
+  "stable": "94ef957958f15547e599cae201cdb854960fccc9657a61b8891920044de6d393",
+  "exact": "94ef957958f15547e599cae201cdb854960fccc9657a61b8891920044de6d393",
+  "summary": {
+   "call0": "raised ValueError"
+  },
+  "calls": 1
+ },
+ "config:YAMLConfig.issue_warnings | an unknown hmrf.label_solver is refused": {
+  "stable": "94ef957958f15547e599cae201cdb854960fccc9657a61b8891920044de6d393",
+  "exact": "94ef957958f15547e599cae201cdb854960fccc9657a61b8891920044de6d393",
+  "summary": {
+   "call0": "raised ValueError"
+  },
+  "calls": 1
+ },
  "config:YAMLConfig.issue_warnings | silent on easy; names each departure": {
   "stable": "dd3bbe69ecfd9c1c3b9dd648da8cfad3fd6173644c6043e83662be1492494660",
   "exact": "003859992fbe6a3a2f64e9c04fe3f699def850ac1fc49305515acc062e1db414",
@@ -432,6 +448,129 @@
   "exact": "470a9d80e719e792cd2e96e3d1ec77f8cbd70c7514cbb00a90a95eb7c342a7a5",
   "summary": {
    "call0": "float64 (845,) min=21 max=662 mean=139.089 sum=117530"
+  },
+  "calls": 1
+ },
+ "external:Session.__init__ | each session starts its own worker; one-shot is a session": {
+  "stable": "c6e059e5cd6cb911319cd5f3c2db1584f2845fbb4689f46f7a0c01ec5c5864ba",
+  "exact": "c6e059e5cd6cb911319cd5f3c2db1584f2845fbb4689f46f7a0c01ec5c5864ba",
+  "summary": {
+   "call0['mutated'][0][0].directory": "PosixPath",
+   "call0['mutated'][0][0].process": "Popen",
+   "call1['mutated'][0][0].directory": "PosixPath",
+   "call1['mutated'][0][0].process": "Popen",
+   "call2['mutated'][0][0].directory": "PosixPath",
+   "call2['mutated'][0][0].process": "Popen",
+   "call3['mutated'][0][0].directory": "PosixPath",
+   "call3['mutated'][0][0].process": "Popen",
+   "call4['mutated'][0][0].directory": "PosixPath",
+   "call4['mutated'][0][0].process": "Popen",
+   "call5['mutated'][0][0].directory": "PosixPath",
+   "call5['mutated'][0][0].process": "Popen",
+   "...": "18 more leaves"
+  },
+  "calls": 15
+ },
+ "external:Session._block | no block outlives its call": {
+  "stable": "c513bc6d11710ef7fd78a4c2c4041ba80a7c435d3320e75b317f94a2c03d4044",
+  "exact": "c513bc6d11710ef7fd78a4c2c4041ba80a7c435d3320e75b317f94a2c03d4044",
+  "summary": {
+   "call0[0]": "str len=7",
+   "call0[1]": "str len=3",
+   "call0[2][0]": "int 6",
+   "call0[2][1]": "int 3",
+   "call1[0]": "str len=7",
+   "call1[1]": "str len=3",
+   "call1[2][0]": "int 6",
+   "call2[0]": "str len=8",
+   "call2[1]": "str len=3",
+   "call2[2][0]": "int 6",
+   "call3[0]": "str len=10",
+   "call3[1]": "str len=3",
+   "...": "164 more leaves"
+  },
+  "calls": 56
+ },
+ "external:Session._reply | a killed worker is WorkerError, its session closed and its files gone": {
+  "stable": "0f57842d8cefb13b0b7342d45cd863f7b9e19a146e191295e0342004cbfbd7c3",
+  "exact": "5367d8795702c2d1e96bba380fac14c1fdcd7943037e02403d7e496ef5dd6cbc",
+  "summary": {
+   "call0['ready']": "True",
+   "call1['bound']": "float -9.37453",
+   "call1['status']": "int 0",
+   "call1['taken']": "int 0",
+   "call1['value']": "float -9.37453",
+   "call2['bound']": "float -9.37453",
+   "call2['status']": "int 0",
+   "call2['taken']": "int 1",
+   "call2['value']": "float -9.37453",
+   "call3['bound']": "float -inf",
+   "call3['status']": "int 0",
+   "call3['taken']": "int 6",
+   "...": "19 more leaves"
+  },
+  "calls": 10
+ },
+ "external:Session.close | the directory goes with the session; idempotent": {
+  "stable": "80e784338554932ba96c0da267ae37558b1f8cc9133ad41935f01fda8e43893e",
+  "exact": "80e784338554932ba96c0da267ae37558b1f8cc9133ad41935f01fda8e43893e",
+  "summary": {
+   "call0['mutated'][0][0].directory": "PosixPath",
+   "call1['mutated'][0][0].directory": "PosixPath"
+  },
+  "calls": 2
+ },
+ "external:Session.solve | 7 algorithms: energy of the labels, >= the minimum; A* exact; bounds <= the minimum; ICM descends from its start": {
+  "stable": "ff4aa6f1d770992fd0f2eadc51bbb2176ad7c12ac9b8acfc6db1ddc697035f73",
+  "exact": "de6e01c02229f43246ce174c27523c304b78aac560486f4702bf2458f3dc4f21",
+  "summary": {
+   "call0.labels": "int64 (6,) min=2 max=2 sum=12",
+   "call0.energy": "float -9.37453",
+   "call0.bound": "float -9.37453",
+   "call0.trace": "float64 (0,)",
+   "call0.iterations": "int 0",
+   "call1.labels": "int64 (6,) min=2 max=2 sum=12",
+   "call1.energy": "float -9.37453",
+   "call1.bound": "float -9.37453",
+   "call1.trace": "float64 (1,) min=-9.37453 max=-9.37453 mean=-9.37453 sum=-9.37453",
+   "call1.iterations": "int 1",
+   "call2.labels": "int64 (6,) min=2 max=2 sum=12",
+   "call2.energy": "float -9.37453",
+   "...": "108 more leaves"
+  },
+  "calls": 24
+ },
+ "external:Session.solve | an unknown algorithm is refused": {
+  "stable": "94ef957958f15547e599cae201cdb854960fccc9657a61b8891920044de6d393",
+  "exact": "94ef957958f15547e599cae201cdb854960fccc9657a61b8891920044de6d393",
+  "summary": {
+   "call0": "raised ValueError"
+  },
+  "calls": 1
+ },
+ "external:home | $CNAMASTE_OPENGM_HOME is where the library is looked for": {
+  "stable": "bdb3fc505c7c7153161366cee5a7ff5d2866572403b1df96eac0fea4b4730b16",
+  "exact": "bdb3fc505c7c7153161366cee5a7ff5d2866572403b1df96eac0fea4b4730b16",
+  "summary": {
+   "call0": "PosixPath",
+   "call1": "PosixPath",
+   "call2": "PosixPath",
+   "call3": "PosixPath"
+  },
+  "calls": 4
+ },
+ "external:library | no library: OpenGMUnavailable naming the build script, no subprocess": {
+  "stable": "12b0567a1fbd1e7dd771cde6e3d2353daaa52329b44f631741d60c013f8ff43e",
+  "exact": "12b0567a1fbd1e7dd771cde6e3d2353daaa52329b44f631741d60c013f8ff43e",
+  "summary": {},
+  "calls": 3
+ },
+ "external:session | a session's calls are the one-shot calls, bitwise": {
+  "stable": "e23703458586158a8ab26f4dbe0718c5c0ca380c937f33b56ee63c55c1fab609",
+  "exact": "e23703458586158a8ab26f4dbe0718c5c0ca380c937f33b56ee63c55c1fab609",
+  "summary": {
+   "call0.directory": "PosixPath",
+   "call0.process": "Popen"
   },
   "calls": 1
  },
@@ -1216,6 +1355,67 @@
    "call0[1].profile.log_gamma": "float64 (3, 8) min=-1.09861 max=-1.09861 mean=-1.09861 sum=-26.3667",
    "call0[1].profile.pred_cnv": "int64 (8,) min=0 max=2 sum=6",
    "...": "4 more leaves"
+  },
+  "calls": 1
+ },
+ "hmrf:opengm_assignment | OpenGM's ICM, expansion, swap, TRW-S: >= TRW-S's bound, floor kept; expansion, swap, TRW-S <= cnaster's ICM, within 1e-2 of the bound": {
+  "stable": "5be03a4fe2531047f8440a33381ee865a253f15751a3a04fe32648e0ea674bb1",
+  "exact": "fd09af09cce89f82d62193b3ecceadcff030e5ab335275c47aedb206085014a4",
+  "summary": {
+   "call0[0]": "int 0",
+   "call0[1]": "float 16.081",
+   "call1[0]": "int 8",
+   "call1[1]": "float 133.385",
+   "call2[0]": "int 9",
+   "call2[1]": "float 133.385",
+   "call3[0]": "int 113",
+   "call3[1]": "float 133.385"
+  },
+  "calls": 4
+ },
+ "hmrf:opengm_assignment | a clone under the floor is handed to icm_sweep_deque; the energy lowered is the difference": {
+  "stable": "7a8a8b712c7393c26a0b2a452e802ef4a1aa886b0a04ade73388a3473eec0775",
+  "exact": "822d03e71b73e90241c576b7e904354ab6623e17b63640efb01e9bd7d2e338df",
+  "summary": {
+   "call0[0]": "int 2",
+   "call0[1]": "float 3205.3"
+  },
+  "calls": 1
+ },
+ "hmrf:opengm_session | one worker per run until closed; a new one after": {
+  "stable": "5444c5ec81aa4547503774071abbcb558c5f97f45db78c7fda50570869b7eaaf",
+  "exact": "5444c5ec81aa4547503774071abbcb558c5f97f45db78c7fda50570869b7eaaf",
+  "summary": {
+   "call0.directory": "PosixPath",
+   "call0.process": "Popen",
+   "call1.directory": "PosixPath",
+   "call1.process": "Popen",
+   "call2.directory": "PosixPath",
+   "call2.process": "Popen"
+  },
+  "calls": 3
+ },
+ "hmrf:pipeline_clone_assignment | hmrf.label_solver: absent, cnaster's ICM bitwise; opengm_trws, TRW-S's labelling of the same field, no worse than ICM": {
+  "stable": "7355d6fa98e0d35c67b607bd173d93dd4bd695d607e6b8a695d34833ca575b86",
+  "exact": "113ca746781c808b958900f4f281d21a8d378c9bfbe971009844ac1ec660277f",
+  "summary": {
+   "call0[0]": "int64 (3000,) min=0 max=3 sum=4013",
+   "call0[1]": "float64 (3000, 4) min=-557.244 max=-27.069 mean=-166.796 sum=-2.00155e+06",
+   "call0[2]": "float64 -484624",
+   "call1[0]": "int64 (3000,) min=0 max=3 sum=4013",
+   "call1[1]": "float64 (3000, 4) min=-557.244 max=-27.069 mean=-166.796 sum=-2.00155e+06",
+   "call1[2]": "float64 -484624",
+   "call2[0]": "int64 (3000,) min=0 max=3 sum=4494",
+   "call2[1]": "float64 (3000, 4) min=-557.244 max=-27.069 mean=-166.796 sum=-2.00155e+06",
+   "call2[2]": "float64 -484493"
+  },
+  "calls": 3
+ },
+ "hmrf:pipeline_clone_assignment | log_persample_weights is refused (deprecated)": {
+  "stable": "94ef957958f15547e599cae201cdb854960fccc9657a61b8891920044de6d393",
+  "exact": "94ef957958f15547e599cae201cdb854960fccc9657a61b8891920044de6d393",
+  "summary": {
+   "call0": "raised ValueError"
   },
   "calls": 1
  },
@@ -2056,6 +2256,117 @@
    "...": "79 more leaves"
   },
   "calls": 0
+ },
+ "potts:potts_energy | -calc_assignment_cost": {
+  "stable": "e5f864dd42b67d9cdc80128f8e93337ce9cfac0399fa635ff31557103bef10d7",
+  "exact": "78167bf850401d6c2e3567896e7ad944377b155154c2bd2f33a9ce81fc856a5e",
+  "summary": {
+   "call0": "float -29.6201",
+   "call1": "float -11.2281",
+   "call2": "float -21.3455",
+   "call3": "float -29.3973",
+   "call4": "float -22.1879",
+   "call5": "float -48.4964",
+   "call6": "float -3.88431",
+   "call7": "float -24.7411",
+   "call8": "float -19.0363",
+   "call9": "float -25.2687",
+   "call10": "float -32.4428",
+   "call11": "float -24.6662",
+   "...": "8 more leaves"
+  },
+  "calls": 20
+ },
+ "potts:potts_energy | on an asymmetric graph: -calc_assignment_cost (w / 2 per stored edge)": {
+  "stable": "5facddeaa3f36623679be85b22ec2b682f0b4d8be243c4954f6ecb680a547fe8",
+  "exact": "2f0b1c000351c8dd57ec3811d3424bc18851413fbda066b8ef573da5736fb1b7",
+  "summary": {
+   "call0": "float -35.1674",
+   "call1": "float -15.1456",
+   "call2": "float -11.1018",
+   "call3": "float -24.3814",
+   "call4": "float -3.71314",
+   "call5": "float -62.1374",
+   "call6": "float -15.649",
+   "call7": "float -17.8233",
+   "call8": "float -27.2598",
+   "call9": "float -27.5346",
+   "call10": "float -31.2706",
+   "call11": "float -31.7242",
+   "...": "8 more leaves"
+  },
+  "calls": 20
+ },
+ "potts:potts_energy | on easy's kNN adjacency: -calc_assignment_cost": {
+  "stable": "cfa8976a8c9ac5cfc6d4b3e4292a3cdc1e44c2ce6f4d6164ac273cc283f23e5f",
+  "exact": "81f98534582cc6da5b8fd4a021d63ec92a35f992abe2b97285f8625dc7f0ef9a",
+  "summary": {
+   "call0": "float -301.764",
+   "call1": "float -249.596",
+   "call2": "float -256.451",
+   "call3": "float -335.064",
+   "call4": "float -245.612",
+   "call5": "float -228.189",
+   "call6": "float -232.017",
+   "call7": "float -268.414",
+   "call8": "float -326.634",
+   "call9": "float -206.399",
+   "call10": "float -332.429",
+   "call11": "float -276.081",
+   "...": "8 more leaves"
+  },
+  "calls": 20
+ },
+ "potts:potts_problem | on easy's kNN adjacency: the energy of every labelling": {
+  "stable": "6e46cf4f6d7cba0650f0313af6727324fc17b3fb95a157ece01cf9a87815e5ca",
+  "exact": "8b582cf9d452be6ae1c434a4e11f9480f82a1311965439d60b44ee213b62d4f6",
+  "summary": {
+   "call0.unary": "float64 (300, 4) min=-10.5111 max=9.57741 mean=0.00688571 sum=8.26286",
+   "call0.first": "int64 (1204,) min=0 max=297 sum=166676",
+   "call0.second": "int64 (1204,) min=1 max=299 sum=182830",
+   "call0.coupling": "float64 (1204,) min=0.5 max=1 mean=0.956395 sum=1151.5"
+  },
+  "calls": 1
+ },
+ "potts:potts_problem | one coupling per pair, first < second, J = weight (w_ij + w_ji) / 2; the energy of every labelling": {
+  "stable": "371bda13f758ed479ac092e0d322778656bbe10b649407051c0b28995fa64b78",
+  "exact": "7a067e80e265e8cea93be1dd3d55e4058466dfb3d4862fdcd258cb8b1445db40",
+  "summary": {
+   "call0.unary": "float64 (64, 3) min=-6.10196 max=5.11185 mean=-0.127333 sum=-24.4479",
+   "call0.first": "int64 (112,) min=0 max=62 sum=3276",
+   "call0.second": "int64 (112,) min=1 max=63 sum=3780",
+   "call0.coupling": "float64 (112,) min=0.35 max=0.7 mean=0.646875 sum=72.45"
+  },
+  "calls": 1
+ },
+ "potts:problem_energy | potts_energy's": {
+  "stable": "27388906a1f1419e51eb70ed50e995cff74233e1ddb4bf82cc4ecfefed7f1c87",
+  "exact": "c2696e12b949effd421578b93b09dd4d4c46bd0239d3b3f83ce581c05794a2a4",
+  "summary": {
+   "call0": "float -41.8694",
+   "call1": "float -14.0152",
+   "call2": "float -35.852",
+   "call3": "float -40.1137",
+   "call4": "float -18.8303",
+   "call5": "float -10.0363",
+   "call6": "float -13.9606",
+   "call7": "float -26.4348",
+   "call8": "float -40.7233",
+   "call9": "float -24.0918",
+   "call10": "float -43.3791",
+   "call11": "float -33.657",
+   "...": "8 more leaves"
+  },
+  "calls": 20
+ },
+ "potts:refuse_self_loops | a self-loop is refused by the energy and the pairwise form": {
+  "stable": "751fd3e3e995bc61118930ef7793e88bac6545b4786660a21bd5c2d37b1637a8",
+  "exact": "751fd3e3e995bc61118930ef7793e88bac6545b4786660a21bd5c2d37b1637a8",
+  "summary": {
+   "call0": "raised ValueError",
+   "call1": "raised ValueError"
+  },
+  "calls": 2
  },
  "pseudobulk:merge_pseudobulk_by_index_mix | each clone's pseudobulk is its spots' sum; an empty clone is zero; no input mutation": {
   "stable": "2dd8926cf3339cae4b87cf36acd4c676b783ef5d9a98155a59aba0778963beac",

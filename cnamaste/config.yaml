@@ -87,6 +87,8 @@ hmrf:
   max_iter_outer : 20
   initialization_method : rectangle
   spatial_weight : 1.0
+  # NB the clone-labelling solver: icm (cnaster's), opengm_icm, opengm_expansion or opengm_trws (cnamaste/infra/build_opengm.sh).
+  label_solver : icm
   inertia : 0
   construct_adjacency_method : hexagon
   construct_adjacency_w : 1.0

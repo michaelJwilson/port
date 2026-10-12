@@ -7,6 +7,7 @@ from scipy.spatial import cKDTree
 # from cnamaste.annotation import get_clone_label_annotation
 from cnamaste.config import start_time
 from cnamaste.logger import get_logger
+from cnamaste.potts import refuse_self_loops
 
 logger = get_logger(__name__, start_time=start_time)
 
@@ -415,6 +416,9 @@ def construct_multislice_lattice_adjacency(
         adjacency_mat += across_slice_adjacency_mat
 
     logger.info("Solving for multi-slice adjacency matrix.")
+
+    # NB a spot is not its own neighbour: a self-loop is aligned in every labelling, a constant in the Potts energy (S3).
+    refuse_self_loops(adjacency_mat)
 
     return adjacency_mat
 
