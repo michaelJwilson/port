@@ -96,8 +96,8 @@ def get_reference_recomb_rates(geneticmap_file):
     df = pd.read_csv(geneticmap_file, header=0, sep="\t")
     df = df[df.chrom.isin([f"chr{i}" for i in range(1, 23)])]
 
-    # NB drop "chr" prefix.
-    df["chrom"] = df.chrom.str.replace("chr", "")
+    # NB drop "chr" prefix; contigs are integers, in logical order 1, 2, ..., 22, not text order 1, 10, ..., 19, 2 (Ticket#438).
+    df["chrom"] = df.chrom.str.replace("chr", "").astype(int)
 
     df = df.sort_values(by=["chrom", "pos"])
 
