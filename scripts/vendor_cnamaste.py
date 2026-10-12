@@ -63,6 +63,11 @@ OWNED = ("tests", "docs")
 ADDED: dict[str, str] = {
     "python/cnamaste/potts.py": "S1: the clone-labelling Potts energy, and its pairwise form for an external solver; no per-sample weights, no self-loop",
     "tests/test_potts.py": "S1: cnamaste.potts against cnaster's calc_assignment_cost",
+    "python/cnamaste/external.py": "S2: OpenGM's Potts solvers in a worker process, sal.external trimmed",
+    "python/cnamaste/external_worker.py": "S2: the worker cnamaste.external starts",
+    "infra/build_opengm.sh": "S2: builds libcnamaste_opengm.so, sal's infra/build_opengm.sh renamed",
+    "infra/opengm/cnamaste_opengm.cxx": "S2: the library's C entry point, sal's sal_opengm.cxx renamed",
+    "tests/test_opengm.py": "S2: cnamaste.external against enumeration",
     "tests/test_pages.py": "PR23: combined.png's artists read back against cnv_seglevel.tsv, the fit, the lineage, the truth and clone_labels.tsv",
     "python/cnamaste/layout.py": "PR23: the pages run_cnamaste writes, combined.png and he_clones.png, on one genomic axis",
     "tests/conftest.py": "PR2: the session fixtures over a staged run",
