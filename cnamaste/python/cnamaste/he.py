@@ -3,6 +3,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import polars as pl
 from scipy.spatial import cKDTree
 
@@ -123,4 +124,5 @@ def get_he_image(spaceranger_dir, res="hires", pos=None, num_labels=4):
 
     logger.info(f"Merged with h&e with result:\n{tissue_frame}")
 
-    return tissue_frame.to_pandas()
+    # NB column by column: polars' to_pandas needs pyarrow, which cnamaste does not declare (Ticket#113).
+    return pd.DataFrame({name: tissue_frame[name].to_numpy() for name in tissue_frame.columns})

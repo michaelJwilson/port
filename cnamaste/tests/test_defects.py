@@ -660,9 +660,31 @@ def _(**_: Any) -> None:
     assert np.array_equal(np.ravel(top_hat_sum(np.arange(5.0), 3)), [1.0, 3.0, 6.0, 9.0, 7.0])
 
 
-@row("Ticket#113", "he.get_he_image", "xfail", "Ticket#113: three defects in the plotting and H&E paths: he.py needs pyarrow, which cnamaste does not declare")
-def _(**_: Any) -> None:
-    assert importlib.util.find_spec("pyarrow") is not None, "polars' to_pandas needs pyarrow (he.py:125)"
+@row("Ticket#113", "he.get_he_image / plotting", "regression",
+     "Ticket#113: fixed in cnamaste; the H&E path runs without pyarrow, plot_gene_snp_spatial makes genes/, the recombination plot derives its rate")
+def _(tmp_path: Path, **_: Any) -> None:
+    import anndata
+    import matplotlib.pyplot as plt
+    from cnamaste.he import get_he_image
+    from cnamaste.plotting import plot_gene_snp_spatial, plot_recombination_rates
+
+    # NB 1: a 6 x 8 slide, with and without positions, where pyarrow is not installed
+    (tmp_path / "spatial").mkdir()
+    plt.imsave(tmp_path / "spatial" / "tissue_hires_image.png", np.random.default_rng(113).random((6, 8, 3)))
+    (tmp_path / "spatial" / "scalefactors_json.json").write_text('{"tissue_hires_scalef": 0.5}')
+    pos = pd.DataFrame({"barcode": ["a", "b", "c"], "x": [0.0, 4.0, 10.0], "y": [0.0, 2.0, 8.0]})
+    for given, rows in ((None, 48), (pos, 3)):
+        frame = get_he_image(str(tmp_path), pos=given, num_labels=4)
+        assert isinstance(frame, pd.DataFrame) and len(frame) == rows and "label" in frame, "the H&E frame, as pandas"
+    # NB 2: genes/ under a fresh plots directory
+    adata = anndata.AnnData(np.array([[3.0, 1.0], [2.0, 5.0]]), obsm={"X_pos": np.array([[0.0, 0.0], [1.0, 1.0]])})
+    adata.var_names = ["g0", "g1"]
+    snps = sp.csr_matrix(np.array([[1.0], [2.0]]))
+    plot_gene_snp_spatial(adata, snps, snps, pd.DataFrame({"gene": ["g0"], "snp_id": ["s0"]}), np.array(["s0"]), str(tmp_path / "plots"), max_genes=1)
+    assert (tmp_path / "plots" / "genes").is_dir(), "the panels' directory exists"
+    # NB 3: the reader's columns (chrom, pos, pos_cm) draw: 1 cM per Mb
+    plot_recombination_rates(pd.DataFrame({"chrom": [1, 1, 1], "pos": [0, 1_000_000, 2_000_000], "pos_cm": [0.0, 1.0, 2.0]}))
+    plt.close("all")
 
 
 @row("Ticket#311", "he.get_he_image", "regression", "Ticket#311: fixed in cnamaste; get_he_image digitizes on the inner percentile edges, num_labels labels")

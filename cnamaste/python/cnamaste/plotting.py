@@ -1,5 +1,6 @@
 import copy
 import math
+import os
 from functools import cmp_to_key
 
 import matplotlib as mpl
@@ -51,7 +52,8 @@ def plot_gene_snp_spatial(
 
     logger.info(f"Sorted input gene list.")
 
-    # os.makedirs(f"{plots_dir}/genes", exist_ok=True)
+    # NB the panels are written under genes/, which nothing else creates (Ticket#113).
+    os.makedirs(f"{plots_dir}/genes", exist_ok=True)
 
     gene_count = 0
 
@@ -375,6 +377,12 @@ def plot_recombination_rates(df_recomb, base_height=4):
     df = df[df["chrom"].isin(valid_chroms)]
     df["chrom"] = df["chrom"].astype(int)
     df = df.sort_values(["chrom", "pos"])
+
+    # NB the reader gives the map (pos, pos_cm); the rate is cM per Mb between consecutive markers (Ticket#113).
+    if "recomb_rate" not in df.columns:
+        by_chrom = df.groupby("chrom")
+        df["recomb_rate"] = by_chrom["pos_cm"].diff() / (by_chrom["pos"].diff() / 1.0e6)
+        df = df.dropna(subset=["recomb_rate"])
 
     """
     chrom_mins = df.groupby('chrom')['pos'].min()
