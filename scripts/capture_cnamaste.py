@@ -419,6 +419,19 @@ class Recorder:
             merge_wrapped,
             assign_wrapped,
         )
+        opengm = getattr(hmrf, "opengm_assignment", None)
+        if opengm is not None:
+
+            def opengm_wrapped(*args: Any, **kwargs: Any) -> Any:
+                """`hmrf.label_solver` other than icm: the labels the solver leaves, ICM's handoff included, are "icm"'s."""
+                out = opengm(*args, **kwargs)
+                labels = (
+                    kwargs["new_assignment"] if "new_assignment" in kwargs else args[2]
+                )
+                self.internal[self.current]["icm"] = np.array(labels, copy=True)
+                return out
+
+            hmrf.opengm_assignment = opengm_wrapped
 
 
 def value(rec: Recorder, path: str) -> Any:
