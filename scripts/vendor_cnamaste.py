@@ -61,7 +61,7 @@ OWNED = ("tests", "docs")
 """cnamaste's own directories beside the copy: every file in them is declared in `ADDED`."""
 
 ADDED: dict[str, str] = {
-    "python/cnamaste/potts.py": "S1: the clone-labelling Potts energy, and its pairwise form for an external solver",
+    "python/cnamaste/potts.py": "S1: the clone-labelling Potts energy, and its pairwise form for an external solver; no per-sample weights, no self-loop",
     "tests/test_potts.py": "S1: cnamaste.potts against cnaster's calc_assignment_cost",
     "tests/test_pages.py": "PR23: combined.png's artists read back against cnv_seglevel.tsv, the fit, the lineage, the truth and clone_labels.tsv",
     "python/cnamaste/layout.py": "PR23: the pages run_cnamaste writes, combined.png and he_clones.png, on one genomic axis",
