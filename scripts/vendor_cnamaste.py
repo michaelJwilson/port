@@ -62,10 +62,10 @@ OWNED = ("tests", "docs")
 
 ADDED: dict[str, str] = {
     "python/cnamaste/potts.py": "S1: the clone-labelling Potts energy, and its pairwise form for an external solver; no per-sample weights, no self-loop",
-    "python/cnamaste/external.py": "S2: OpenGM's Potts solvers in a worker process, sal.external trimmed",
+    "python/cnamaste/external.py": "S2: OpenGM's Potts solvers in a worker process, sal.external trimmed; S5: Kolmogorov's pair, refused where not built",
     "python/cnamaste/external_worker.py": "S2: the worker cnamaste.external starts",
-    "infra/build_opengm.sh": "S2: builds libcnamaste_opengm.so, sal's infra/build_opengm.sh renamed",
-    "infra/opengm/cnamaste_opengm.cxx": "S2: the library's C entry point, sal's sal_opengm.cxx renamed",
+    "infra/build_opengm.sh": "S2: builds libcnamaste_opengm.so, sal's infra/build_opengm.sh renamed; S5: CNAMASTE_OPENGM_MAXFLOW=kolmogorov compiles in Kolmogorov's maxflow (GPL-3.0)",
+    "infra/opengm/cnamaste_opengm.cxx": "S2: the library's C entry point, sal's sal_opengm.cxx renamed; S5: expansion and the swap over Kolmogorov's cut, optional",
     "tests/test_fn_labelling.py": "S3: potts, external and hmrf's OpenGM path against cnaster's cost, enumeration and TRW-S's bound",
     "tests/test_pages.py": "PR23: combined.png's artists read back against cnv_seglevel.tsv, the fit, the lineage, the truth and clone_labels.tsv",
     "python/cnamaste/layout.py": "PR23: the pages run_cnamaste writes, combined.png and he_clones.png, on one genomic axis",

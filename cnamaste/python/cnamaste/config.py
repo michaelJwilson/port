@@ -139,7 +139,7 @@ class YAMLConfig:
             )
 
 
-LABEL_SOLVERS = ("icm", "opengm_icm", "opengm_expansion", "opengm_trws")
+LABEL_SOLVERS = ("icm", "opengm_icm", "opengm_expansion", "opengm_trws", "opengm_expansion_kolmogorov")
 """`hmrf.label_solver`: cnaster's ICM (absent, the default), or OpenGM's ICM, alpha expansion or TRW-S (S3)."""
 
 

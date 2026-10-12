@@ -20,6 +20,10 @@ problem's, so they compare with `potts.problem_energy` directly. What a call ret
 reproducible: a block is named within the session's directory, and the inference's seconds, a measurement, are logged
 rather than returned or stored.
 
+Alpha expansion and the swap cut with Dinic's maximum flow, the library's own. `expansion_kolmogorov` and
+`swap_kolmogorov` cut with Kolmogorov's maxflow v3.03 (GPL-3.0) instead, built only where asked
+(`CNAMASTE_OPENGM_MAXFLOW=kolmogorov`), and refused with `OpenGMUnavailable` before any request where it was not (S5).
+
 Unlike `sal.external`, there is one transport (memory-mapped files, sal's default), one framework and no capability
 registry: the algorithms are `ALGORITHMS`.
 """
@@ -42,8 +46,12 @@ from cnamaste.logger import get_logger
 
 logger = get_logger(__name__, start_time=start_time)
 
-ALGORITHMS = {"icm": 0, "lbp": 1, "astar": 2, "trws": 3, "dd": 4, "expansion": 5, "swap": 6}
+ALGORITHMS = {"icm": 0, "lbp": 1, "astar": 2, "trws": 3, "dd": 4, "expansion": 5, "swap": 6, "expansion_kolmogorov": 7,
+              "swap_kolmogorov": 8}  # fmt: skip
 """Each algorithm's index in `cnamaste_opengm.cxx`'s `Algorithm`."""
+
+KOLMOGOROV = ("expansion_kolmogorov", "swap_kolmogorov")
+"""The algorithms that need Kolmogorov's maxflow built in."""
 
 BUILD = "cnamaste/infra/build_opengm.sh"
 
@@ -84,6 +92,12 @@ def library() -> Path | None:
 
 def available() -> bool:
     return library() is not None
+
+
+def backends() -> tuple[str, ...]:
+    """The min s-t cuts the built library holds, from `build_opengm.sh`'s `BACKENDS`; Dinic's alone where it is absent."""
+    path = home() / "BACKENDS"
+    return tuple(path.read_text().split()) if path.is_file() else ("dinic",)
 
 
 class Session:
@@ -138,6 +152,8 @@ class Session:
             raise WorkerError("the session is closed")
         if algorithm not in ALGORITHMS:
             raise ValueError(f"algorithm {algorithm!r} is not one of {sorted(ALGORITHMS)}")
+        if algorithm in KOLMOGOROV and "kolmogorov" not in backends():
+            raise OpenGMUnavailable(f"{algorithm} needs Kolmogorov's maxflow: run CNAMASTE_OPENGM_MAXFLOW=kolmogorov {BUILD}")
         n, k = problem.unary.shape
         steps = max(int(max_iterations), 1)
         self._calls += 1

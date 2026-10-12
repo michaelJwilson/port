@@ -17,9 +17,9 @@
 //
 // Every algorithm is OpenGM's header-only code and needs no downloaded
 // external. Alpha expansion and the alpha-beta swap need a min s-t cut, which
-// OpenGM takes from Boost Graph or from Kolmogorov's research-only maxflow;
-// neither is used here: `Dinic` below is the cut, written against the
-// interface OpenGM's GraphCut calls (addEdge, calculateCut).
+// OpenGM takes from Boost Graph or from Kolmogorov's maxflow: `Dinic` below is
+// the default cut, written against the interface OpenGM's GraphCut calls
+// (addEdge, calculateCut); Kolmogorov's is the optional `*_KOLMOGOROV` pair.
 #include <opengm/graphicalmodel/graphicalmodel.hxx>
 #include <opengm/graphicalmodel/space/simplediscretespace.hxx>
 #include <opengm/functions/explicit_function.hxx>
@@ -35,6 +35,9 @@
 #include <opengm/inference/graphcut.hxx>
 #include <opengm/inference/alphaexpansion.hxx>
 #include <opengm/inference/alphabetaswap.hxx>
+#ifdef CNAMASTE_WITH_KOLMOGOROV
+#include <opengm/inference/auxiliary/minstcutkolmogorov.hxx>
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -137,6 +140,14 @@ class Dinic {
   std::vector<double> capacity_;
 };
 
+#ifdef CNAMASTE_WITH_KOLMOGOROV
+// Kolmogorov's maxflow v3.03 (Boykov and Kolmogorov 2004; GPL-3.0, github.com/opengm/maxflow), through OpenGM's own
+// wrapper: node 0 is the source and node 1 the sink, as for Dinic, but a free node goes with the source where Dinic
+// sends it to the sink, so a tied move can differ while its energy cannot. Compiled only where build_opengm.sh is
+// asked for it (CNAMASTE_OPENGM_MAXFLOW=kolmogorov), and the library is then GPL-3.0.
+typedef opengm::external::MinSTCutKolmogorov<std::size_t, double> Kolmogorov;
+#endif
+
 // Records the bound after each iteration an algorithm reports.
 template <class INF>
 struct Trace {
@@ -151,7 +162,7 @@ struct Trace {
   void log(const std::string&, double) {}
 };
 
-enum Algorithm { ICM = 0, LBP = 1, ASTAR = 2, TRWS = 3, DD = 4, EXPANSION = 5, SWAP = 6 };
+enum Algorithm { ICM = 0, LBP = 1, ASTAR = 2, TRWS = 3, DD = 4, EXPANSION = 5, SWAP = 6, EXPANSION_KOLMOGOROV = 7, SWAP_KOLMOGOROV = 8 };
 
 typedef std::chrono::steady_clock Clock;
 
@@ -163,6 +174,48 @@ template <class INF>
 void read(const INF& inference, std::vector<std::size_t>& labels, double* bound) {
   inference.arg(labels);
   *bound = inference.bound();
+}
+
+
+// Alpha expansion (`expansion`) or the alpha-beta swap over the min s-t cut `Cut`, from `start` where given; returns
+// the inference's seconds. Neither gives a bound.
+template <class Cut>
+double moves(const Model& model, bool expansion, std::size_t steps, const std::int64_t* start,
+             const std::vector<std::size_t>& initial, std::vector<std::size_t>& labels, double* bound,
+             std::vector<double>& bounds) {
+  typename Cut::Parameter cut;
+  Clock::time_point clock;
+  double seconds = 0.0;
+  if (expansion) {
+    typedef opengm::AlphaExpansion<Model, Cut> Inference;
+    typename Inference::Parameter parameter(steps, cut);
+    if (start != nullptr) {
+      parameter.labelInitialType_ = Inference::Parameter::EXPLICIT_LABEL;
+      parameter.label_ = initial;
+    }
+    Inference inference(model, parameter);
+    Trace<Inference> visitor = {&bounds};
+    clock = Clock::now();
+    inference.infer(visitor);
+    seconds = since(clock);
+    read(inference, labels, bound);
+  } else {
+    typedef opengm::AlphaBetaSwap<Model, Cut> Inference;
+    typename Inference::Parameter parameter;
+    parameter.parameter_ = cut;
+    parameter.maxNumberOfIterations_ = steps;
+    Inference inference(model, parameter);
+    if (start != nullptr) {
+      inference.setStartingPoint(initial.begin());
+    }
+    Trace<Inference> visitor = {&bounds};
+    clock = Clock::now();
+    inference.infer(visitor);
+    seconds = since(clock);
+    read(inference, labels, bound);
+  }
+  *bound = -std::numeric_limits<double>::infinity();
+  return seconds;
 }
 
 }  // namespace
@@ -191,7 +244,8 @@ int cnamaste_opengm_solve(int algorithm, std::int64_t n_nodes, std::int64_t n_st
       const std::size_t variable[] = {static_cast<std::size_t>(node)};
       model.addFactor(model.addFunction(table), variable, variable + 1);
     }
-    const bool metric = algorithm == EXPANSION || algorithm == SWAP;
+    const bool metric = algorithm == EXPANSION || algorithm == SWAP || algorithm == EXPANSION_KOLMOGOROV ||
+                        algorithm == SWAP_KOLMOGOROV;
     for (std::int64_t edge = 0; edge < n_edges; ++edge) {
       opengm::PottsFunction<double> potts(n_states, n_states, metric ? 0.0 : -coupling[edge],
                                           metric ? coupling[edge] : 0.0);
@@ -273,40 +327,20 @@ int cnamaste_opengm_solve(int algorithm, std::int64_t n_nodes, std::int64_t n_st
         break;
       }
       case EXPANSION:
-      case SWAP: {
-        typedef opengm::GraphCut<Model, opengm::Minimizer, Dinic> Cut;
-        typename Cut::Parameter cut;
-        if (algorithm == EXPANSION) {
-          typedef opengm::AlphaExpansion<Model, Cut> Inference;
-          typename Inference::Parameter parameter(steps, cut);
-          if (start != nullptr) {
-            parameter.labelInitialType_ = Inference::Parameter::EXPLICIT_LABEL;
-            parameter.label_ = initial;
-          }
-          Inference inference(model, parameter);
-          Trace<Inference> visitor = {&bounds};
-          clock = Clock::now();
-          inference.infer(visitor);
-          *seconds = since(clock);
-          read(inference, labels, bound);
-        } else {
-          typedef opengm::AlphaBetaSwap<Model, Cut> Inference;
-          typename Inference::Parameter parameter;
-          parameter.parameter_ = cut;
-          parameter.maxNumberOfIterations_ = steps;
-          Inference inference(model, parameter);
-          if (start != nullptr) {
-            inference.setStartingPoint(initial.begin());
-          }
-          Trace<Inference> visitor = {&bounds};
-          clock = Clock::now();
-          inference.infer(visitor);
-          *seconds = since(clock);
-          read(inference, labels, bound);
-        }
-        *bound = -std::numeric_limits<double>::infinity();
+      case SWAP:
+        *seconds = moves<opengm::GraphCut<Model, opengm::Minimizer, Dinic> >(model, algorithm == EXPANSION, steps, start, initial,
+                                                                         labels, bound, bounds);
         break;
-      }
+      case EXPANSION_KOLMOGOROV:
+      case SWAP_KOLMOGOROV:
+#ifdef CNAMASTE_WITH_KOLMOGOROV
+        *seconds = moves<opengm::GraphCut<Model, opengm::Minimizer, Kolmogorov> >(model, algorithm == EXPANSION_KOLMOGOROV, steps, start,
+                                                                              initial, labels, bound, bounds);
+        break;
+#else
+        throw std::runtime_error(
+            "built without Kolmogorov's maxflow: run CNAMASTE_OPENGM_MAXFLOW=kolmogorov cnamaste/infra/build_opengm.sh");
+#endif
       default:
         throw std::runtime_error("unknown algorithm");
     }

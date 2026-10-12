@@ -4,7 +4,7 @@
 row here is synthetic or poses easy's own labelling problem directly. The referees:
 
 - **`potts`:** `cnaster`'s own `icm.calc_assignment_cost`, the quantity ICM maximizes, w / 2 per stored edge (T- #917).
-- **`external`:** enumeration on graphs small enough to list every labelling.
+- **`external`:** enumeration on graphs small enough to list every labelling; Kolmogorov's cut against Dinic's (S5).
 - **`hmrf.opengm_assignment`:** TRW-S's lower bound and `cnaster`'s ICM on easy's BAF labelling problem: the fit's
   field over 3,000 spots and 4 clones, on its kNN adjacency (24,000 stored edges, 1,252 one way).
 
@@ -16,6 +16,8 @@ from __future__ import annotations
 import itertools
 import os
 import subprocess
+import tempfile
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -31,12 +33,36 @@ from cnamaste.potts import PottsProblem, potts_energy, potts_problem, problem_en
 from fn import Row, fitted, run, table
 from test_fn_hmrf import field_case, one_way_case, window
 
-ALGORITHMS = sorted(external.ALGORITHMS)
-
 
 def _opengm() -> None:
     if not external.available():
         pytest.skip(f"OpenGM is not built: run {external.BUILD}")
+
+
+DINIC = sorted(a for a in external.ALGORITHMS if a not in external.KOLMOGOROV)
+"""Every build's algorithms; the rows on them pin the same snapshot whichever cuts are built."""
+
+
+def _kolmogorov() -> None:
+    _opengm()
+    if "kolmogorov" not in external.backends():
+        pytest.skip(f"Kolmogorov's maxflow is not built: run CNAMASTE_OPENGM_MAXFLOW=kolmogorov {external.BUILD}")
+
+
+class _Home:
+    """`$CNAMASTE_OPENGM_HOME` set to `path` for the block."""
+
+    def __init__(self, path: Any) -> None:
+        self.path, self.previous = str(path), os.environ.get("CNAMASTE_OPENGM_HOME")
+
+    def __enter__(self) -> None:
+        os.environ["CNAMASTE_OPENGM_HOME"] = self.path
+
+    def __exit__(self, *_: object) -> None:
+        if self.previous is None:
+            del os.environ["CNAMASTE_OPENGM_HOME"]
+        else:
+            os.environ["CNAMASTE_OPENGM_HOME"] = self.previous
 
 
 # --- potts ---------------------------------------------------------------------
@@ -106,7 +132,7 @@ def _against_enumeration(problems: dict[str, PottsProblem]) -> None:
     with external.session() as s:
         for name, problem in problems.items():
             exact = _minimum(problem)
-            for algorithm in ALGORITHMS:
+            for algorithm in DINIC:
                 found = s.solve(problem, algorithm, max_iterations=200)
                 assert np.isclose(found.energy, problem_energy(problem, found.labels), atol=1e-9), (name, algorithm)
                 assert found.energy >= exact - 1e-9 and found.bound <= exact + 1e-9, (name, algorithm)
@@ -121,8 +147,8 @@ def _session_is_one_shot(problems: dict[str, PottsProblem]) -> None:
     _opengm()
     problem = problems["random"]
     with external.session() as s:
-        many = [s.solve(problem, algorithm, max_iterations=50) for algorithm in ALGORITHMS for _ in range(2)]
-    once = [external.solve(problem, algorithm, max_iterations=50) for algorithm in ALGORITHMS for _ in range(2)]
+        many = [s.solve(problem, algorithm, max_iterations=50) for algorithm in DINIC for _ in range(2)]
+    once = [external.solve(problem, algorithm, max_iterations=50) for algorithm in DINIC for _ in range(2)]
     for a, b in zip(many, once, strict=True):
         assert np.array_equal(a.labels, b.labels) and a.energy == b.energy and a.bound == b.bound and np.array_equal(a.trace, b.trace)
 
@@ -132,7 +158,7 @@ def _no_files_outlive(problems: dict[str, PottsProblem]) -> None:
     _opengm()
     with external.session() as s:
         directory = s.directory
-        for algorithm in ALGORITHMS:
+        for algorithm in DINIC:
             s.solve(problems["ring"], algorithm)
             assert not list(directory.iterdir()), f"{algorithm} left files"
     assert not directory.exists()
@@ -166,6 +192,43 @@ def _absent_refused(problems: dict[str, PottsProblem]) -> None:
             del os.environ["CNAMASTE_OPENGM_HOME"]
         else:
             os.environ["CNAMASTE_OPENGM_HOME"] = previous
+
+
+def _kolmogorov_is_dinic(problems: dict[str, PottsProblem]) -> None:
+    """Kolmogorov's cut and Dinic's give expansion and the swap the same labels and energy, bitwise, on each small
+    graph and on a 60x60 grid with 6 labels: each move is an exact minimum cut, so only a tie could part them."""
+    _kolmogorov()
+    rng = np.random.default_rng(43)
+    side = 60
+    idx = np.arange(side * side).reshape(side, side)
+    rows, cols = np.r_[idx[:, :-1].ravel(), idx[:-1, :].ravel()], np.r_[idx[:, 1:].ravel(), idx[1:, :].ravel()]
+    grid = potts_problem(rng.normal(scale=2.0, size=(side * side, 6)), _graph(list(rows), list(cols), side * side, rng.uniform(0.5, 1.5, rows.size)), 1.0)
+    with external.session() as s:
+        for name, problem in {**problems, "60x60 grid": grid}.items():
+            for move in ("expansion", "swap"):
+                dinic, kolmogorov = s.solve(problem, move), s.solve(problem, f"{move}_kolmogorov")
+                assert np.array_equal(dinic.labels, kolmogorov.labels) and dinic.energy == kolmogorov.energy, (name, move)
+
+
+def _kolmogorov_refused(problems: dict[str, PottsProblem]) -> None:
+    """A library built without Kolmogorov's cut (`BACKENDS` is `dinic`, or absent) refuses its pair with
+    `OpenGMUnavailable` naming `CNAMASTE_OPENGM_MAXFLOW`, before any request, and still serves Dinic's."""
+    _opengm()
+    built = external.library()
+    with tempfile.TemporaryDirectory() as directory:
+        home = Path(directory)
+        (home / external.LIBRARY).symlink_to(built)
+        for backends in (None, "dinic\n"):
+            if backends is not None:
+                (home / "BACKENDS").write_text(backends)
+            with _Home(home):
+                assert external.backends() == ("dinic",)
+                with external.session() as s:
+                    for algorithm in external.KOLMOGOROV:
+                        with pytest.raises(external.OpenGMUnavailable, match="CNAMASTE_OPENGM_MAXFLOW=kolmogorov"):
+                            s.solve(problems["ring"], algorithm)
+                        assert not list(s.directory.iterdir()), "no block written"
+                    assert s.solve(problems["ring"], "expansion").energy == external.solve(problems["ring"], "expansion").energy
 
 
 def _unknown_refused(problems: dict[str, PottsProblem]) -> None:
@@ -215,6 +278,17 @@ def _solvers_on_easy(e: dict[str, Any]) -> None:
     print(f"cnaster ICM {cnaster:.3f}; bound {bound:.3f}; " + "; ".join(f"{k} {v:.3f}" for k, v in found.items()))
     for algorithm in ("expansion", "swap", "trws"):
         assert found[algorithm] <= cnaster + 1e-6 and found[algorithm] - bound <= 1e-2, algorithm
+
+
+def _kolmogorov_on_easy(e: dict[str, Any]) -> None:
+    """On easy's BAF labelling problem, `hmrf.opengm_assignment` with Kolmogorov's expansion ends at Dinic's labels."""
+    _kolmogorov()
+    found = {}
+    for algorithm in ("expansion", "expansion_kolmogorov"):
+        labels = e["labels"].copy()
+        opengm_assignment(e["llf"], e["adjacency"], labels, e["weight"], algorithm)
+        found[algorithm] = labels
+    assert np.array_equal(found["expansion"], found["expansion_kolmogorov"])
 
 
 def _floor_handed_to_icm(f: dict[str, Any]) -> None:
@@ -323,6 +397,9 @@ ORACLE: list[Row] = table(
      "potts_energy's"),
     ("external:Session.solve", SMALL, lambda c: small_problems(), _against_enumeration,
      "7 algorithms: energy of the labels, >= the minimum; A* exact; bounds <= the minimum; ICM descends from its start"),
+    ("external:Session.solve", SMALL + "; a 60x60 grid, 6 labels", lambda c: small_problems(), _kolmogorov_is_dinic,
+     "expansion and the swap over Kolmogorov's cut: Dinic's labels and energy, bitwise"),
+    ("hmrf:opengm_assignment", EASY, easy_problem, _kolmogorov_on_easy, "expansion over Kolmogorov's cut: Dinic's labels"),
     ("hmrf:opengm_assignment", EASY, easy_problem, _solvers_on_easy,
      "OpenGM's ICM, expansion, swap, TRW-S: >= TRW-S's bound, floor kept; expansion, swap, TRW-S <= cnaster's ICM, within 1e-2 of the bound"),
 )
@@ -341,6 +418,8 @@ INVARIANT: list[Row] = table(
     ("external:home", SMALL, lambda c: small_problems(), _absent_refused, "$CNAMASTE_OPENGM_HOME is where the library is looked for"),
     ("external:library", SMALL, lambda c: small_problems(), _absent_refused, "no library: OpenGMUnavailable naming the build script, no subprocess"),
     ("external:Session.solve", SMALL, lambda c: small_problems(), _unknown_refused, "an unknown algorithm is refused"),
+    ("external:backends", SMALL, lambda c: small_problems(), _kolmogorov_refused,
+     "BACKENDS dinic or absent: Kolmogorov's pair refused before any request, naming CNAMASTE_OPENGM_MAXFLOW"),
     ("hmrf:opengm_assignment", "synthetic: 8x8 grid, 3 clones, clone 2 favoured by 50", lambda c: field_case(), _floor_handed_to_icm,
      "a clone under the floor is handed to icm_sweep_deque; the energy lowered is the difference"),
     ("hmrf:opengm_session", "synthetic", lambda c: None, _one_session_per_run, "one worker per run until closed; a new one after"),

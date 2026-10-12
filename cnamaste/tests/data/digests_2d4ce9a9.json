@@ -548,6 +548,39 @@
   },
   "calls": 1
  },
+ "external:Session.solve | expansion and the swap over Kolmogorov's cut: Dinic's labels and energy, bitwise": {
+  "stable": "6e3954bf24b185f6cef47b47011cb7100ab448610fad9e423438be3bc05f7250",
+  "exact": "f49b737409a7e98a847ed05b54ca1c881eb7f8ee112d8e3cc5e469e2fcf8f534",
+  "summary": {
+   "call0.labels": "int64 (6,) min=2 max=2 sum=12",
+   "call0.energy": "float -9.37453",
+   "call0.bound": "float -inf",
+   "call0.trace": "float64 (6,) nonfinite=6",
+   "call0.iterations": "int 6",
+   "call1.labels": "int64 (6,) min=2 max=2 sum=12",
+   "call1.energy": "float -9.37453",
+   "call1.bound": "float -inf",
+   "call1.trace": "float64 (6,) nonfinite=6",
+   "call1.iterations": "int 6",
+   "call2.labels": "int64 (6,) min=2 max=2 sum=12",
+   "call2.energy": "float -9.37453",
+   "...": "68 more leaves"
+  },
+  "calls": 16
+ },
+ "external:backends | BACKENDS dinic or absent: Kolmogorov's pair refused before any request, naming CNAMASTE_OPENGM_MAXFLOW": {
+  "stable": "745ed0fac18acf1b396d70f50768b56238aad1147c83aa39e0b35c068625759f",
+  "exact": "745ed0fac18acf1b396d70f50768b56238aad1147c83aa39e0b35c068625759f",
+  "summary": {
+   "call0[0]": "str len=5",
+   "call1[0]": "str len=5",
+   "call2[0]": "str len=5",
+   "call3[0]": "str len=5",
+   "call4[0]": "str len=5",
+   "call5[0]": "str len=5"
+  },
+  "calls": 6
+ },
  "external:home | $CNAMASTE_OPENGM_HOME is where the library is looked for": {
   "stable": "bdb3fc505c7c7153161366cee5a7ff5d2866572403b1df96eac0fea4b4730b16",
   "exact": "bdb3fc505c7c7153161366cee5a7ff5d2866572403b1df96eac0fea4b4730b16",
@@ -1381,6 +1414,17 @@
    "call0[1]": "float 3205.3"
   },
   "calls": 1
+ },
+ "hmrf:opengm_assignment | expansion over Kolmogorov's cut: Dinic's labels": {
+  "stable": "98e7557b467db235bde3a127cb5f2308ec0bb9726bb20eb115c2710b116d591b",
+  "exact": "ee7b60e6f3858e85583516f18f122637538ee0ad47f8934ffbf18fc70cf73991",
+  "summary": {
+   "call0[0]": "int 8",
+   "call0[1]": "float 133.385",
+   "call1[0]": "int 8",
+   "call1[1]": "float 133.385"
+  },
+  "calls": 2
  },
  "hmrf:opengm_session | one worker per run until closed; a new one after": {
   "stable": "5444c5ec81aa4547503774071abbcb558c5f97f45db78c7fda50570869b7eaaf",
