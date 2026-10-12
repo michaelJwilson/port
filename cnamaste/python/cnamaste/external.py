@@ -16,7 +16,7 @@ here. OpenGM is header-only C++ on no package index: `cnamaste/infra/build_openg
   closed from then on.
 
 `Session.solve` takes a `cnamaste.potts.PottsProblem` and returns an `OpenGMRun` whose energy and bound are the
-problem's, its constant `offset` included, so they compare with `potts.problem_energy` directly.
+problem's, so they compare with `potts.problem_energy` directly.
 
 Unlike `sal.external`, there is one transport (memory-mapped files, sal's default), one framework and no capability
 registry: the algorithms are `ALGORITHMS`.
@@ -53,7 +53,7 @@ class WorkerError(RuntimeError):
 
 class OpenGMRun(NamedTuple):
     """One solve: the labelling, its energy, the algorithm's lower bound (`-inf` where it gives none) and its bound
-    after each iteration, all with the problem's `offset`; the iterations reported and the inference's seconds."""
+    after each iteration; the iterations reported and the inference's seconds."""
 
     labels: np.ndarray
     energy: float
@@ -161,8 +161,7 @@ class Session:
         finally:
             for spec in blocks.values():
                 Path(spec[0]).unlink(missing_ok=True)
-        offset = float(problem.offset)
-        return OpenGMRun(labels, reply["value"] + offset, reply["bound"] + offset, trace + offset, int(reply["taken"]), reply["seconds"])
+        return OpenGMRun(labels, reply["value"], reply["bound"], trace, int(reply["taken"]), reply["seconds"])
 
     def close(self) -> None:
         """Shut the worker down and remove the session's files; idempotent."""

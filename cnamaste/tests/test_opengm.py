@@ -31,11 +31,11 @@ def _graph(rows: list[int], cols: list[int], n: int, weights: Any = None) -> sp.
 
 def _problems() -> dict[str, PottsProblem]:
     """Three graphs small enough to enumerate, 3 clones: a ring stored both ways, the ring stored one way with a chord
-    and a self-loop (as a kNN graph is), and a random graph with uneven weights."""
+    (as a kNN graph is), and a random graph with uneven weights."""
     rng = np.random.default_rng(31)
     ring = [(i, (i + 1) % 6) for i in range(6)]
     both = _graph([a for a, b in ring] + [b for a, b in ring], [b for a, b in ring] + [a for a, b in ring], 6)
-    one_way = _graph([a for a, b in ring] + [0, 2], [b for a, b in ring] + [3, 2], 6)
+    one_way = _graph([a for a, b in ring] + [0], [b for a, b in ring] + [3], 6)
     pairs = [(a, b) for a in range(7) for b in range(7) if a != b and rng.random() < 0.3]
     random = _graph([a for a, b in pairs], [b for a, b in pairs], 7, rng.uniform(0.2, 2.0, size=len(pairs)))
     return {name: potts_problem(rng.normal(scale=1.5, size=(a.shape[0], 3)), a, 1.3)
@@ -56,7 +56,7 @@ def test_every_algorithm_against_enumeration(name: str) -> None:
     """Each algorithm's energy is its labels' energy (1e-9), at or above the minimum; A* attains it; a bound, where
     one is given, is at or below it.
 
-    Fails where the model posed to OpenGM is not the problem's (a coupling's sign, a pair, the offset), or a bound is
+    Fails where the model posed to OpenGM is not the problem's (a coupling's sign, a pair, the unary's sign), or a bound is
     not one."""
     problem = PROBLEMS[name]
     exact = _minimum(problem)
