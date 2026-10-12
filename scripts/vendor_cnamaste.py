@@ -61,6 +61,7 @@ OWNED = ("tests", "docs")
 """cnamaste's own directories beside the copy: every file in them is declared in `ADDED`."""
 
 ADDED: dict[str, str] = {
+    "tests/test_pages.py": "PR23: combined.png's artists read back against cnv_seglevel.tsv, the fit, the lineage, the truth and clone_labels.tsv",
     "python/cnamaste/layout.py": "PR23: the pages run_cnamaste writes, combined.png and he_clones.png, on one genomic axis",
     "tests/conftest.py": "PR2: the session fixtures over a staged run",
     "python/cnamaste/audit/capture.py": "PR2: the staged-run file's codec and reader",
