@@ -96,6 +96,8 @@ hmrf:
   unit_ysquared : 1
   random_state : 0
   ari_tolerance : 1.0
+  # NB each clone's read depth as base mu / Z_c, Z_c its library normalizer (L2, T- #276); off is cnaster's.
+  apply_logmu_shift : False
 
 # TODO HACK max_iter : 30 ->
 #           solver: nm ->

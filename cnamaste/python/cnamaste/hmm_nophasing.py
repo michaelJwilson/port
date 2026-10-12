@@ -277,7 +277,10 @@ class hmm_nophasing:
         scratch_baf=None,
         normal_log_lambda=None,
         clone_lengths=None,
+        copy_states=None,
     ):
+        """With `copy_states` (L2, T- #276), each clone's read-depth mean is `base mu_s / Z_c`: `log_mu` less the
+        clone's `compute_logmu_shifts` block, `normal_log_lambda` stacked along the clones; otherwise `cnaster`'s."""
         n_states = log_mu.shape[0]
         n_spots = nbEncoder.n_spots
 
@@ -301,7 +304,7 @@ class hmm_nophasing:
             )
 
             for i in range(n_states):
-                if normal_log_lambda is not None:
+                if normal_log_lambda is not None and copy_states is None:
                     # log_gamma = self.get_state_posteriors()
                     # copy_states = self.get_copy_states(log_gamma, includes_phased=False)
 
@@ -326,7 +329,18 @@ class hmm_nophasing:
                     log_emit_baf_uniq[i, :],
                 )
 
-            log_emit_rdr_list.append(nbEncoder.decode_array(log_emit_rdr_uniq, s))
+            if copy_states is None:
+                log_emit_rdr_list.append(nbEncoder.decode_array(log_emit_rdr_uniq, s))
+            else:
+                # NB one shift per clone: the unique counts are evaluated once per shift, each clone's bins kept.
+                shifts = compute_logmu_shifts(log_mu[:, s], copy_states, normal_log_lambda, clone_lengths)
+                log_emit_rdr = np.empty((n_states, shifts.size))
+                for shift in np.unique(shifts):
+                    for i in range(n_states):
+                        _nb_logpmf_1d(nb_endog, nb_exposure, exp(log_mu[i, s] - shift), alphas[i, s], log_emit_rdr_uniq[i, :])
+                    block = shifts == shift
+                    log_emit_rdr[:, block] = nbEncoder.decode_array(log_emit_rdr_uniq, s)[:, block]
+                log_emit_rdr_list.append(log_emit_rdr)
             log_emit_baf_list.append(bbEncoder.decode_array(log_emit_baf_uniq, s))
 
         if clone_stack:
@@ -869,6 +883,21 @@ class hmm_nophasing:
             normal_log_lambda = np.log(normal_lambda) if normal_lambda is not None else None
             assert clone_lengths is not None
 
+        # NB L2 (T- #276): the previous fit's copy states fix each clone's path for this fit, and its normalizer
+        #    log Z_c follows log_mu; where that fit's clones are not this one's, this fit is unshifted.
+        copy_states = None
+        if log_gamma is not None and normal_log_lambda is not None:
+            if log_gamma.shape[1] == X.shape[0] and int(np.sum(clone_lengths)) == X.shape[0]:
+                copy_states = self.get_copy_states(log_gamma).astype(np.int64)
+                normal_log_lambda = np.tile(normal_log_lambda, len(clone_lengths))
+            else:
+                logger.warning(
+                    f"logmu_shift: the previous copy states cover {log_gamma.shape[1]} observations, this fit {X.shape[0]}: unshifted."
+                )
+
+        # NB only where shifted: hmm_phased's emission takes no copy states.
+        shifted = {} if copy_states is None else {"normal_log_lambda": normal_log_lambda, "clone_lengths": clone_lengths, "copy_states": copy_states}
+
         nbEncoder = CountEncoder(X[:, 0, :], base_nb_mean)
         bbEncoder = CountEncoder(X[:, 1, :], total_bb_RD)
 
@@ -967,6 +996,7 @@ class hmm_nophasing:
                         scratch_baf=scratch_baf,
                         normal_log_lambda=normal_log_lambda,
                         clone_lengths=clone_lengths,
+                        **({} if copy_states is None else {"copy_states": copy_states}),
                     )
                 )
                 self.log_emissions = (log_emission_rdr + log_emission_baf)[
@@ -1012,6 +1042,7 @@ class hmm_nophasing:
                         this_taus,
                         scratch_rdr=scratch_rdr,
                         scratch_baf=scratch_baf,
+                        **shifted,
                     )
                 )
                 log_emissions = (log_emission_rdr + log_emission_baf)[:, :, np.newaxis]
@@ -1110,11 +1141,17 @@ class hmm_nophasing:
         else:
             param_errors = {}
 
+        log_mu_shift, shifted_base_nb_mean = None, base_nb_mean
+        if copy_states is not None:
+            shifts = compute_logmu_shifts(final_log_mu[:, 0], copy_states, normal_log_lambda, clone_lengths)
+            log_mu_shift = shifts[np.cumsum(clone_lengths) - clone_lengths].copy()
+            shifted_base_nb_mean = base_nb_mean * np.exp(-shifts)[:, None]
+
         # TODO call coded
         log_emission_rdr, log_emission_baf = (
             self.compute_emission_probability_nb_betabinom(
                 X,
-                base_nb_mean,
+                shifted_base_nb_mean,
                 final_log_mu,
                 final_alphas,
                 total_bb_RD,
@@ -1163,4 +1200,4 @@ class hmm_nophasing:
             "pred_cnv": np.argmax(log_gamma, axis=0),
             "llf": -res.fun,
             "n_states": n_states,
-        } | param_errors
+        } | param_errors | ({"new_log_mu_shift": log_mu_shift} if log_mu_shift is not None else {})

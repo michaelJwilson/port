@@ -805,6 +805,14 @@
   },
   "calls": 24
  },
+ "hmm_nophasing:compute_logmu_shifts | each clone's shift is the generative log Z_c (1e-12) and clone_log_normalizers' (bitwise)": {
+  "stable": "0b32e26b859c8918c1e7c85fc111943e34c04d05b1a2ecd26497729aad62ced2",
+  "exact": "71f851144a341bb8ab0339e3e0542f6a64aaa3b1e2e6b3c45864b39db86fd714",
+  "summary": {
+   "call0": "float64 (1800,) min=0.120953 max=0.283815 mean=0.214916 sum=386.848"
+  },
+  "calls": 1
+ },
  "hmm_nophasing:get_log_transmat | closed form: t on the diagonal, (1-t)/(K-1) off it; a 1-state chain is [[0]]": {
   "stable": "a876484aec27b1aa7f59c068ba0a8a3df28d17cdc1c6dc011f42e75f8e956436",
   "exact": "a595affa4251118b46dd4be241966c64098a316927aedfc29094a656d33679d0",
@@ -917,6 +925,35 @@
   "summary": {},
   "calls": 0
  },
+ "hmm_nophasing:hmm_nophasing.compute_emission_probability_nb_betabinom_coded | with copy states, mu -> c mu leaves the emission unchanged (1e-9); without, it moves it by > 1": {
+  "stable": "68f34f2c6f47d3038b0dcd6f82f844dba8631ae4c96cdfc2b382106bf68075b7",
+  "exact": "e86be9d115739c7272e299abb62519ffc4bac7ad2f50f718b8f8a25e3b45fdf6",
+  "summary": {
+   "call0[0]": "float64 (4, 1800) min=-367.89 max=-3.02295 mean=-40.1056 sum=-288760",
+   "call0[1]": "float64 (4, 1800) min=0 max=0 mean=0 sum=0",
+   "call1[0]": "float64 (4, 1800) min=-367.89 max=-3.02295 mean=-40.1056 sum=-288760",
+   "call1[1]": "float64 (4, 1800) min=0 max=0 mean=0 sum=0",
+   "call2[0]": "float64 (4, 1800) min=-693.107 max=-3.05117 mean=-72.7255 sum=-523624",
+   "call2[1]": "float64 (4, 1800) min=0 max=0 mean=0 sum=0",
+   "call3[0]": "float64 (4, 1800) min=-248.066 max=-3.04747 mean=-36.8546 sum=-265353",
+   "call3[1]": "float64 (4, 1800) min=0 max=0 mean=0 sum=0",
+   "call4[0]": "float64 (4, 1800) min=-367.89 max=-3.02295 mean=-40.1056 sum=-288760",
+   "call4[1]": "float64 (4, 1800) min=0 max=0 mean=0 sum=0",
+   "call5[0]": "float64 (4, 1800) min=-367.89 max=-3.02295 mean=-40.1056 sum=-288760",
+   "call5[1]": "float64 (4, 1800) min=0 max=0 mean=0 sum=0",
+   "...": "4 more leaves"
+  },
+  "calls": 8
+ },
+ "hmm_nophasing:hmm_nophasing.compute_emission_probability_nb_betabinom_coded | with copy states: the dense emission at baseline base / Z_c, 1e-9": {
+  "stable": "01b601f8e630121d1f2dcd814bfadc9610a522f782f5f93f868f9e6c2dd6e3ac",
+  "exact": "2cf842e0f2d54da02c5b47e1acd30e6d5bdcaf5b3e756baf59ddc387cf7f2068",
+  "summary": {
+   "call0[0]": "float64 (4, 1800) min=-367.89 max=-3.02295 mean=-40.1056 sum=-288760",
+   "call0[1]": "float64 (4, 1800) min=0 max=0 mean=0 sum=0"
+  },
+  "calls": 1
+ },
  "hmm_nophasing:hmm_nophasing.forward_lattice | BAF fit: the lattices' MAP states are the stored pred_cnv": {
   "stable": "c5068ece7993ec6c86adbf6bae1db55b52f1bd28320ebeb77dddf2f600f14dbd",
   "exact": "095d3b751366699a461c83096da21872fa1be4191b5460f5002e5e7ff45e376b",
@@ -949,6 +986,14 @@
    "call0[19][1]": "float 8.51719",
    "call0[20][0]": "float -9.21034",
    "call0[20][1]": "float 8.51719"
+  },
+  "calls": 1
+ },
+ "hmm_nophasing:hmm_nophasing.get_copy_states | shifted, from the truth: mu / mu_1 within 2%, every bin decoded, log Z_c to 0.02; llf above the unshifted fit's": {
+  "stable": "cc60b2e112239d8b9861330caaf9b4a51f1f6f5c6a197a44917787f3b56ccb80",
+  "exact": "cc60b2e112239d8b9861330caaf9b4a51f1f6f5c6a197a44917787f3b56ccb80",
+  "summary": {
+   "call0": "int64 (1800,) min=0 max=3 sum=2686"
   },
   "calls": 1
  },

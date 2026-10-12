@@ -22,6 +22,7 @@ import test_fn_hmm
 import test_fn_hmrf
 import test_fn_integer
 import test_fn_io
+import test_fn_logmu
 import test_fn_normal
 import test_fn_omics
 import test_fn_outputs
@@ -31,9 +32,11 @@ from cnamaste.audit.callgraph import Graph, dead_copies, reached
 from cnamaste.audit.digest import Pins
 from fn import Row, snapshot
 
-MODULES = (test_fn_io, test_fn_omics, test_fn_phasing, test_fn_spatial, test_fn_normal, test_fn_hmm, test_fn_hmrf, test_fn_integer, test_fn_outputs)
+MODULES = (test_fn_io, test_fn_omics, test_fn_phasing, test_fn_spatial, test_fn_normal, test_fn_hmm, test_fn_hmrf, test_fn_integer, test_fn_outputs, test_fn_logmu)
 
 NOT_EXECUTED: dict[str, str] = {
+    "hmm_nophasing:compute_logmu_shifts": "hmrf.apply_logmu_shift is False on easy: the shifted emission is posed directly (test_fn_logmu)",
+    "hmm_nophasing:hmm_nophasing.get_copy_states": "hmrf.apply_logmu_shift is False on easy: the shifted emission is posed directly (test_fn_logmu)",
     "annotation:load_clone_labels": "annotation.clone_label is None on easy",
     "annotation:load_clone_ranges": "annotation.clone_ranges is None on easy",
     "annotation:assign_clone_ranges": "annotation.clone_ranges is None on easy",

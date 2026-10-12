@@ -140,7 +140,7 @@ def pipeline_baum_welch(
         propagate_errors=propagate_errors,
         normal_lambda=normal_lambda,  # TODO FINAL
         clone_lengths=clone_lengths,  # TODO FINAL
-        log_gamma=None,  # TODO FINAL
+        log_gamma=init_log_gamma,  # NB L2: the previous fit's copy states, where hmrf.apply_logmu_shift
     )
 
     # TODO
@@ -151,6 +151,7 @@ def pipeline_baum_welch(
     new_log_startprob = res["new_log_startprob"]
     new_log_transmat = res["new_log_transmat"]
     log_gamma = res["log_gamma"]
+    new_log_mu_shift = res.get("new_log_mu_shift")
 
     to_log = [
         f"Solved for best emission parameters with {hmm_model.__class__.__name__}:"
@@ -171,7 +172,13 @@ def pipeline_baum_welch(
         log_emission_rdr,
         log_emission_baf,
     ) = hmmclass.compute_emission_probability_nb_betabinom(
-        X, base_nb_mean, new_log_mu, new_alphas, total_bb_RD, new_p_binom, new_taus
+        X,
+        base_nb_mean if new_log_mu_shift is None else base_nb_mean * np.exp(-np.repeat(new_log_mu_shift, clone_lengths))[:, None],
+        new_log_mu,
+        new_alphas,
+        total_bb_RD,
+        new_p_binom,
+        new_taus,
     )
 
     # logmu_shift = compute_logmu_shift(n_states, new_log_mu, log_gamma, normal_lambda, clone_lengths)
@@ -228,7 +235,7 @@ def pipeline_baum_welch(
     return CnaHMRFResult(
         params=HMMParams(
             new_log_mu=as_states(new_log_mu),
-            # new_log_mu_shift=logmu_shift,
+            new_log_mu_shift=new_log_mu_shift,
             new_alphas=as_states(new_alphas),
             new_p_binom=as_states(new_p_binom),
             new_taus=as_states(new_taus),

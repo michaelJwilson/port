@@ -127,6 +127,12 @@ class YAMLConfig:
             raise ValueError(
                 "hmrf.maxspots_pooling is deprecated: spots are not pooled; remove it or set it to 1."
             )
+        # NB L2 (T- #276): each clone's read depth under its own library normalizer; absent or False is cnaster's.
+        if hasattr(self.hmrf, "apply_logmu_shift"):
+            if not isinstance(self.hmrf.apply_logmu_shift, bool):
+                raise ValueError(f"hmrf.apply_logmu_shift is True or False, not {self.hmrf.apply_logmu_shift!r}.")
+            if self.hmrf.apply_logmu_shift:
+                logger.warning("Assuming each clone's read depth under its own library normalizer (hmrf.apply_logmu_shift)")
 
 
 class JSONConfig:
