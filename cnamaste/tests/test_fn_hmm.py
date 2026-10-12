@@ -20,7 +20,7 @@ import scipy.special
 import scipy.stats
 from cnamaste.cna_hmrf_result import CloneAssignment
 from cnamaste.count_encoder import CountEncoder
-from cnamaste.hmm import compute_copy_state_posterior, pipeline_baum_welch
+from cnamaste.hmm import as_column, as_states, compute_copy_state_posterior, pipeline_baum_welch
 from cnamaste.hmm_initialize import gmm_init
 from cnamaste.hmm_nophasing import (
     _bb_logpmf_1d,
@@ -55,8 +55,8 @@ def stack_slice(run_: str, n: int = 300) -> Any:
     def build(ctx: Any) -> dict[str, Any]:
         s, res = final_stack(ctx, run_), fitted(ctx, run_)["res"]
         return {"X": s["X"][:n], "base": s["base_nb_mean"][:n], "total": s["total_bb_RD"][:n],
-                "log_mu": np.asarray(res["new_log_mu"]), "alphas": np.asarray(res["new_alphas"]),
-                "p": np.asarray(res["new_p_binom"]), "taus": np.asarray(res["new_taus"]),
+                "log_mu": np.asarray(res["new_log_mu"]).reshape(-1, 1), "alphas": np.asarray(res["new_alphas"]).reshape(-1, 1),
+                "p": np.asarray(res["new_p_binom"]).reshape(-1, 1), "taus": np.asarray(res["new_taus"]).reshape(-1, 1),
                 "transmat": np.asarray(res["new_log_transmat"]), "start": np.asarray(res["new_log_startprob"])}
     return build
 
@@ -353,6 +353,15 @@ def _em_never_decreases(h: dict[str, Any]) -> None:
     assert loglik(out["new_p_binom"], out["new_taus"]) >= loglik(start_p, np.full((2, 1), 1000.0))
 
 
+def _column_round_trip(_: Any) -> None:
+    """as_states inverts as_column bitwise, passes None, and refuses a per-clone (n_states, n_clones) parameter (Ticket#267)."""
+    x = np.array([0.1, 0.7, 0.3])
+    assert as_column(x).shape == (3, 1) and np.array_equal(as_states(as_column(x)), x)
+    assert as_column(None) is None and as_states(None) is None
+    with pytest.raises(AssertionError):
+        as_states(np.zeros((3, 2)))
+
+
 def _baum_welch_normalized(h: dict[str, Any]) -> None:
     n = h["X"].shape[0]
     transmat = np.full(n, np.log(1e-3))
@@ -361,7 +370,7 @@ def _baum_welch_normalized(h: dict[str, Any]) -> None:
     g = np.asarray(res["log_gamma"])
     assert np.allclose(scipy.special.logsumexp(g, axis=0), 0, atol=1e-10)
     assert np.array_equal(res["pred_cnv"], np.argmax(g, axis=0) % 2)
-    e = scipy_bb(h["X"][:, 1, :], h["total"], res["new_p_binom"], res["new_taus"])
+    e = scipy_bb(h["X"][:, 1, :], h["total"], as_column(res["new_p_binom"]), as_column(res["new_taus"]))
     alpha = brute_forward(e[:, :, 0], res["new_log_transmat"], res["new_log_startprob"])
     assert np.isclose(res["llf"], scipy.special.logsumexp(alpha[:, -1])), "llf is the forward pass' total"
     assert np.mean(res["pred_cnv"] == (h["p"][h["state"]] == 0.5)) > 0.95 or np.mean(res["pred_cnv"] == (h["p"][h["state"]] != 0.5)) > 0.95
@@ -448,6 +457,8 @@ INVARIANT: list[Row] = table(
     ("hmm_nophasing:hmm_nophasing.__init__", "synthetic", lambda c: None, _init_stores, "stores params and t"),
     ("hmm_nophasing:hmm_nophasing.run_baum_welch_nb_bb", "synthetic: planted BB chain, 600 bins", lambda c: planted_hmm("sp"), _em_is_optimize, "optimize is EM mode, bitwise; posteriors normalized, pred_cnv their argmax"),
     ("hmm_nophasing:hmm_nophasing._run_optimization_pipeline", "synthetic: planted BB chain, 600 bins", lambda c: planted_hmm("sp"), _em_never_decreases, "the fit's log-likelihood is at least the start's"),
+    ("hmm:as_column", "synthetic: 3 states", lambda c: None, _column_round_trip, "(n_states,) to (n_states, 1); None passes"),
+    ("hmm:as_states", "synthetic: 3 states", lambda c: None, _column_round_trip, "inverts as_column bitwise; a second axis other than 1 is refused"),
     ("hmm:pipeline_baum_welch", "synthetic: planted BB chain, 600 bins", lambda c: planted_hmm("sp"), _baum_welch_normalized, "no input mutation; normalized posteriors; llf the forward total; states split at the planted change"),
     ("hmm_initialize:gmm_init", "synthetic: planted BB chain, 600 bins", lambda c: planted_hmm("sp"), _gmm_minor_recovers, "only_minor: p in [0, 1/2], near the planted (0.2, 0.5) to 0.06; no input mutation"),
     ("hmm_initialize:gmm_init", "synthetic: planted NB+BB chain, 600 bins", lambda c: planted_hmm("smp"), _gmm_rdr_recovers, "with RDR: mu near the planted (0.5, 1.5)"),

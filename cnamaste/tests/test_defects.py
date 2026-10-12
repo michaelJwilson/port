@@ -128,6 +128,7 @@ def _(tmp_path: Path, **_: Any) -> None:
 @row("Ticket#176", "io.load_input_data", "xfail", "Ticket#176: both filter-file branches of load_input_data crash on a plausible input (a Path gene file)", TypeError)
 def _(replayed: Any, **_: Any) -> None:
     config = replayed.staged.config
+    set_global_config(config)  # NB load_input_data reads visium.* from the global config, which another row may not have installed
     load_input_data(config, filter_gene_file=Path(config.references.filtergenelist_file), filter_range_file=None)
 
 
@@ -245,15 +246,19 @@ def _(**_: Any) -> None:
     assert np.isclose(p[0], (1 - np.exp(-2 * 0.01)) / 2), f"1 cM switches at {p[0]:.3f}, Haldane's is 0.0099"
 
 
-@row("Ticket#20", "recomb.assign_centiMorgans", "xfail", "Ticket#20: assign_centiMorgans sorts its caller's list in place")
+@row("Ticket#20", "recomb.assign_centiMorgans", "regression",
+     "Ticket#20: fixed in cnamaste; assign_centiMorgans neither sorts nor reorders: it refuses pairs out of logical order (chr 2 before 10)")
 def _(**_: Any) -> None:
-    given = [(1, 300), (1, 100)]
-    assign_centiMorgans(given, pd.DataFrame({"chrom": [1, 1], "pos": [0, 1000], "pos_cm": [0.0, 1.0]}))
-    assert given == [(1, 300), (1, 100)]
+    table_ = pd.DataFrame({"chrom": [2, 10], "pos": [1000, 1000], "pos_cm": [1.0, 1.0]})
+    given = [(10, 100), (2, 100)]
+    with pytest.raises(AssertionError):
+        assign_centiMorgans(given, table_)
+    assert given == [(10, 100), (2, 100)]
+    assert np.allclose(assign_centiMorgans([(2, 100), (10, 100)], table_), [0.1, 0.1], rtol=0, atol=1e-12)
 
 
-@row("Ticket#172", "recomb.get_sitewise_transmat", "not reproduced",
-    "Ticket#172: on easy (min_prob 0.01) 32% of bins are at log 1/2; 67% sit at the min_prob floor, end-to-start gaps")
+@row("Ticket#172", "recomb.get_sitewise_transmat", "xfail",
+    "Ticket#172: on easy (min_prob 0.01), with contigs in order (Ticket#438), 61% of bins are at log 1/2 and carry no phase information")
 def _(sim: Any, **_: Any) -> None:
     log_switch = np.asarray(sim.stored("04_bins/get_sitewise_transmat/out"))
     saturated = np.mean(np.isclose(log_switch, np.log(0.5)))
@@ -407,11 +412,11 @@ def _(**_: Any) -> None:
     assert live.size == 1 or live.min() >= 10, f"live clone sizes {live.tolist()} under a floor of 10"
 
 
-@row("Ticket#879", "hmrf.reindex_clones", "xfail",
-     "Ticket#879: reindex_clones checks new_p_binom's column count alone; a per-clone new_log_mu is permuted while new_p_binom is not")
+@row("Ticket#879", "hmrf.reindex_clones", "regression",
+     "Ticket#879: fixed in cnamaste by Ticket#267; the parameters are (n_states,), and a per-clone new_log_mu is refused rather than permuted alone")
 def _(**_: Any) -> None:
     res = {"new_assignment": np.array([0, 0, 1, 1, 1]), "pred_cnv": np.array([0, 0, 1, 1, 0, 1]), "new_log_mu": np.zeros((2, 2)),
-           "new_alphas": np.ones((2, 1)), "new_p_binom": np.array([[0.5], [0.2]]), "new_taus": np.ones((2, 1))}
+           "new_alphas": np.ones(2), "new_p_binom": np.array([0.5, 0.2]), "new_taus": np.ones(2)}
     with pytest.raises(AssertionError):
         reindex_clones(res)
 
@@ -549,8 +554,8 @@ def _(sim: Any, **_: Any) -> None:
     assert np.allclose(np.reshape(coded[0], rdr.shape), rdr, atol=1e-12) and np.allclose(np.reshape(coded[1], baf.shape), baf, atol=1e-12)
 
 
-@row("Ticket#267", "hmrf.run_core_inference (fitted parameters)", "xfail",
-     "Ticket#267: the second axis of log_mu, p_binom, alphas and taus is vestigial in the fit and contradictory in its consumers")
+@row("Ticket#267", "hmrf.run_core_inference (fitted parameters)", "regression",
+     "Ticket#267: fixed in cnamaste; the fit returns log_mu, p_binom, alphas and taus as (n_states,), and every consumer reads them so")
 def _(sim: Any, **_: Any) -> None:
     res = sim.result("08_rdr/reindex_clones/out/0")
     assert np.asarray(res["new_log_mu"]).ndim == 1, f"shape {np.asarray(res['new_log_mu']).shape}: one column for {np.unique(res['new_assignment']).size} clones"
@@ -559,7 +564,7 @@ def _(sim: Any, **_: Any) -> None:
 @row("Ticket#293", "hmrf.run_core_inference (mu scale)", "not reproduced", "Ticket#293: on easy the normal clone's fitted mu is within 5% of 1")
 def _(sim: Any, **_: Any) -> None:
     res = sim.result("08_rdr/reindex_clones/out/0")
-    mu = np.exp(np.asarray(res["new_log_mu"])[np.asarray(res["pred_cnv"])[:, 0], 0])
+    mu = np.exp(np.asarray(res["new_log_mu"]).reshape(-1)[np.asarray(res["pred_cnv"])[:, 0]])
     assert abs(np.median(mu) - 1) < 0.05
 
 
@@ -660,7 +665,7 @@ def _(**_: Any) -> None:
     assert importlib.util.find_spec("pyarrow") is not None, "polars' to_pandas needs pyarrow (he.py:125)"
 
 
-@row("Ticket#311", "he.get_he_image", "xfail", "Ticket#311: get_he_image(num_labels=4) labels the brightest pixel 5, an extra initial clone")
+@row("Ticket#311", "he.get_he_image", "regression", "Ticket#311: fixed in cnamaste; get_he_image digitizes on the inner percentile edges, num_labels labels")
 def _(**_: Any) -> None:
     body = ast.unparse(function_node(source("he.py"), "get_he_image"))
     assert "np.digitize(cropped_gray, bins=bins[1:-1])" in body or "right=True" in body, \

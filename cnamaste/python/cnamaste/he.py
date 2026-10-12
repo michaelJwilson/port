@@ -110,7 +110,8 @@ def get_he_image(spaceranger_dir, res="hires", pos=None, num_labels=4):
     percentiles = np.linspace(0.0, 100.0, 1 + num_labels)
     bins = np.percentile(np.sort(cropped_gray.flatten()), percentiles)
 
-    labels = np.digitize(cropped_gray, bins=bins)
+    # NB the inner edges alone: num_labels labels, 0 to num_labels - 1, as plot_he colours them (Ticket#311).
+    labels = np.digitize(cropped_gray, bins=bins[1:-1])
 
     # TODO rename he_label.
     # NB 0.0 < x < 83_339.869; 0 < y < 53_009.165

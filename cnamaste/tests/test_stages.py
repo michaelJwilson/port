@@ -298,7 +298,7 @@ def _(run: Run) -> None:
     assert np.all(np.asarray(allowed)[np.arange(len(init)), np.asarray(init)])
 
 
-@row(BOOKKEEPING, "rdr fit: labels 0..M-1; pred_cnv == argmax log_gamma per clone; parameter columns shared")
+@row(BOOKKEEPING, "rdr fit: labels 0..M-1; pred_cnv == argmax log_gamma per clone; parameters (n_states,), shared")
 def _(run: Run) -> None:
     res = run("08_rdr/run_core_inference/out")
     labels = np.asarray(res["new_assignment"])
@@ -307,7 +307,7 @@ def _(run: Run) -> None:
     assert np.array_equal(np.asarray(res["pred_cnv"]), np.argmax(log_gamma, axis=0))
     assert log_gamma.shape[2] == labels.max() + 1
     n_states = run.config["hmm"]["n_states"]
-    assert np.asarray(res["new_log_mu"]).shape == (n_states, 1) and np.asarray(res["new_p_binom"]).shape == (n_states, 1)
+    assert np.asarray(res["new_log_mu"]).shape == (n_states,) and np.asarray(res["new_p_binom"]).shape == (n_states,)
 
 
 @row(BOOKKEEPING, "rdr merge: every clone >= min_spots_per_clone, labels 0..M-1")
@@ -324,7 +324,7 @@ def _(run: Run) -> None:
     res = run("08_rdr/reindex_clones/out")[0]
     after = np.asarray(res["new_assignment"])
     assert adjusted_rand_score(before, after) == 1.0 and np.unique(after).size == np.unique(before).size
-    p = np.asarray(res["new_p_binom"])[:, 0][np.asarray(res["pred_cnv"])]
+    p = np.asarray(res["new_p_binom"]).reshape(-1)[np.asarray(res["pred_cnv"])]
     deviation = np.maximum(np.abs(p - 0.5) - 0.05, 0).sum(axis=0)
     assert np.argmin(deviation) == 0
 
@@ -416,8 +416,8 @@ def state_recovery(run: Run, truth: Any) -> dict[str, float]:
     planted = truth.copies_at(seglevel["CHR"].astype(str).to_numpy(), middle)
     covered = planted[:, 0, 0] >= 0
     pred = np.asarray(res["pred_cnv"])
-    p = np.asarray(res["new_p_binom"])[:, 0]
-    mu = np.exp(np.asarray(res["new_log_mu"])[:, 0])
+    p = np.asarray(res["new_p_binom"]).reshape(-1)
+    mu = np.exp(np.asarray(res["new_log_mu"]).reshape(-1))
     dp, dmu = [], []
     for clone, fit in clone_of.items():
         a, b = planted[covered, clone, 0], planted[covered, clone, 1]
