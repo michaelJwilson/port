@@ -16,7 +16,7 @@ import scipy.special
 import scipy.stats
 from cnamaste.hmm_nophasing import get_log_transmat
 from cnamaste.hmm_phased import _switch_betabinom_1d, hmm_phased, update_combined_transmat
-from cnamaste.recomb import assign_centiMorgans, compute_numbat_phase_switch_prob, get_sitewise_transmat
+from cnamaste.recomb import assert_logical_order, assign_centiMorgans, compute_numbat_phase_switch_prob, get_sitewise_transmat
 from cnamaste.reference import get_reference_recomb_rates
 
 from cnamaste.audit.capture import grch38
@@ -137,14 +137,14 @@ ORACLE: list[Row] = table(
 
 
 def _map_autosomal_ascending(m: pd.DataFrame) -> None:
-    assert set(m["chrom"].unique()) == {str(i) for i in range(1, 23)}
+    assert set(m["chrom"].unique()) == set(range(1, 23))
     for _, g in m.groupby("chrom"):
         assert np.all(np.diff(g["pos"].to_numpy()) >= 0) and np.all(np.diff(g["pos_cm"].to_numpy()) >= 0), "positions and cM ascend within a contig"
 
 
 def _map_numeric_contigs(m: pd.DataFrame) -> None:
     order = pd.unique(m["chrom"]).tolist()
-    assert order == [str(i) for i in range(1, 23)], f"contig order {order[:12]}"
+    assert order == list(range(1, 23)), f"contig order {order[:12]}"
 
 
 def _transmat_rows(ctx: Any) -> dict[str, Any]:
@@ -197,6 +197,13 @@ def _phase_majority_vote(d: dict[str, Any]) -> None:
     assert np.array_equal(np.asarray(refined), want_lengths), "segments split where the minor BAF jumps, no shorter than the minimum"
 
 
+def _logical_order(_: Any) -> None:
+    assert_logical_order([(1, 100), (1, 100), (2, 50), (10, 10)])
+    for given in ([(10, 10), (2, 50)], [(1, 200), (1, 100)]):
+        with pytest.raises(AssertionError):
+            assert_logical_order(given)
+
+
 def _phased_init_stores(_: Any) -> None:
     m = hmm_phased(params="sp", t=0.3)
     assert (m.params, m.t) == ("sp", 0.3)
@@ -204,12 +211,11 @@ def _phased_init_stores(_: Any) -> None:
 
 INVARIANT: list[Row] = table(
     "invariant",
-    ("reference:get_reference_recomb_rates", "CalicoST genetic map", genetic_map, _map_autosomal_ascending, "chr1-22 only, chr prefix dropped; positions and cM ascend within a contig"),
-    ("reference:get_reference_recomb_rates", "CalicoST genetic map", genetic_map, _map_numeric_contigs, "contigs in numeric order, as assign_centiMorgans' sweep needs",
-     "Ticket#438: get_reference_recomb_rates sorts contigs as text (1, 10..19, 2, 20..22, 3..9), so assign_centiMorgans' numeric sweep gives chr2-9 one constant cM"),
+    ("reference:get_reference_recomb_rates", "CalicoST genetic map", genetic_map, _map_autosomal_ascending, "chr1-22 only, chr prefix dropped, integer contigs; positions and cM ascend within a contig"),
+    ("reference:get_reference_recomb_rates", "CalicoST genetic map", genetic_map, _map_numeric_contigs, "contigs in numeric order, as assign_centiMorgans' sweep needs (Ticket#438)"),
+    ("recomb:assert_logical_order", "synthetic: 4 pairs, 3 contigs", lambda c: None, _logical_order, "accepts ties and contig 2 before 10; refuses 10 before 2 and a falling position"),
     ("recomb:get_sitewise_transmat", "04_bins/get_sitewise_transmat out, 04_bins/create_bin_ranges out", _transmat_rows, _transmat_within_bounds, "one entry per bin in [log min_prob - shift, log 1/2]; contig ends at the floor"),
-    ("recomb:get_sitewise_transmat", "04_bins/get_sitewise_transmat out, 04_bins/create_bin_ranges out", _transmat_rows, _no_contig_all_floor, "no contig has every bin at the min_prob floor",
-     "Ticket#438: get_reference_recomb_rates sorts contigs as text, so every bin on chr2-9 (861 of 1,847 on easy) takes the min_prob floor: no phase switch there"),
+    ("recomb:get_sitewise_transmat", "04_bins/get_sitewise_transmat out, 04_bins/create_bin_ranges out", _transmat_rows, _no_contig_all_floor, "no contig has every bin at the min_prob floor (Ticket#438)"),
     ("phasing:initial_phase_given_partition", Replay("03_phasing/initial_phase_given_partition, replayed"), _vote, _phase_majority_vote, "phase = majority vote of non-balanced clones; refined lengths split at minor-BAF jumps (recomputed)"),
     ("hmm_phased:hmm_phased.__init__", "synthetic", lambda c: None, _phased_init_stores, "stores params and t"),
 )

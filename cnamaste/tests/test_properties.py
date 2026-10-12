@@ -112,8 +112,10 @@ def _bb_sums(kernel: str) -> Any:
                         _bb_logpmf_1d(k, total, p, tau, v)
                     else:
                         v = _dense_bb_logpmf(k[:, None], total[:, None], f["p_binom"], f["taus"])[i, :, 0]
-                    worst = max(worst, abs(scipy.special.logsumexp(v)))
-        assert worst < 1e-10, f"max |log sum pmf| {worst:.2e}"
+                    # NB float64 cancellation in lgamma(tau): scipy's own betabinom reaches 6.7e-10 at easy's tau 4.6e5
+                    tol = max(1e-10, 2 * np.finfo(float).eps * abs(scipy.special.gammaln(tau)))
+                    worst = max(worst, abs(scipy.special.logsumexp(v)) / tol)
+        assert worst < 1.0, f"max |log sum pmf| {worst:.2f} of its tolerance"
     return check
 
 
@@ -235,7 +237,8 @@ def _phase_emission(fits: list[dict[str, np.ndarray]]) -> None:
         _, plain = hmm_nophasing.compute_emission_probability_nb_betabinom(d["X"], d["base"], f["log_mu"], f["alphas"], d["total"], f["p_binom"], f["taus"])
         close(rdr[k:], rdr[:k], 0.0)
         close(baf[:k], plain, 1e-10)
-        close(baf[k:], flipped, 1e-9)
+        # NB float64 cancellation in lgamma(tau), in each of the two kernels: 2.0e-9 at easy's tau 4.6e5
+        close(baf[k:], flipped, max(1e-9, 4 * np.finfo(float).eps * float(np.max(np.abs(scipy.special.gammaln(f["taus"]))))))
 
 
 def _phase_decoded(calls: list[dict[str, Any]]) -> None:
@@ -292,7 +295,7 @@ ROWS: list[Row] = [
         "normalisation",
         *((f"hmm_nophasing:{fn}", PARAMS, fitted_params, _nb_sums(kind), f"NB pmf sums to 1 (1e-10) at exposures {EXPOSURES}, support cut where the tail < 1e-12")
           for fn, kind in (("nbinom_logpmf_numba", "scalar"), ("_nb_logpmf_1d", "1d"), ("_dense_nb_logpmf", "dense"))),
-        *((f"hmm_nophasing:{fn}", PARAMS, fitted_params, _bb_sums(kind), f"BB pmf sums to 1 (1e-10) over 0..n, n in {DEPTHS}")
+        *((f"hmm_nophasing:{fn}", PARAMS, fitted_params, _bb_sums(kind), f"BB pmf sums to 1 (1e-10, or 2 eps |lgamma tau| where larger) over 0..n, n in {DEPTHS}")
           for fn, kind in (("betabinom_logpmf_numba", "scalar"), ("_bb_logpmf_1d", "1d"), ("_dense_bb_logpmf", "dense"))),
     ),
     *table(
@@ -316,8 +319,9 @@ ROWS: list[Row] = [
     ),
     *table(
         "phase",
-        ("hmm_phased:hmm_phased.compute_emission_probability_nb_betabinom", PARAMS + "; 200 bins drawn from them", fitted_params, _phase_emission, "state k + K is state k at 1 - p: BAF to 1e-9, RDR bitwise"),
-        ("integer_copy:hill_climbing_integer_copynumber_fixdiploid_milp", "09_outputs/integer_copy_{0..3} in and out", recorded, _phase_decoded, "p -> 1 - p swaps each decoded (A, B), cost and ploidy unchanged"),
+        ("hmm_phased:hmm_phased.compute_emission_probability_nb_betabinom", PARAMS + "; 200 bins drawn from them", fitted_params, _phase_emission, "state k + K is state k at 1 - p: BAF to 1e-9 (or 4 eps |lgamma tau| where larger), RDR bitwise"),
+        ("integer_copy:hill_climbing_integer_copynumber_fixdiploid_milp", "09_outputs/integer_copy_{0..3} in and out", recorded, _phase_decoded, "p -> 1 - p swaps each decoded (A, B), cost and ploidy unchanged",
+         "Ticket#882: the hill climb is not symmetric under p -> 1 - p; on easy at 1 - p it decodes state 1 as (3, 0), not (2, 1), at 2.4e-8 lower cost, and calls 2-3 at ploidy 2, not 3"),
     ),
     *table(
         "invalid",
