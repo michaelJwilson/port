@@ -412,11 +412,11 @@ def _(**_: Any) -> None:
     assert live.size == 1 or live.min() >= 10, f"live clone sizes {live.tolist()} under a floor of 10"
 
 
-@row("Ticket#879", "hmrf.reindex_clones", "xfail",
-     "Ticket#879: reindex_clones checks new_p_binom's column count alone; a per-clone new_log_mu is permuted while new_p_binom is not")
+@row("Ticket#879", "hmrf.reindex_clones", "regression",
+     "Ticket#879: fixed in cnamaste by Ticket#267; the parameters are (n_states,), and a per-clone new_log_mu is refused rather than permuted alone")
 def _(**_: Any) -> None:
     res = {"new_assignment": np.array([0, 0, 1, 1, 1]), "pred_cnv": np.array([0, 0, 1, 1, 0, 1]), "new_log_mu": np.zeros((2, 2)),
-           "new_alphas": np.ones((2, 1)), "new_p_binom": np.array([[0.5], [0.2]]), "new_taus": np.ones((2, 1))}
+           "new_alphas": np.ones(2), "new_p_binom": np.array([0.5, 0.2]), "new_taus": np.ones(2)}
     with pytest.raises(AssertionError):
         reindex_clones(res)
 
@@ -554,8 +554,8 @@ def _(sim: Any, **_: Any) -> None:
     assert np.allclose(np.reshape(coded[0], rdr.shape), rdr, atol=1e-12) and np.allclose(np.reshape(coded[1], baf.shape), baf, atol=1e-12)
 
 
-@row("Ticket#267", "hmrf.run_core_inference (fitted parameters)", "xfail",
-     "Ticket#267: the second axis of log_mu, p_binom, alphas and taus is vestigial in the fit and contradictory in its consumers")
+@row("Ticket#267", "hmrf.run_core_inference (fitted parameters)", "regression",
+     "Ticket#267: fixed in cnamaste; the fit returns log_mu, p_binom, alphas and taus as (n_states,), and every consumer reads them so")
 def _(sim: Any, **_: Any) -> None:
     res = sim.result("08_rdr/reindex_clones/out/0")
     assert np.asarray(res["new_log_mu"]).ndim == 1, f"shape {np.asarray(res['new_log_mu']).shape}: one column for {np.unique(res['new_assignment']).size} clones"
@@ -564,7 +564,7 @@ def _(sim: Any, **_: Any) -> None:
 @row("Ticket#293", "hmrf.run_core_inference (mu scale)", "not reproduced", "Ticket#293: on easy the normal clone's fitted mu is within 5% of 1")
 def _(sim: Any, **_: Any) -> None:
     res = sim.result("08_rdr/reindex_clones/out/0")
-    mu = np.exp(np.asarray(res["new_log_mu"])[np.asarray(res["pred_cnv"])[:, 0], 0])
+    mu = np.exp(np.asarray(res["new_log_mu"]).reshape(-1)[np.asarray(res["pred_cnv"])[:, 0]])
     assert abs(np.median(mu) - 1) < 0.05
 
 

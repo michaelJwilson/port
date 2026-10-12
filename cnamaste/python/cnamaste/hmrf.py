@@ -7,7 +7,7 @@ from numba import njit, prange
 from sklearn.metrics import adjusted_rand_score
 
 from cnamaste.config import get_global_config, start_time
-from cnamaste.hmm import pipeline_baum_welch
+from cnamaste.hmm import as_column, pipeline_baum_welch
 
 # from cnamaste.wolff import wolff_sweep
 from cnamaste.hmm_initialize import cna_mixture_init, gmm_init
@@ -135,11 +135,11 @@ def pipeline_clone_assignment(
     ) = hmmclass.compute_emission_probability_nb_betabinom(
         single_X,
         single_base_nb_mean,
-        res["new_log_mu"],
-        res["new_alphas"],
+        as_column(res["new_log_mu"]),
+        as_column(res["new_alphas"]),
         single_total_bb_RD,
-        res["new_p_binom"],
-        res["new_taus"],
+        as_column(res["new_p_binom"]),
+        as_column(res["new_taus"]),
     )
 
     _tumor_prop = single_tumor_prop if single_tumor_prop is not None else np.empty(0)
@@ -703,7 +703,8 @@ def reindex_clones(res_combine, posterior=None, single_tumor_prop=None):
     else:
         n_obs = pred_cnv.shape[0]
 
-    assert res_combine["new_p_binom"].shape[1] == 1
+    # NB one parameter per state, shared by every clone: nothing per-clone to permute (Ticket#267, Ticket#879).
+    assert all(np.ndim(res_combine[k]) == 1 for k in ("new_log_mu", "new_alphas", "new_p_binom", "new_taus"))
 
     baf_profile_list = []
     for c in range(n_clones):
@@ -712,7 +713,7 @@ def reindex_clones(res_combine, posterior=None, single_tumor_prop=None):
         else:
             clone_path = pred_cnv[:, c]
 
-        baf_profile_list.append(res_combine["new_p_binom"][clone_path, 0])
+        baf_profile_list.append(res_combine["new_p_binom"][clone_path])
 
     baf_profiles = np.column_stack(baf_profile_list).T
 
@@ -741,10 +742,6 @@ def reindex_clones(res_combine, posterior=None, single_tumor_prop=None):
         palette[old_idx] = new_idx
 
     new_res_combine["new_assignment"] = palette[assignments]
-
-    for key in ["new_log_mu", "new_alphas", "new_p_binom", "new_taus"]:
-        if res_combine[key].shape[1] > 1:
-            new_res_combine[key] = res_combine[key][:, reidx]
 
     if is_concatenated:
         concat_idx = np.concatenate(

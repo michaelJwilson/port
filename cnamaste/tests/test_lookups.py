@@ -88,7 +88,8 @@ def posterior_states(sim: Any, replayed: Any, clone: int) -> tuple[np.ndarray, n
     b = base[:, spots].sum(axis=1, keepdims=True)
     d = depth[:, spots].sum(axis=1, keepdims=True)
     rdr, baf = hmm_nophasing.compute_emission_probability_nb_betabinom(
-        x, b, res["new_log_mu"], res["new_alphas"], d, res["new_p_binom"], res["new_taus"]
+        x, b, *(np.asarray(res[k]).reshape(-1, 1) for k in ("new_log_mu", "new_alphas")), d,
+        *(np.asarray(res[k]).reshape(-1, 1) for k in ("new_p_binom", "new_taus"))
     )
     emission = rdr + baf
     n_states = emission.shape[0]
@@ -148,7 +149,7 @@ def test_a_baf_state_reads_its_p_and_the_mirrored_branch_is_unreached(sim: Any) 
     assert log_gamma.shape[0] == c
     n_clones = np.unique(merged["new_assignment"]).size
     pred = np.argmax(log_gamma, axis=0).reshape(n_clones, -1)
-    p = np.asarray(merged["new_p_binom"])[:, 0]
+    p = np.asarray(merged["new_p_binom"]).reshape(-1)
     expected = np.where(pred < c, p[pred % c], 1 - p[pred % c])
     assert np.all(pred < c)
     assert np.array_equal(sim.stored("06_normal/determine_normal_candidates/in/args/2"), expected)
@@ -191,7 +192,7 @@ def test_the_ploidy_tables_agree(sim: Any) -> None:
         pairs = np.asarray(sim.stored(f"09_outputs/integer_copy_{c}/out/0"))
         assert np.array_equal(perstate[[f"clone{c} A", f"clone{c} B"]].to_numpy(), pairs)
         assert np.array_equal(seglevel[f"clone{c} Z"].to_numpy(), pred[:, c])
-        assert np.allclose(seglevel[f"clone{c} p"].to_numpy(), np.asarray(res["new_p_binom"])[pred[:, c], 0], rtol=1e-15, atol=1e-15)
+        assert np.allclose(seglevel[f"clone{c} p"].to_numpy(), np.asarray(res["new_p_binom"]).reshape(-1)[pred[:, c]], rtol=1e-15, atol=1e-15)
 
 
 def test_the_planted_clones_match_fitted_ones(sim: Any, truth: Any) -> None:

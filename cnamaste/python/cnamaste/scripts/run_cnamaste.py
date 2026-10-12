@@ -886,8 +886,8 @@ def run_cnamaste(config_path, over_rides=None):
         [
             np.where(
                 pred[c, :] < config.hmm.n_states,
-                merged_res["new_p_binom"][pred[c, :] % config.hmm.n_states, 0],
-                1.0 - merged_res["new_p_binom"][pred[c, :] % config.hmm.n_states, 0],
+                merged_res["new_p_binom"][pred[c, :] % config.hmm.n_states],
+                1.0 - merged_res["new_p_binom"][pred[c, :] % config.hmm.n_states],
             )
             for c in range(n_baf_clones)
         ]
@@ -1367,8 +1367,7 @@ def run_cnamaste(config_path, over_rides=None):
             # NB adjust log_mu such that sum_bin lambda * np.exp(log_mu) = 1.
             lambd = base_nb_mean[:, s] / np.sum(base_nb_mean[:, s])
 
-            # NB scales inferred log_mu for this clone according to the library expression.
-            idx = s if res_combine["new_log_mu"].shape[1] > 1 else 0
+            # NB one log_mu for every clone (Ticket#267).
 
             # TODO no correction for impacy of cnas on library size?
             # adjusted_log_mu = (
@@ -1383,10 +1382,10 @@ def run_cnamaste(config_path, over_rides=None):
             # )  # TODO HACK BUG?
 
             # TODO HACK BUG?
-            adjusted_log_mu = res_combine["new_log_mu"][:, idx]
+            adjusted_log_mu = res_combine["new_log_mu"]
 
             logger.info(
-                f"For clone {cid}, normalized log mu to sum_bin lambda * np.exp(log_mu) = 1.; yielding new mu=\n{np.exp(adjusted_log_mu)}\ngiven mu=\n{np.exp(res_combine["new_log_mu"][:, idx])}."
+                f"For clone {cid}, normalized log mu to sum_bin lambda * np.exp(log_mu) = 1.; yielding new mu=\n{np.exp(adjusted_log_mu)}\ngiven mu=\n{np.exp(res_combine["new_log_mu"])}."
             )
 
             # TODO finalize integer copy number determination.
@@ -1398,7 +1397,7 @@ def run_cnamaste(config_path, over_rides=None):
                     hill_climbing_integer_copynumber_oneclone(
                         adjusted_log_mu,
                         base_nb_mean[:, s],
-                        res_combine["new_p_binom"][:, idx],
+                        res_combine["new_p_binom"],
                         this_pred_cnv,
                         max_medploidy=max_medploidy,
                     )
@@ -1411,7 +1410,7 @@ def run_cnamaste(config_path, over_rides=None):
                 ) = hill_climbing_integer_copynumber_fixdiploid_milp(
                     adjusted_log_mu,
                     base_nb_mean[:, s],
-                    res_combine["new_p_binom"][:, idx],
+                    res_combine["new_p_binom"],
                     this_pred_cnv,
                     nonbalance_bafdist=config.int_copy_num.nonbalance_bafdist,
                     nondiploid_rdrdist=config.int_copy_num.nondiploid_rdrdist,
@@ -1431,10 +1430,10 @@ def run_cnamaste(config_path, over_rides=None):
                 [
                     this_pred_cnv,  # NB best _REAL_ (not integer) copy states for each clone and each ploidy.
                     res_combine["new_log_mu"][
-                        this_pred_cnv, idx
+                        this_pred_cnv
                     ],  # NB best model read depth for each clone and each ploidy.
                     res_combine["new_p_binom"][
-                        this_pred_cnv, idx
+                        this_pred_cnv
                     ],  # NB best model baf for each clone and each ploidy.
                     best_integer_copies[
                         this_pred_cnv, 0
@@ -1455,12 +1454,8 @@ def run_cnamaste(config_path, over_rides=None):
             for name, data in zip(
                 ("logmu", "p", "A", "B"),
                 [
-                    res_combine["new_log_mu"][
-                        :, idx
-                    ],  # NB best per-state read depth for each clone and ploidy.
-                    res_combine["new_p_binom"][
-                        :, idx
-                    ],  # NB best per-state baf for each clone and ploidy.
+                    res_combine["new_log_mu"],  # NB best per-state read depth for each clone and ploidy.
+                    res_combine["new_p_binom"],  # NB best per-state baf for each clone and ploidy.
                     best_integer_copies[
                         :, 0
                     ],  # NB best per-state integer A-copies for each clone and ploidy.

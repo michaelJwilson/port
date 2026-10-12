@@ -117,7 +117,7 @@ def test_parameters_to_the_written_seglevel(sim: Any) -> None:
     written = pd.read_csv(io.BytesIO(sim.file("cnv_seglevel.tsv")), sep="\t")
     for c in range(pred.shape[1]):
         pairs = np.asarray(sim.stored(f"09_outputs/integer_copy_{c}/out/0"))[pred[:, c]]
-        rebuilt = np.column_stack([pred[:, c], np.asarray(res["new_log_mu"])[pred[:, c], 0], np.asarray(res["new_p_binom"])[pred[:, c], 0], pairs])
+        rebuilt = np.column_stack([pred[:, c], np.asarray(res["new_log_mu"]).reshape(-1)[pred[:, c]], np.asarray(res["new_p_binom"]).reshape(-1)[pred[:, c]], pairs])
         stated = written[[f"clone{c} {k}" for k in ("Z", "logmu", "p", "A", "B")]].to_numpy()
         # NB to_csv prints 16 significant digits: the last ulp of logmu and p is the writer's
         assert np.allclose(rebuilt, stated, rtol=1e-15, atol=1e-15)
@@ -134,8 +134,8 @@ def test_observed_counts_fall_inside_the_predicted_intervals(sim: Any, replayed:
     res = sim.result("08_rdr/reindex_clones/out/0")
     pred = np.asarray(res["pred_cnv"])
     umi, b, depth, base = pseudobulk(sim, replayed)
-    mu, alpha = np.exp(np.asarray(res["new_log_mu"])[:, 0]), np.asarray(res["new_alphas"])[:, 0]
-    p, tau = np.asarray(res["new_p_binom"])[:, 0], np.asarray(res["new_taus"])[:, 0]
+    mu, alpha = np.exp(np.asarray(res["new_log_mu"]).reshape(-1)), np.asarray(res["new_alphas"]).reshape(-1)
+    p, tau = np.asarray(res["new_p_binom"]).reshape(-1), np.asarray(res["new_taus"]).reshape(-1)
     mean = base * mu[pred]
     n = 1.0 / alpha[pred]
     low, high = stats.nbinom.interval(INTERVAL, n, n / (n + mean))

@@ -642,8 +642,6 @@ def plot_clones_genomic(
 
         # --- Viterbi Segments ---
         if res_combine is not None:
-            clone_idx = 0 if res_combine["new_log_mu"].shape[1] == 1 else c
-
             if (
                 res_combine["pred_cnv"].ndim == 1
                 or res_combine["pred_cnv"].shape[1] == 1
@@ -659,8 +657,8 @@ def plot_clones_genomic(
             segments, labels = get_intervals(this_pred)
 
             # 1. Pre-compute exponential math ONCE, not inside the loop
-            exp_log_mu = np.exp(res_combine["new_log_mu"][:, clone_idx])
-            p_binom_arr = res_combine["new_p_binom"][:, clone_idx]
+            exp_log_mu = np.exp(res_combine["new_log_mu"])
+            p_binom_arr = res_combine["new_p_binom"]
 
             # 2. Build coordinate lists for LineCollection
             rdr_lines, baf_major_lines, baf_minor_lines = [], [], []
