@@ -90,7 +90,7 @@ def compute_loglike_spot_assignment(
 _SESSION: list = []
 """The run's one OpenGM worker, started on the first labelling that asks for it and shut at exit (S3)."""
 
-STARTS = ("icm", "expansion", "swap")
+STARTS = ("icm", "expansion", "swap", "expansion_kolmogorov", "swap_kolmogorov")
 """The OpenGM algorithms that start from the current labelling; the rest take none."""
 
 
