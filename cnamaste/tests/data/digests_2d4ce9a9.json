@@ -309,6 +309,14 @@
   },
   "calls": 1
  },
+ "config:YAMLConfig.issue_warnings | a non-zero hmrf.inertia is refused (deprecated)": {
+  "stable": "94ef957958f15547e599cae201cdb854960fccc9657a61b8891920044de6d393",
+  "exact": "94ef957958f15547e599cae201cdb854960fccc9657a61b8891920044de6d393",
+  "summary": {
+   "call0": "raised ValueError"
+  },
+  "calls": 1
+ },
  "config:YAMLConfig.issue_warnings | an unknown hmrf.label_solver is refused": {
   "stable": "94ef957958f15547e599cae201cdb854960fccc9657a61b8891920044de6d393",
   "exact": "94ef957958f15547e599cae201cdb854960fccc9657a61b8891920044de6d393",
@@ -513,8 +521,8 @@
   "calls": 2
  },
  "external:Session.solve | 7 algorithms: energy of the labels, >= the minimum; A* exact; bounds <= the minimum; ICM descends from its start": {
-  "stable": "4e4eeb0727ede133f0a4dd9ab504c504090c2f368ecf66fd18723142efe3e09e",
-  "exact": "71e783168597a99f03bc225b83b6f82be5ba672f9475b9ec94d448019dd2ee2e",
+  "stable": "ff4aa6f1d770992fd0f2eadc51bbb2176ad7c12ac9b8acfc6db1ddc697035f73",
+  "exact": "de6e01c02229f43246ce174c27523c304b78aac560486f4702bf2458f3dc4f21",
   "summary": {
    "call0.labels": "int64 (6,) min=2 max=2 sum=12",
    "call0.energy": "float -9.37453",
@@ -1403,6 +1411,14 @@
   },
   "calls": 3
  },
+ "hmrf:pipeline_clone_assignment | log_persample_weights is refused (deprecated)": {
+  "stable": "94ef957958f15547e599cae201cdb854960fccc9657a61b8891920044de6d393",
+  "exact": "94ef957958f15547e599cae201cdb854960fccc9657a61b8891920044de6d393",
+  "summary": {
+   "call0": "raised ValueError"
+  },
+  "calls": 1
+ },
  "hmrf:pipeline_clone_assignment | the field is scipy's BB log-likelihood under each clone's MAP path": {
   "stable": "58712ffbe5a8941cda7bb7f77e584363683692a4e2f4510dc8a3182f29e32b5a",
   "exact": "2a56355274f7248997b03da516c13dfea1833ec2821e19092b2003a3aad343a3",
@@ -2241,129 +2257,116 @@
   },
   "calls": 0
  },
- "potts:_field | the field adds each spot's sample's per-sample weight": {
-  "stable": "4127428983f8fe92f1a6f6b0a77915a10e98bf23c3b9128513004c9d28024a63",
-  "exact": "c9924901fb0570ba1c735809adcf3ee15bb0ef9af68d9d722a145cf4e184b9ad",
+ "potts:potts_energy | -calc_assignment_cost": {
+  "stable": "e5f864dd42b67d9cdc80128f8e93337ce9cfac0399fa635ff31557103bef10d7",
+  "exact": "78167bf850401d6c2e3567896e7ad944377b155154c2bd2f33a9ce81fc856a5e",
   "summary": {
-   "call0": "float64 (64, 3) min=-5.11185 max=6.10196 mean=0.127333 sum=24.4479",
-   "call1": "float64 (64, 3) min=-6.20686 max=4.90921 mean=-0.243177 sum=-46.69",
-   "call2": "float64 (64, 3) min=-5.11185 max=6.10196 mean=0.127333 sum=24.4479",
-   "call3": "float64 (64, 3) min=-6.20686 max=4.90921 mean=-0.243177 sum=-46.69",
-   "call4": "float64 (64, 3) min=-5.11185 max=6.10196 mean=0.127333 sum=24.4479",
-   "call5": "float64 (64, 3) min=-6.20686 max=4.90921 mean=-0.243177 sum=-46.69",
-   "call6": "float64 (64, 3) min=-5.11185 max=6.10196 mean=0.127333 sum=24.4479",
-   "call7": "float64 (64, 3) min=-6.20686 max=4.90921 mean=-0.243177 sum=-46.69",
-   "call8": "float64 (64, 3) min=-5.11185 max=6.10196 mean=0.127333 sum=24.4479",
-   "call9": "float64 (64, 3) min=-6.20686 max=4.90921 mean=-0.243177 sum=-46.69",
-   "call10": "float64 (64, 3) min=-5.11185 max=6.10196 mean=0.127333 sum=24.4479",
-   "call11": "float64 (64, 3) min=-6.20686 max=4.90921 mean=-0.243177 sum=-46.69",
-   "...": "28 more leaves"
+   "call0": "float -29.6201",
+   "call1": "float -11.2281",
+   "call2": "float -21.3455",
+   "call3": "float -29.3973",
+   "call4": "float -22.1879",
+   "call5": "float -48.4964",
+   "call6": "float -3.88431",
+   "call7": "float -24.7411",
+   "call8": "float -19.0363",
+   "call9": "float -25.2687",
+   "call10": "float -32.4428",
+   "call11": "float -24.6662",
+   "...": "8 more leaves"
   },
-  "calls": 40
- },
- "potts:potts_energy | -calc_assignment_cost, with and without per-sample weights": {
-  "stable": "0f1ad89a9b688ae7bfab68176b2af5a6073287626c735bf64f52d773c3aa281b",
-  "exact": "aa16ef97e3d73e24293a2fcfbe1f9d7e5e056f9d6feb7cbab78127025e648b21",
-  "summary": {
-   "call0": "float -25.2224",
-   "call1": "float 0.833059",
-   "call2": "float -20.487",
-   "call3": "float 2.24351",
-   "call4": "float -0.76218",
-   "call5": "float 27.489",
-   "call6": "float -21.283",
-   "call7": "float -1.21895",
-   "call8": "float -28.6288",
-   "call9": "float 8.96303",
-   "call10": "float -22.2464",
-   "call11": "float -2.62816",
-   "...": "28 more leaves"
-  },
-  "calls": 40
+  "calls": 20
  },
  "potts:potts_energy | on an asymmetric graph: -calc_assignment_cost (w / 2 per stored edge)": {
-  "stable": "6247e8d277d742f965c89460bd6026766aefb196b774b251fe93e365ce7f601a",
-  "exact": "addc935248179cdac3c604355b69589a9146b03d5b27f051d48cfd1bb23c9e25",
+  "stable": "5facddeaa3f36623679be85b22ec2b682f0b4d8be243c4954f6ecb680a547fe8",
+  "exact": "2f0b1c000351c8dd57ec3811d3424bc18851413fbda066b8ef573da5736fb1b7",
   "summary": {
-   "call0": "float 6.01535",
-   "call1": "float 32.0708",
-   "call2": "float -29.8998",
-   "call3": "float -7.16931",
-   "call4": "float -37.5687",
-   "call5": "float -9.31754",
-   "call6": "float -21.8047",
-   "call7": "float -1.74067",
-   "call8": "float -58.0458",
-   "call9": "float -20.4539",
-   "call10": "float -40.4195",
-   "call11": "float -20.8013",
-   "...": "28 more leaves"
+   "call0": "float -35.1674",
+   "call1": "float -15.1456",
+   "call2": "float -11.1018",
+   "call3": "float -24.3814",
+   "call4": "float -3.71314",
+   "call5": "float -62.1374",
+   "call6": "float -15.649",
+   "call7": "float -17.8233",
+   "call8": "float -27.2598",
+   "call9": "float -27.5346",
+   "call10": "float -31.2706",
+   "call11": "float -31.7242",
+   "...": "8 more leaves"
   },
-  "calls": 40
+  "calls": 20
  },
  "potts:potts_energy | on easy's kNN adjacency: -calc_assignment_cost": {
-  "stable": "efb7c1ea30693548d24bf0ea3ba00d35a752db99441fe1def6bcea064c7f87b7",
-  "exact": "0577d18a153de88af9072d2077dc29d8783ecec749fbcad4393dce5eae4fcb37",
+  "stable": "cfa8976a8c9ac5cfc6d4b3e4292a3cdc1e44c2ce6f4d6164ac273cc283f23e5f",
+  "exact": "81f98534582cc6da5b8fd4a021d63ec92a35f992abe2b97285f8625dc7f0ef9a",
   "summary": {
-   "call0": "float -326.247",
-   "call1": "float -176.35",
-   "call2": "float -318.577",
-   "call3": "float -153.777",
-   "call4": "float -233.707",
-   "call5": "float -104.024",
-   "call6": "float -254.01",
-   "call7": "float -97.6769",
-   "call8": "float -301.464",
-   "call9": "float -139.493",
-   "call10": "float -415.728",
-   "call11": "float -257.791",
-   "...": "28 more leaves"
+   "call0": "float -301.764",
+   "call1": "float -249.596",
+   "call2": "float -256.451",
+   "call3": "float -335.064",
+   "call4": "float -245.612",
+   "call5": "float -228.189",
+   "call6": "float -232.017",
+   "call7": "float -268.414",
+   "call8": "float -326.634",
+   "call9": "float -206.399",
+   "call10": "float -332.429",
+   "call11": "float -276.081",
+   "...": "8 more leaves"
   },
-  "calls": 40
+  "calls": 20
  },
  "potts:potts_problem | on easy's kNN adjacency: the energy of every labelling": {
-  "stable": "00521db88fc9a9afe274b845e2ed0ae431ceade33ea4cec49827ecad703dacdf",
-  "exact": "c7a13b66ba28425712efefa3c53c142c7e2981392a9f807c19c833dffa592b5b",
+  "stable": "6e46cf4f6d7cba0650f0313af6727324fc17b3fb95a157ece01cf9a87815e5ca",
+  "exact": "8b582cf9d452be6ae1c434a4e11f9480f82a1311965439d60b44ee213b62d4f6",
   "summary": {
    "call0.unary": "float64 (300, 4) min=-10.5111 max=9.57741 mean=0.00688571 sum=8.26286",
    "call0.first": "int64 (1204,) min=0 max=297 sum=166676",
    "call0.second": "int64 (1204,) min=1 max=299 sum=182830",
-   "call0.coupling": "float64 (1204,) min=0.5 max=1 mean=0.956395 sum=1151.5",
-   "call0.offset": "float -0.75"
+   "call0.coupling": "float64 (1204,) min=0.5 max=1 mean=0.956395 sum=1151.5"
   },
   "calls": 1
  },
- "potts:potts_problem | one coupling per pair, first < second, J = weight (w_ij + w_ji) / 2; a self-loop the offset; the energy of every labelling": {
-  "stable": "92a73712e4336ab47c30b55195998c9c271cd581ab89a9a2698b02c61210f326",
-  "exact": "8cbc1f67e4d16f3e925d68f806efa575a4518a082ca79b03a369818f41cc40ef",
+ "potts:potts_problem | one coupling per pair, first < second, J = weight (w_ij + w_ji) / 2; the energy of every labelling": {
+  "stable": "371bda13f758ed479ac092e0d322778656bbe10b649407051c0b28995fa64b78",
+  "exact": "7a067e80e265e8cea93be1dd3d55e4058466dfb3d4862fdcd258cb8b1445db40",
   "summary": {
    "call0.unary": "float64 (64, 3) min=-6.10196 max=5.11185 mean=-0.127333 sum=-24.4479",
    "call0.first": "int64 (112,) min=0 max=62 sum=3276",
    "call0.second": "int64 (112,) min=1 max=63 sum=3780",
-   "call0.coupling": "float64 (112,) min=0.35 max=0.7 mean=0.646875 sum=72.45",
-   "call0.offset": "float -0.525"
+   "call0.coupling": "float64 (112,) min=0.35 max=0.7 mean=0.646875 sum=72.45"
   },
   "calls": 1
  },
- "potts:problem_energy | potts_energy's, offset included": {
-  "stable": "fd3283e0e4cefb9c1b296e8a402794e01bc803e9867d76c18ce0d1a6e09a0938",
-  "exact": "d33f8230412b87e4e6dd23ed5fca9a955525c5a81aafa28973f5d77279dcc5be",
+ "potts:problem_energy | potts_energy's": {
+  "stable": "27388906a1f1419e51eb70ed50e995cff74233e1ddb4bf82cc4ecfefed7f1c87",
+  "exact": "c2696e12b949effd421578b93b09dd4d4c46bd0239d3b3f83ce581c05794a2a4",
   "summary": {
-   "call0": "float -42.3944",
-   "call1": "float -14.5402",
-   "call2": "float -36.377",
-   "call3": "float -40.6387",
-   "call4": "float -19.3553",
-   "call5": "float -10.5613",
-   "call6": "float -14.4856",
-   "call7": "float -26.9598",
-   "call8": "float -41.2483",
-   "call9": "float -24.6168",
-   "call10": "float -43.9041",
-   "call11": "float -34.182",
+   "call0": "float -41.8694",
+   "call1": "float -14.0152",
+   "call2": "float -35.852",
+   "call3": "float -40.1137",
+   "call4": "float -18.8303",
+   "call5": "float -10.0363",
+   "call6": "float -13.9606",
+   "call7": "float -26.4348",
+   "call8": "float -40.7233",
+   "call9": "float -24.0918",
+   "call10": "float -43.3791",
+   "call11": "float -33.657",
    "...": "8 more leaves"
   },
   "calls": 20
+ },
+ "potts:refuse_self_loops | a self-loop is refused by the energy and the pairwise form": {
+  "stable": "751fd3e3e995bc61118930ef7793e88bac6545b4786660a21bd5c2d37b1637a8",
+  "exact": "751fd3e3e995bc61118930ef7793e88bac6545b4786660a21bd5c2d37b1637a8",
+  "summary": {
+   "call0": "raised ValueError",
+   "call1": "raised ValueError"
+  },
+  "calls": 2
  },
  "pseudobulk:merge_pseudobulk_by_index_mix | each clone's pseudobulk is its spots' sum; an empty clone is zero; no input mutation": {
   "stable": "2dd8926cf3339cae4b87cf36acd4c676b783ef5d9a98155a59aba0778963beac",

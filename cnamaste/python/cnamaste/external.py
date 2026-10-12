@@ -16,7 +16,7 @@ here. OpenGM is header-only C++ on no package index: `cnamaste/infra/build_openg
   closed from then on.
 
 `Session.solve` takes a `cnamaste.potts.PottsProblem` and returns an `OpenGMRun` whose energy and bound are the
-problem's, its constant `offset` included, so they compare with `potts.problem_energy` directly. What a call returns is
+problem's, so they compare with `potts.problem_energy` directly. What a call returns is
 reproducible: a block is named within the session's directory, and the inference's seconds, a measurement, are logged
 rather than returned or stored.
 
@@ -60,7 +60,7 @@ class WorkerError(RuntimeError):
 
 class OpenGMRun(NamedTuple):
     """One solve: the labelling, its energy, the algorithm's lower bound (`-inf` where it gives none) and its bound
-    after each iteration, all with the problem's `offset`; the iterations reported."""
+    after each iteration; the iterations reported."""
 
     labels: np.ndarray
     energy: float
@@ -170,10 +170,9 @@ class Session:
         finally:
             for spec in blocks.values():
                 (self.directory / spec[0]).unlink(missing_ok=True)
-        offset = float(problem.offset)
-        logger.info(f"OpenGM {algorithm}: {n} nodes, {k} labels, {problem.first.size} pairs; energy {reply['value'] + offset:.6e}, "
-                    f"bound {reply['bound'] + offset:.6e}, {reply['taken']} iterations, {seconds:.3f}s inference.")  # fmt: skip
-        return OpenGMRun(labels, reply["value"] + offset, reply["bound"] + offset, trace + offset, int(reply["taken"]))
+        logger.info(f"OpenGM {algorithm}: {n} nodes, {k} labels, {problem.first.size} pairs; energy {reply['value']:.6e}, "
+                    f"bound {reply['bound']:.6e}, {reply['taken']} iterations, {seconds:.3f}s inference.")  # fmt: skip
+        return OpenGMRun(labels, reply["value"], reply["bound"], trace, int(reply["taken"]))
 
     def close(self) -> None:
         """Shut the worker down and remove the session's files; idempotent."""

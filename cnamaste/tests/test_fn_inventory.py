@@ -46,7 +46,6 @@ NOT_EXECUTED: dict[str, str] = {
     "external:session": "hmrf.label_solver is icm on easy: the OpenGM path is posed directly (test_fn_labelling)",
     "hmrf:opengm_assignment": "hmrf.label_solver is icm on easy: the OpenGM path is posed directly (test_fn_labelling)",
     "hmrf:opengm_session": "hmrf.label_solver is icm on easy: the OpenGM path is posed directly (test_fn_labelling)",
-    "potts:_field": "hmrf.label_solver is icm on easy: the OpenGM path is posed directly (test_fn_labelling)",
     "potts:potts_energy": "hmrf.label_solver is icm on easy: the OpenGM path is posed directly (test_fn_labelling)",
     "potts:potts_problem": "hmrf.label_solver is icm on easy: the OpenGM path is posed directly (test_fn_labelling)",
     "potts:problem_energy": "hmrf.label_solver is icm on easy: the OpenGM path is posed directly (test_fn_labelling)",

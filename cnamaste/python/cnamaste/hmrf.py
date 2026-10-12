@@ -108,8 +108,6 @@ def opengm_assignment(
     new_assignment,
     spatial_weight,
     algorithm,
-    log_persample_weights=None,
-    sample_ids=None,
     min_clone_spots=200,
     max_iterations=1000,
     tolerance=1e-9,
@@ -119,7 +117,7 @@ def opengm_assignment(
 
     The 200-spot floor is cnaster's: where a non-empty clone falls under `min_clone_spots`, the labelling is handed to
     `icm_sweep_deque`, which enforces it."""
-    problem = potts_problem(single_llf, adjacency_mat, spatial_weight, log_persample_weights, sample_ids)
+    problem = potts_problem(single_llf, adjacency_mat, spatial_weight)
     before = problem_energy(problem, new_assignment)
     start = new_assignment if algorithm in STARTS else None
     run = opengm_session().solve(problem, algorithm, max_iterations=max_iterations, tolerance=tolerance, start=start)
@@ -143,13 +141,11 @@ def opengm_assignment(
             new_assignment,
             spatial_weight,
             None,
-            log_persample_weights=log_persample_weights,
-            sample_ids=sample_ids,
             min_clone_spots=min_clone_spots,
         )
         niter += more
 
-    after = potts_energy(single_llf, adjacency_mat, new_assignment, spatial_weight, log_persample_weights, sample_ids)
+    after = potts_energy(single_llf, adjacency_mat, new_assignment, spatial_weight)
     return niter, before - after
 
 
@@ -168,6 +164,11 @@ def pipeline_clone_assignment(
     hmmclass=None,
     merge=False,
 ):
+    # DEPRECATE per-sample clone weights (hmrf.inertia, S3): the energy is the field and the Potts coupling alone, so
+    #    neither they nor sample_ids reach the labelling.
+    if log_persample_weights is not None:
+        raise ValueError("log_persample_weights is deprecated (hmrf.inertia): per-sample clone weights are not applied.")
+
     # NB n_obs is the number of genomic segments, N is the number of spots.
     n_obs, _, N = single_X.shape
     n_states = res["new_p_binom"].shape[0]
@@ -271,8 +272,6 @@ def pipeline_clone_assignment(
                 posterior=None,
                 onehot_allowed_clones=None,
                 # tol=0.1,  # MAGIC TODO
-                log_persample_weights=log_persample_weights,
-                sample_ids=sample_ids,
             )
         else:
             # NB OpenGM's solver on the same energy, through one worker for the run (S3).
@@ -282,8 +281,6 @@ def pipeline_clone_assignment(
                 new_assignment,
                 spatial_weight,
                 solver.removeprefix("opengm_"),
-                log_persample_weights=log_persample_weights,
-                sample_ids=sample_ids,
             )
 
         logger.info(f"Ready for potential merging of clones?  {merge}.")
@@ -297,8 +294,6 @@ def pipeline_clone_assignment(
                 adj_weights,
                 new_assignment,
                 spatial_weight,
-                log_persample_weights=log_persample_weights,
-                sample_ids=sample_ids,
             )
 
             # NB only merge the clone pair if the cost is improved.

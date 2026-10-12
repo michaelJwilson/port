@@ -61,7 +61,7 @@ OWNED = ("tests", "docs")
 """cnamaste's own directories beside the copy: every file in them is declared in `ADDED`."""
 
 ADDED: dict[str, str] = {
-    "python/cnamaste/potts.py": "S1: the clone-labelling Potts energy, and its pairwise form for an external solver",
+    "python/cnamaste/potts.py": "S1: the clone-labelling Potts energy, and its pairwise form for an external solver; no per-sample weights, no self-loop",
     "python/cnamaste/external.py": "S2: OpenGM's Potts solvers in a worker process, sal.external trimmed",
     "python/cnamaste/external_worker.py": "S2: the worker cnamaste.external starts",
     "infra/build_opengm.sh": "S2: builds libcnamaste_opengm.so, sal's infra/build_opengm.sh renamed",

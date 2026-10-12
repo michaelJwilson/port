@@ -42,9 +42,9 @@ def _opengm() -> None:
 # --- potts ---------------------------------------------------------------------
 
 
-def _cnaster_cost(f: dict[str, Any], labels: np.ndarray, persample: Any = None, samples: Any = None) -> float:
+def _cnaster_cost(f: dict[str, Any], labels: np.ndarray) -> float:
     spots, neighbours, weights = unpack_adjacency(cast_csr(f["adjacency"].tocsr()))
-    return calc_assignment_cost(f["llf"], spots, neighbours, weights, labels, f["weight"], persample, samples)
+    return calc_assignment_cost(f["llf"], spots, neighbours, weights, labels, f["weight"])
 
 
 def _easy_window(ctx: Any) -> dict[str, Any]:
@@ -54,27 +54,19 @@ def _easy_window(ctx: Any) -> dict[str, Any]:
 
 
 def _energy_is_cnasters(f: dict[str, Any]) -> None:
-    """`potts_energy` is `-calc_assignment_cost` over 20 labellings, with and without per-sample weights."""
+    """`potts_energy` is `-calc_assignment_cost` over 20 labellings."""
     rng = np.random.default_rng(17)
     n, k = f["llf"].shape
-    persample, samples = rng.normal(size=(k, 2)), rng.integers(0, 2, size=n)
     for _ in range(20):
         labels = rng.integers(0, k, size=n)
         assert np.isclose(potts_energy(f["llf"], f["adjacency"], labels, f["weight"]), -_cnaster_cost(f, labels), rtol=1e-12, atol=1e-9)
-        assert np.isclose(potts_energy(f["llf"], f["adjacency"], labels, f["weight"], persample, samples),
-                          -_cnaster_cost(f, labels, persample, samples), rtol=1e-12, atol=1e-9)  # fmt: skip
 
 
 def _problem_is_the_energy(f: dict[str, Any]) -> None:
-    """One coupling per unordered pair, `first < second`; a self-loop the constant offset; the energy of every
-    labelling."""
-    a = f["adjacency"].tolil()
-    a[0, 0] = 1.5  # NB a self-loop: aligned in every labelling
-    f = f | {"adjacency": a.tocsr()}
+    """One coupling per unordered pair, `first < second`; the energy of every labelling."""
     problem = potts_problem(f["llf"], f["adjacency"], f["weight"])
     pairs = problem.first * len(f["llf"]) + problem.second
     assert np.all(problem.first < problem.second) and np.unique(pairs).size == pairs.size
-    assert np.isclose(problem.offset, -f["weight"] * 1.5 / 2.0)
     rng = np.random.default_rng(23)
     for _ in range(20):
         labels = rng.integers(0, f["llf"].shape[1], size=len(f["llf"]))
@@ -90,12 +82,12 @@ def _graph(rows: list[int], cols: list[int], n: int, weights: Any = None) -> sp.
 
 
 def small_problems() -> dict[str, PottsProblem]:
-    """Three graphs small enough to enumerate, 3 clones: a ring stored both ways, the ring stored one way with a chord
-    and a self-loop, as a kNN graph is, and a random graph with uneven weights."""
+    """Three graphs small enough to enumerate, 3 clones: a ring stored both ways, the ring stored one way with a chord,
+    as a kNN graph is, and a random graph with uneven weights."""
     rng = np.random.default_rng(31)
     ring = [(i, (i + 1) % 6) for i in range(6)]
     both = _graph([a for a, b in ring] + [b for a, b in ring], [b for a, b in ring] + [a for a, b in ring], 6)
-    one_way = _graph([a for a, b in ring] + [0, 2], [b for a, b in ring] + [3, 2], 6)
+    one_way = _graph([a for a, b in ring] + [0], [b for a, b in ring] + [3], 6)
     pairs = [(a, b) for a in range(7) for b in range(7) if a != b and rng.random() < 0.3]
     random = _graph([a for a, b in pairs], [b for a, b in pairs], 7, rng.uniform(0.2, 2.0, size=len(pairs)))
     return {name: potts_problem(rng.normal(scale=1.5, size=(a.shape[0], 3)), a, 1.3)
@@ -294,20 +286,41 @@ def _unknown_solver_refused(ctx: Any) -> None:
         del config.hmrf.label_solver
 
 
+def _self_loop_refused(f: dict[str, Any]) -> None:
+    """A spot stored as its own neighbour is refused by the energy and the pairwise form alike."""
+    a = f["adjacency"].tolil()
+    a[0, 0] = 1.5
+    for call in (lambda: potts_energy(f["llf"], a.tocsr(), f["labels"], f["weight"]), lambda: potts_problem(f["llf"], a.tocsr(), f["weight"])):
+        with pytest.raises(ValueError, match="self-loop"):
+            call()
+
+
+def _persample_refused(ctx: Any) -> None:
+    """Per-sample clone weights are deprecated: `hmrf.inertia` other than 0 is refused when the configuration is read,
+    and `pipeline_clone_assignment` refuses `log_persample_weights` before any work."""
+    config = ctx.config
+    config.hmrf.inertia = 1
+    try:
+        with pytest.raises(ValueError, match="inertia"):
+            config.issue_warnings()
+    finally:
+        config.hmrf.inertia = 0
+    with pytest.raises(ValueError, match="deprecated"):
+        pipeline_clone_assignment(None, None, None, None, None, None, None, None, 1.0, log_persample_weights=np.zeros((2, 1)))
+
+
 SMALL = "synthetic: a ring, a one-way ring with a chord and a self-loop, a random graph; 3 clones"
 EASY = "05_baf run_core_inference in and out: the field over 3,000 spots, 4 clones, the kNN adjacency"
 
 ORACLE: list[Row] = table(
     "oracle",
-    ("potts:potts_energy", "synthetic: 8x8 grid, 3 clones", lambda c: field_case(), _energy_is_cnasters, "-calc_assignment_cost, with and without per-sample weights"),
+    ("potts:potts_energy", "synthetic: 8x8 grid, 3 clones", lambda c: field_case(), _energy_is_cnasters, "-calc_assignment_cost"),
     ("potts:potts_energy", "synthetic: 8x8 grid, a tenth of directions dropped", lambda c: one_way_case(), _energy_is_cnasters,
      "on an asymmetric graph: -calc_assignment_cost (w / 2 per stored edge)"),
-    ("potts:_field", "synthetic: 8x8 grid, a tenth of directions dropped", lambda c: one_way_case(), _energy_is_cnasters,
-     "the field adds each spot's sample's per-sample weight"),
-    ("potts:potts_problem", "synthetic: 8x8 grid, a tenth of directions dropped, a self-loop", lambda c: one_way_case(), _problem_is_the_energy,
-     "one coupling per pair, first < second, J = weight (w_ij + w_ji) / 2; a self-loop the offset; the energy of every labelling"),
-    ("potts:problem_energy", "synthetic: 8x8 grid, a tenth of directions dropped, a self-loop", lambda c: one_way_case(), _problem_is_the_energy,
-     "potts_energy's, offset included"),
+    ("potts:potts_problem", "synthetic: 8x8 grid, a tenth of directions dropped", lambda c: one_way_case(), _problem_is_the_energy,
+     "one coupling per pair, first < second, J = weight (w_ij + w_ji) / 2; the energy of every labelling"),
+    ("potts:problem_energy", "synthetic: 8x8 grid, a tenth of directions dropped", lambda c: one_way_case(), _problem_is_the_energy,
+     "potts_energy's"),
     ("external:Session.solve", SMALL, lambda c: small_problems(), _against_enumeration,
      "7 algorithms: energy of the labels, >= the minimum; A* exact; bounds <= the minimum; ICM descends from its start"),
     ("hmrf:opengm_assignment", EASY, easy_problem, _solvers_on_easy,
@@ -334,6 +347,10 @@ INVARIANT: list[Row] = table(
     ("hmrf:pipeline_clone_assignment", EASY, lambda c: c, _dispatch,
      "hmrf.label_solver: absent, cnaster's ICM bitwise; opengm_trws, TRW-S's labelling of the same field, no worse than ICM"),
     ("config:YAMLConfig.issue_warnings", "the staged configuration", lambda c: c, _unknown_solver_refused, "an unknown hmrf.label_solver is refused"),
+    ("config:YAMLConfig.issue_warnings", "the staged configuration", lambda c: c, _persample_refused, "a non-zero hmrf.inertia is refused (deprecated)"),
+    ("hmrf:pipeline_clone_assignment", "synthetic", lambda c: c, _persample_refused, "log_persample_weights is refused (deprecated)"),
+    ("potts:refuse_self_loops", "synthetic: 8x8 grid, 3 clones, a self-loop", lambda c: field_case(), _self_loop_refused,
+     "a self-loop is refused by the energy and the pairwise form"),
 )
 
 

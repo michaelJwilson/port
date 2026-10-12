@@ -347,13 +347,21 @@ def _(**_: Any) -> None:
 
 
 @row("Ticket#417", "spatial.construct_multislice_lattice_adjacency", "xfail",
-     "Ticket#417: the multi-slice adjacency takes a self loop or a one-way edge without a guard")
+     "Ticket#417: the multi-slice adjacency takes a one-way edge without a guard")
 def _(**_: Any) -> None:
     coords, ids = lattice(3, 3), np.zeros(9, dtype=int)
-    one_way, self_loop = sp.csr_matrix(([1.0], ([0], [8])), shape=(9, 9)), sp.csr_matrix(([1.0], ([4], [4])), shape=(9, 9))
-    for across in (one_way, self_loop):
-        with pytest.raises(ValueError):
-            construct_multislice_lattice_adjacency(ids, ["a"], coords, across, unit_xsquared=1, unit_ysquared=1)
+    one_way = sp.csr_matrix(([1.0], ([0], [8])), shape=(9, 9))
+    with pytest.raises(ValueError):
+        construct_multislice_lattice_adjacency(ids, ["a"], coords, one_way, unit_xsquared=1, unit_ysquared=1)
+
+
+@row("Ticket#417 self-loop", "spatial.construct_multislice_lattice_adjacency", "regression",
+     "Ticket#417: fixed in cnamaste (S3); the multi-slice adjacency refuses a self-loop, which the Potts energy cannot use")
+def _(**_: Any) -> None:
+    coords, ids = lattice(3, 3), np.zeros(9, dtype=int)
+    self_loop = sp.csr_matrix(([1.0], ([4], [4])), shape=(9, 9))
+    with pytest.raises(ValueError, match="self-loop"):
+        construct_multislice_lattice_adjacency(ids, ["a"], coords, self_loop, unit_xsquared=1, unit_ysquared=1)
 
 
 @row("Ticket#692", "spatial.initialize_rectangular_clones", "regression", "Ticket#692: fixed in cnamaste PR1; the dev blocks return, banded")
