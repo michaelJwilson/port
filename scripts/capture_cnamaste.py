@@ -144,9 +144,12 @@ SCHEDULE: dict[str, list[str]] = {
     "hill_climbing_integer_copynumber_fixdiploid_milp": [
         f"09_outputs/integer_copy_{c}" for c in range(16)
     ],
+    # NB cnamaste's int_copy_num.decoder lattice_hmm: one call over every clone (T- #882).
+    "lattice_hmm_copynumber": ["09_outputs/lattice_copy"],
     "write_tsv": [f"09_outputs/write_tsv_{k}" for k in range(16)],
 }
-"""Each wrapped function -> the stage each of its calls records, in call order."""
+"""Each wrapped function -> the stage each of its calls records, in call order; one the run's cnamaste does not
+import is not wrapped."""
 
 NOT_REPLAYED = {"run_core_inference"}
 """Stages whose outputs are stored whole: replaying one is 100 to 230 s, so the tests read them instead."""
@@ -685,7 +688,8 @@ def main(argv: list[str] | None = None) -> int:
     h5 = h5py.File(partial, "w", libver="latest")
     rec = Recorder(h5)
     for name in SCHEDULE:
-        rec.wrap(rc, name)
+        if hasattr(rc, name):
+            rec.wrap(rc, name)
     rec.wrap_internal(hmrf)
     for name in PLOTS:
         setattr(rc, name, lambda *_, **__: None)
