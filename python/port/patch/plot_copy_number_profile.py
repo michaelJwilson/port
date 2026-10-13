@@ -16,6 +16,7 @@ import pandas as pd
 from cnaster.palette import get_full_palette
 from cnaster.plot_copy_number_profile import get_intervals
 from cnaster.utils import cast_clone_label
+from matplotlib import patheffects
 from matplotlib.collections import LineCollection
 from matplotlib.patches import Rectangle
 from matplotlib.transforms import IdentityTransform
@@ -57,6 +58,15 @@ HATCH_SPACING = 0.10
 
 HATCH_LINEWIDTH = 72.0 * HATCH_SPACING * float(np.sin(np.radians(HATCH_ANGLE))) / 2.0
 """Points: half the line period across the lines, so A's and B's stripes match."""
+
+HATCH_EDGE = 0.25
+"""Points of black either side of a hatch line.
+
+Without it a hatch is invisible wherever A's and B's colours coincide, and a
+balanced aberration reads as one plain fill: `(2, 2)` draws as copy 2's orange
+hatched with copy 2's orange. The outline is what makes it two alleles on the
+page rather than one, and it costs the unbalanced segments nothing -- a stripe
+that was already visible gains a 0.25pt border."""
 
 NORMAL_OPACITY = 0.35
 """Copy 1's opacity over white, for a normal segment and a hatch's 1 (#339)."""
@@ -140,6 +150,9 @@ class _Hatch(LineCollection):
     def __init__(self, fill: Rectangle, colour: Any, orientation: int) -> None:
         # NB under the outlines (zorder 3), over the fill (1).
         super().__init__([], colors=[colour], linewidths=HATCH_LINEWIDTH, zorder=1.5)
+        # NB a stroke behind each line, wider by an edge either side: the line's own colour is unchanged, so the
+        #    `(A, B)` a drawn hatch reads back to is still `get_edgecolor`'s.
+        self.set_path_effects([patheffects.withStroke(linewidth=HATCH_LINEWIDTH + 2.0 * HATCH_EDGE, foreground="black")])
         self.fill = fill
         self.orientation = orientation
         self.set_transform(IdentityTransform())
