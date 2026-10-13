@@ -1,0 +1,26 @@
+# dev_tree_1s_easy on dev_tree's two slices, phase switch errors on: the same
+# clones, CNA law, admixture and counts, the array drawn twice (#745). The
+# second slice overlaps the first's right half, so clone_1, listed on both,
+# sits there, as dev_tree.
+version = 3
+extends = "dev_tree_1s_easy.toml"
+
+[sample]
+name = "dev_tree_easy"
+# NB `tests.sim_stages.realization_hash` of r0 as drawn here; a change to this
+#    manifest or to the simulator that moves it states the new one.
+r0_hash = "e4bbe03f"
+
+[phasing]
+switch_errors = true
+
+[[slice]]
+offset = [0.0, 0.0]
+clones = ["clone_0", "clone_1"]
+
+[[slice]]
+offset = [0.5, 0.0]
+clones = ["clone_1", "clone_2"]
+
+[cna]
+loh = "irreversible"

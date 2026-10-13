@@ -1,0 +1,2687 @@
+{
+ "annotation:assign_clone_ranges | each item's range of greatest overlap, by brute force, after collapsing equal neighbours and splitting at max_length; none: NA": {
+  "stable": "f630746a2d042d85d34d7296de261dfe527155cba7f1a39d6bed07a3fc76ecf7",
+  "exact": "f630746a2d042d85d34d7296de261dfe527155cba7f1a39d6bed07a3fc76ecf7",
+  "summary": {
+   "call0[CHR]": "int64 (7,) min=1 max=3 sum=11",
+   "call0[START]": "int64 (7,) min=0 max=2400 sum=3895",
+   "call0[END]": "int64 (7,) min=10 max=2600 sum=4730",
+   "call0[known_id]": "object (7,)",
+   "call1[CHR]": "int64 (7,) min=1 max=3 sum=11",
+   "call1[START]": "int64 (7,) min=0 max=2400 sum=3895",
+   "call1[END]": "int64 (7,) min=10 max=2600 sum=4730",
+   "call1[known_id]": "object (7,)"
+  },
+  "calls": 2
+ },
+ "annotation:load_clone_labels | clone indices by label (normal 0, clone_k k+1); base = the normal spots' gene profile x each clone's coverage, recomputed": {
+  "stable": "ac0726e5ea673379b0ef49bfc5401e3d35267c4c7473afcca5a9089018d34042",
+  "exact": "e0fad1ee88a792ba02482f24275b18b6b0663909f16544f921cbee0961cb40e4",
+  "summary": {
+   "call0[0][0]": "int64 (2,) min=1 max=3 sum=4",
+   "call0[0][1]": "int64 (1,) min=2 max=2 sum=2",
+   "call0[0][2]": "int64 (2,) min=0 max=4 sum=4",
+   "call1[0][0]": "int64 (2,) min=1 max=3 sum=4",
+   "call1[0][1]": "int64 (1,) min=2 max=2 sum=2",
+   "call1[0][2]": "int64 (2,) min=0 max=4 sum=4",
+   "call1[1]": "float64 (3, 3) min=2 max=44 mean=20 sum=180"
+  },
+  "calls": 2
+ },
+ "annotation:load_clone_ranges | a missing column warns, and the file still loads": {
+  "stable": "f212a06b3e7e39c532af39d3b59037bf13aa4b6e474defad59ab33938ababaff",
+  "exact": "f212a06b3e7e39c532af39d3b59037bf13aa4b6e474defad59ab33938ababaff",
+  "summary": {
+   "call0": "raised KeyError"
+  },
+  "calls": 1
+ },
+ "annotation:load_clone_ranges | contigs as text, coordinates as integers; a missing file raises": {
+  "stable": "1acacf724cc12ec82ea42be432073480a86e6730665af8f13ef038818809fe20",
+  "exact": "1acacf724cc12ec82ea42be432073480a86e6730665af8f13ef038818809fe20",
+  "summary": {
+   "call0[chr]": "str (2,)",
+   "call0[start]": "int64 (2,) min=0 max=5 sum=5",
+   "call0[end]": "int64 (2,) min=10 max=20 sum=30",
+   "call0[state]": "int64 (2,) min=1 max=2 sum=3",
+   "call1": "raised FileNotFoundError"
+  },
+  "calls": 2
+ },
+ "cna_hmrf_result:CloneAssignment.num_clones | the number of distinct labels; None without labels": {
+  "stable": "aea1ddbcfcf72f27bab09d8b21c3c21f7f2b4ba40f981aa57e3c4ed05e68bd7c",
+  "exact": "90907bd5e9575fe9d7ae985fd862ef4678d73511fd486423286f1f4d25147af1",
+  "summary": {
+   "call0": "int 4",
+   "call1": "int 4",
+   "call2['mutated'][0][0].total_llf": "float nan"
+  },
+  "calls": 3
+ },
+ "cna_hmrf_result:CloneAssignment.unique_clone_labels | np.unique of the labels; None without labels": {
+  "stable": "b6ebbc0612e0fffd150ec60ac4129b9a010cad9f1ea2eec5c4517ad0459309cb",
+  "exact": "3ba05b907a22b4bd347e11f5edd38c83140708e2137484c97be08a2ccb26af34",
+  "summary": {
+   "call0": "int64 (4,) min=0 max=3 sum=6",
+   "call1": "int64 (4,) min=0 max=3 sum=6",
+   "call2": "int64 (4,) min=0 max=3 sum=6",
+   "call3['mutated'][0][0].total_llf": "float nan",
+   "call4['mutated'][0][0].total_llf": "float nan"
+  },
+  "calls": 5
+ },
+ "cna_hmrf_result:CnaHMRFResult.__getitem__ | a key resolves to its nested field (identity); unknown keys raise; keys/values/items agree; str names them": {
+  "stable": "bf9102cac0669a5bd45619d9246d64789e1b3e592dd03907e883edf0dfe088c7",
+  "exact": "217b4bb6b9ce4e7a6422eb501bcbccd2ab5795d34486eaff96f1fe7d50f15b0a",
+  "summary": {
+   "call0": "float64 (7,) min=-1.14895 max=0.498273 mean=-0.0550282 sum=-0.385197",
+   "call1": "float64 (7, 1577, 4) min=-471.169 max=0 mean=-42.7942 sum=-1.88962e+06",
+   "call2": "int64 (3000,) min=0 max=3 sum=4495",
+   "call3": "float64 -60678.5",
+   "call4": "int 7",
+   "call5": "float64 (7,) min=-1.14895 max=0.498273 mean=-0.0550282 sum=-0.385197",
+   "call6": "float64 (7,) min=0.595765 max=0.595765 mean=0.595765 sum=4.17035",
+   "call7": "float64 (7,) min=0.0843248 max=0.632485 mean=0.376047 sum=2.63233",
+   "call8": "float64 (7,) min=459792 max=459792 mean=459792 sum=3.21854e+06",
+   "call9": "float64 (7,) min=-1.94591 max=-1.94591 mean=-1.94591 sum=-13.6214",
+   "call10": "float64 (7, 7) min=-17.9099 max=-1e-07 mean=-15.3513 sum=-752.214",
+   "call11['mutated'][0][0].params.new_log_mu": "float64 (7,) min=-1.14895 max=0.498273 mean=-0.0550282 sum=-0.385197",
+   "...": "74 more leaves"
+  },
+  "calls": 34
+ },
+ "cna_hmrf_result:CnaHMRFResult.__post_init__ | construction validates (the decode built it through __post_init__)": {
+  "stable": "8c3f54277c7e5b0e91867f7fc66929b670fb6efe3d1b092ec771b7c129415f6a",
+  "exact": "0eb6c4704407c8cd87ded0d157f2a5f377a2249f39d43f5bc710f9cff624c7c6",
+  "summary": {
+   "call0['mutated'][0][0].params.new_log_mu": "float64 (7,) min=-1.14895 max=0.498273 mean=-0.0550282 sum=-0.385197",
+   "call0['mutated'][0][0].params.new_alphas": "float64 (7,) min=0.595765 max=0.595765 mean=0.595765 sum=4.17035",
+   "call0['mutated'][0][0].params.new_p_binom": "float64 (7,) min=0.0843248 max=0.632485 mean=0.376047 sum=2.63233",
+   "call0['mutated'][0][0].params.new_taus": "float64 (7,) min=459792 max=459792 mean=459792 sum=3.21854e+06",
+   "call0['mutated'][0][0].params.new_log_startprob": "float64 (7,) min=-1.94591 max=-1.94591 mean=-1.94591 sum=-13.6214",
+   "call0['mutated'][0][0].params.new_log_transmat": "float64 (7, 7) min=-17.9099 max=-1e-07 mean=-15.3513 sum=-752.214",
+   "call0['mutated'][0][0].profile.log_gamma": "float64 (7, 1577, 4) min=-471.169 max=0 mean=-42.7942 sum=-1.88962e+06",
+   "call0['mutated'][0][0].profile.pred_cnv": "int64 (1577, 4) min=0 max=6 sum=8540",
+   "call0['mutated'][0][0].llf": "float64 -60678.5",
+   "call0['mutated'][0][0].n_states": "int 7",
+   "call0['mutated'][0][0].assignment.prev_assignment": "int64 (3000,) min=0 max=3 sum=4487",
+   "call0['mutated'][0][0].assignment.new_assignment": "int64 (3000,) min=0 max=3 sum=4495",
+   "...": "1 more leaves"
+  },
+  "calls": 1
+ },
+ "cna_hmrf_result:CnaHMRFResult.__setitem__ | a set validates: labels must stay 0..M-1": {
+  "stable": "3974ecc74f130f0edc3b21badb7dd784ac8b42f8d62d23e591e308a8ccc88a48",
+  "exact": "0b4b9770c087d46bded26487d2973fedbf6b13c2a16baccf8ed92fc5c4293127",
+  "summary": {
+   "call0['mutated'][0][0].params.new_log_mu": "float64 (7,) min=-1.14895 max=0.498273 mean=-0.0550282 sum=-0.385197",
+   "call0['mutated'][0][0].params.new_alphas": "float64 (7,) min=0.595765 max=0.595765 mean=0.595765 sum=4.17035",
+   "call0['mutated'][0][0].params.new_p_binom": "float64 (7,) min=0.0843248 max=0.632485 mean=0.376047 sum=2.63233",
+   "call0['mutated'][0][0].params.new_taus": "float64 (7,) min=459792 max=459792 mean=459792 sum=3.21854e+06",
+   "call0['mutated'][0][0].params.new_log_startprob": "float64 (7,) min=-1.94591 max=-1.94591 mean=-1.94591 sum=-13.6214",
+   "call0['mutated'][0][0].params.new_log_transmat": "float64 (7, 7) min=-17.9099 max=-1e-07 mean=-15.3513 sum=-752.214",
+   "call0['mutated'][0][0].profile.log_gamma": "float64 (7, 1577, 4) min=-471.169 max=0 mean=-42.7942 sum=-1.88962e+06",
+   "call0['mutated'][0][0].profile.pred_cnv": "int64 (1577, 4) min=0 max=6 sum=8540",
+   "call0['mutated'][0][0].llf": "float64 -60678.5",
+   "call0['mutated'][0][0].n_states": "int 7",
+   "call0['mutated'][0][0].assignment.prev_assignment": "int64 (3000,) min=0 max=3 sum=4487",
+   "call0['mutated'][0][0].assignment.new_assignment": "int64 (3000,) min=0 max=3 sum=4495",
+   "...": "4 more leaves"
+  },
+  "calls": 2
+ },
+ "cna_hmrf_result:CnaHMRFResult.__str__ | names every parameter, the posteriors and the labels": {
+  "stable": "01bbc48983aa9f61164c89d0bbcd983aac4774cb6cf3dde21b9128c376aa87c4",
+  "exact": "01bbc48983aa9f61164c89d0bbcd983aac4774cb6cf3dde21b9128c376aa87c4",
+  "summary": {
+   "call0": "str len=3552"
+  },
+  "calls": 1
+ },
+ "cna_hmrf_result:CnaHMRFResult.copy | shallow shares nested parts; deep does not": {
+  "stable": "048e5cb79486caaed12aeb7569cb6ddbecf43a2b07299039b80be22a0e5b70d5",
+  "exact": "1fef0b6eef9b6df0c0e4fa50860fd67a68c79b339475d209483117aec73bccfb",
+  "summary": {
+   "call0.params.new_log_mu": "float64 (7,) min=-1.14895 max=0.498273 mean=-0.0550282 sum=-0.385197",
+   "call0.params.new_alphas": "float64 (7,) min=0.595765 max=0.595765 mean=0.595765 sum=4.17035",
+   "call0.params.new_p_binom": "float64 (7,) min=0.0843248 max=0.632485 mean=0.376047 sum=2.63233",
+   "call0.params.new_taus": "float64 (7,) min=459792 max=459792 mean=459792 sum=3.21854e+06",
+   "call0.params.new_log_startprob": "float64 (7,) min=-1.94591 max=-1.94591 mean=-1.94591 sum=-13.6214",
+   "call0.params.new_log_transmat": "float64 (7, 7) min=-17.9099 max=-1e-07 mean=-15.3513 sum=-752.214",
+   "call0.profile.log_gamma": "float64 (7, 1577, 4) min=-471.169 max=0 mean=-42.7942 sum=-1.88962e+06",
+   "call0.profile.pred_cnv": "int64 (1577, 4) min=0 max=6 sum=8540",
+   "call0.llf": "float64 -60678.5",
+   "call0.n_states": "int 7",
+   "call0.assignment.prev_assignment": "int64 (3000,) min=0 max=3 sum=4487",
+   "call0.assignment.new_assignment": "int64 (3000,) min=0 max=3 sum=4495",
+   "...": "14 more leaves"
+  },
+  "calls": 2
+ },
+ "cna_hmrf_result:CnaHMRFResult.items | items pair keys with values": {
+  "stable": "6dcccbf34f50e4f6925e24d2b115044ca88a4db94d33b4c915a4162532db47fe",
+  "exact": "58c3a7662b667aa73cd18cc5b3ae8d777841aa451cca87b66944e94a8db20ba7",
+  "summary": {
+   "call0[0][0]": "str len=3",
+   "call0[0][1]": "float64 -60678.5",
+   "call0[1][0]": "str len=8",
+   "call0[1][1]": "int 7",
+   "call0[2][0]": "str len=10",
+   "call0[2][1]": "float64 (7,) min=-1.14895 max=0.498273 mean=-0.0550282 sum=-0.385197",
+   "call0[3][0]": "str len=10",
+   "call0[3][1]": "float64 (7,) min=0.595765 max=0.595765 mean=0.595765 sum=4.17035",
+   "call0[4][0]": "str len=11",
+   "call0[4][1]": "float64 (7,) min=0.0843248 max=0.632485 mean=0.376047 sum=2.63233",
+   "call0[5][0]": "str len=8",
+   "call0[5][1]": "float64 (7,) min=459792 max=459792 mean=459792 sum=3.21854e+06",
+   "...": "16 more leaves"
+  },
+  "calls": 1
+ },
+ "cna_hmrf_result:CnaHMRFResult.keys | keys list the top-level and nested fields": {
+  "stable": "6b8a54917afb25babd01cb618011add9c430e4fecdbf21fde0a87f4049a09941",
+  "exact": "6b8a54917afb25babd01cb618011add9c430e4fecdbf21fde0a87f4049a09941",
+  "summary": {
+   "call0[0]": "str len=3",
+   "call0[1]": "str len=8",
+   "call0[2]": "str len=10",
+   "call0[3]": "str len=10",
+   "call0[4]": "str len=11",
+   "call0[5]": "str len=8",
+   "call0[6]": "str len=17",
+   "call0[7]": "str len=16",
+   "call0[8]": "str len=16",
+   "call0[9]": "str len=9",
+   "call0[10]": "str len=8",
+   "call0[11]": "str len=25",
+   "...": "33 more leaves"
+  },
+  "calls": 3
+ },
+ "cna_hmrf_result:CnaHMRFResult.validate | refuses labels not 0..M-1": {
+  "stable": "03e6a763c7cf1db21f0154e5207ba48fe6d896777d1fa09cb323a7035df32017",
+  "exact": "3d601e2499d2bd284ee3069a4b5ee4c165523254f966e0e1821ccc3f44ad7597",
+  "summary": {
+   "call0['mutated'][0][0].params.new_log_mu": "float64 (7,) min=-1.14895 max=0.498273 mean=-0.0550282 sum=-0.385197",
+   "call0['mutated'][0][0].params.new_alphas": "float64 (7,) min=0.595765 max=0.595765 mean=0.595765 sum=4.17035",
+   "call0['mutated'][0][0].params.new_p_binom": "float64 (7,) min=0.0843248 max=0.632485 mean=0.376047 sum=2.63233",
+   "call0['mutated'][0][0].params.new_taus": "float64 (7,) min=459792 max=459792 mean=459792 sum=3.21854e+06",
+   "call0['mutated'][0][0].params.new_log_startprob": "float64 (7,) min=-1.94591 max=-1.94591 mean=-1.94591 sum=-13.6214",
+   "call0['mutated'][0][0].params.new_log_transmat": "float64 (7, 7) min=-17.9099 max=-1e-07 mean=-15.3513 sum=-752.214",
+   "call0['mutated'][0][0].profile.log_gamma": "float64 (7, 1577, 4) min=-471.169 max=0 mean=-42.7942 sum=-1.88962e+06",
+   "call0['mutated'][0][0].profile.pred_cnv": "int64 (1577, 4) min=0 max=6 sum=8540",
+   "call0['mutated'][0][0].llf": "float64 -60678.5",
+   "call0['mutated'][0][0].n_states": "int 7",
+   "call0['mutated'][0][0].assignment.prev_assignment": "int64 (3000,) min=0 max=3 sum=4487",
+   "call0['mutated'][0][0].assignment.new_assignment": "int64 (3000,) min=0 max=3 sum=4495",
+   "...": "15 more leaves"
+  },
+  "calls": 3
+ },
+ "cna_hmrf_result:CnaHMRFResult.values | values follow keys": {
+  "stable": "fcb8bba3bd0c980fbe8a3fe071dbe05200def7b4cbe757d4b5b62eacb43d9fae",
+  "exact": "2ced67f2e681f5dce43a1d859e9fd3b63a044beb11e788c3a86d23030bca62eb",
+  "summary": {
+   "call0[0]": "float64 -60678.5",
+   "call0[1]": "int 7",
+   "call0[2]": "float64 (7,) min=-1.14895 max=0.498273 mean=-0.0550282 sum=-0.385197",
+   "call0[3]": "float64 (7,) min=0.595765 max=0.595765 mean=0.595765 sum=4.17035",
+   "call0[4]": "float64 (7,) min=0.0843248 max=0.632485 mean=0.376047 sum=2.63233",
+   "call0[5]": "float64 (7,) min=459792 max=459792 mean=459792 sum=3.21854e+06",
+   "call0[6]": "float64 (7,) min=-1.94591 max=-1.94591 mean=-1.94591 sum=-13.6214",
+   "call0[7]": "float64 (7, 7) min=-17.9099 max=-1e-07 mean=-15.3513 sum=-752.214",
+   "call0[9]": "float64 (7, 1577, 4) min=-471.169 max=0 mean=-42.7942 sum=-1.88962e+06",
+   "call0[10]": "int64 (1577, 4) min=0 max=6 sum=8540",
+   "call0[12]": "int64 (3000,) min=0 max=3 sum=4487",
+   "call0[13]": "int64 (3000,) min=0 max=3 sum=4495",
+   "...": "1 more leaves"
+  },
+  "calls": 1
+ },
+ "cna_hmrf_result:LockableMixin.__setattr__ | a write to a locked instance raises": {
+  "stable": "29ec90b55807d78f4e261f58076eccc9095a29a3af391d774a0afe3fe898cbd5",
+  "exact": "5ff1027c0c7783dc289a9a87511ccedf55ce19e6478bd2eec8b82a9af36254ae",
+  "summary": {
+   "call0['mutated'][0][0].new_log_mu": "float64 (7,) min=-1.14895 max=0.498273 mean=-0.0550282 sum=-0.385197"
+  },
+  "calls": 1
+ },
+ "cna_hmrf_result:LockableMixin.lock | a locked result refuses writes, nested parts too": {
+  "stable": "a67ac2dadb86c12cce3a91dfe820fcd0f8a6e2314ebfc22f0512de739c5d645e",
+  "exact": "e10d6d48159a5a51e38d616e74a6d377ffdddc3317a15bead9c5466f23255760",
+  "summary": {
+   "call0['mutated'][0][0].params.new_log_mu": "float64 (7,) min=-1.14895 max=0.498273 mean=-0.0550282 sum=-0.385197",
+   "call0['mutated'][0][0].params.new_alphas": "float64 (7,) min=0.595765 max=0.595765 mean=0.595765 sum=4.17035",
+   "call0['mutated'][0][0].params.new_p_binom": "float64 (7,) min=0.0843248 max=0.632485 mean=0.376047 sum=2.63233",
+   "call0['mutated'][0][0].params.new_taus": "float64 (7,) min=459792 max=459792 mean=459792 sum=3.21854e+06",
+   "call0['mutated'][0][0].params.new_log_startprob": "float64 (7,) min=-1.94591 max=-1.94591 mean=-1.94591 sum=-13.6214",
+   "call0['mutated'][0][0].params.new_log_transmat": "float64 (7, 7) min=-17.9099 max=-1e-07 mean=-15.3513 sum=-752.214",
+   "call0['mutated'][0][0].profile.log_gamma": "float64 (7, 1577, 4) min=-471.169 max=0 mean=-42.7942 sum=-1.88962e+06",
+   "call0['mutated'][0][0].profile.pred_cnv": "int64 (1577, 4) min=0 max=6 sum=8540",
+   "call0['mutated'][0][0].llf": "float64 -60678.5",
+   "call0['mutated'][0][0].n_states": "int 7",
+   "call0['mutated'][0][0].assignment.prev_assignment": "int64 (3000,) min=0 max=3 sum=4487",
+   "call0['mutated'][0][0].assignment.new_assignment": "int64 (3000,) min=1 max=4 sum=7495",
+   "...": "1 more leaves"
+  },
+  "calls": 1
+ },
+ "config:YAMLConfig.__init__ | a dict becomes nested attributes": {
+  "stable": "cdc5932a2366a9810ca9b678721bb8f0cb3c5ea34f8bfab8288cc8aa1ff45b70",
+  "exact": "cdc5932a2366a9810ca9b678721bb8f0cb3c5ea34f8bfab8288cc8aa1ff45b70",
+  "summary": {
+   "call0['mutated'][0][0].a.b": "int 1",
+   "call0['mutated'][0][0].a.d": "str len=1",
+   "call0['mutated'][0][0].e[0]": "int 1",
+   "call0['mutated'][0][0].e[1]": "int 2",
+   "call0['mutated'][0][1]['a']['b']": "int 1",
+   "call0['mutated'][0][1]['a']['c']": "str len=4",
+   "call0['mutated'][0][1]['a']['d']": "str len=1",
+   "call0['mutated'][0][1]['e'][0]": "int 1",
+   "call0['mutated'][0][1]['e'][1]": "int 2"
+  },
+  "calls": 1
+ },
+ "config:YAMLConfig.__repr__ | every key and value, quoted strings": {
+  "stable": "ba75866f08d78caa4b77e128c93cb5eea802da05a8005cb975eb5ca2e6979536",
+  "exact": "ba75866f08d78caa4b77e128c93cb5eea802da05a8005cb975eb5ca2e6979536",
+  "summary": {
+   "call0": "str len=69"
+  },
+  "calls": 1
+ },
+ "config:YAMLConfig._format_dict | nested sections indented": {
+  "stable": "3974f09819fb721e470f606444aaa290f83e330fd889c86f02850cc0ad3ea392",
+  "exact": "3974f09819fb721e470f606444aaa290f83e330fd889c86f02850cc0ad3ea392",
+  "summary": {
+   "call0": "str len=55"
+  },
+  "calls": 1
+ },
+ "config:YAMLConfig.from_file | nested sections, 'None' read as None": {
+  "stable": "231f33caeb4da3019477203cc86ee5674296566949643242ea948d1ec74bfde9",
+  "exact": "231f33caeb4da3019477203cc86ee5674296566949643242ea948d1ec74bfde9",
+  "summary": {
+   "call0.a.b": "int 1",
+   "call0.a.d": "str len=1",
+   "call0.e[0]": "int 1",
+   "call0.e[1]": "int 2"
+  },
+  "calls": 1
+ },
+ "config:YAMLConfig.issue_warnings | silent on easy; names each departure": {
+  "stable": "dd3bbe69ecfd9c1c3b9dd648da8cfad3fd6173644c6043e83662be1492494660",
+  "exact": "003859992fbe6a3a2f64e9c04fe3f699def850ac1fc49305515acc062e1db414",
+  "summary": {
+   "call0['mutated'][0][0].betabinom.run_default": "False",
+   "call0['mutated'][0][0].betabinom.start_disp": "float 1000",
+   "call0['mutated'][0][0].betabinom.start_params": "str len=27",
+   "call0['mutated'][0][0].hmm.compression_decimals": "int 0",
+   "call0['mutated'][0][0].hmm.em_disp": "int 0",
+   "call0['mutated'][0][0].hmm.em_ftol": "float 0.0001",
+   "call0['mutated'][0][0].hmm.em_maxiter": "int 1500",
+   "call0['mutated'][0][0].hmm.em_xrtol": "float 0.0001",
+   "call0['mutated'][0][0].hmm.em_xtol": "float 0.0001",
+   "call0['mutated'][0][0].hmm.fix_BB_dispersion": "False",
+   "call0['mutated'][0][0].hmm.fix_NB_dispersion": "False",
+   "call0['mutated'][0][0].hmm.gmm_max_binom_prob": "float 1",
+   "...": "140 more leaves"
+  },
+  "calls": 2
+ },
+ "config:YAMLConfig.over_ride | a numeric key over-ridden keeps its type": {
+  "stable": "3d23dbb99181367478d5b1cd5cb314d2418e87c561a49f444fbacef439a306a6",
+  "exact": "3d23dbb99181367478d5b1cd5cb314d2418e87c561a49f444fbacef439a306a6",
+  "summary": {
+   "call0['mutated'][0][0].hmrf.n_clones": "int 3",
+   "call0['mutated'][0][0].hmrf.random_state": "int 0",
+   "call0['mutated'][0][0].hmrf.spatial_weight": "str len=3",
+   "call0['mutated'][0][0].paths.output_dir": "str len=10",
+   "call0['mutated'][0][1][0]": "str len=23"
+  },
+  "calls": 1
+ },
+ "config:YAMLConfig.over_ride | dot paths set a value; a term without '=' raises": {
+  "stable": "0315d03a8a21fe3c063405251e1436ddae6920fb98c33fe822d3c5aaa16b506d",
+  "exact": "0315d03a8a21fe3c063405251e1436ddae6920fb98c33fe822d3c5aaa16b506d",
+  "summary": {
+   "call0['mutated'][0][0].a.b": "str len=1",
+   "call0['mutated'][0][0].a.d": "str len=1",
+   "call0['mutated'][0][0].e[0]": "int 1",
+   "call0['mutated'][0][0].e[1]": "int 2",
+   "call0['mutated'][0][1][0]": "str len=5",
+   "call1": "raised ValueError"
+  },
+  "calls": 2
+ },
+ "config:get_global_config | None installed: returns None and warns": {
+  "stable": "e8c541581df95ad641010c68aa3d256b17fd8091ef2c2affd9f34680950dc893",
+  "exact": "e8c541581df95ad641010c68aa3d256b17fd8091ef2c2affd9f34680950dc893",
+  "summary": {
+   "call0.x": "int 1"
+  },
+  "calls": 2
+ },
+ "config:set_global_config | get returns what set installed; a non-config is refused": {
+  "stable": "f78aab0d78e3cb50f3ff7ca326a2291678efc2df1674837e4bdde809f4526df8",
+  "exact": "f78aab0d78e3cb50f3ff7ca326a2291678efc2df1674837e4bdde809f4526df8",
+  "summary": {
+   "call0['mutated'][0][0].x": "int 1",
+   "call1": "raised AssertionError"
+  },
+  "calls": 3
+ },
+ "count_encoder:CountEncoder.__init__ | unique pairs are np.unique's; decode inverts the mapping; compression rate 1 - unique/total": {
+  "stable": "789b8931bbf1476d769033927ed6acea7128efaadf035402d974e2b55123d520",
+  "exact": "90fbecff37df0391474c78ea334b0219f799903da656f9beeb6cf8ac96ed2246",
+  "summary": {
+   "call0['mutated'][0][0].mapping_matrices[0].data": "float64 (1000,) min=1 max=1 mean=1 sum=1000",
+   "call0['mutated'][0][0].mapping_matrices[0].indices": "int64 (1000,) min=0 max=844 sum=401644",
+   "call0['mutated'][0][0].mapping_matrices[0].indptr": "int64 (1001,) min=0 max=1000 sum=500500",
+   "call0['mutated'][0][0].n_obs": "int 1000",
+   "call0['mutated'][0][0].n_spots": "int 1",
+   "call0['mutated'][0][0].obs_count": "float64 (1000, 1) min=10 max=340 mean=66.537 sum=66537",
+   "call0['mutated'][0][0].total_count": "float64 (1000, 1) min=21 max=662 mean=133.354 sum=133354",
+   "call0['mutated'][0][0].unique_counts[0]": "float64 (845, 2) min=10 max=662 mean=104.305 sum=176276",
+   "call0['mutated'][0][1]": "float64 (1000, 1) min=10 max=340 mean=66.537 sum=66537",
+   "call0['mutated'][0][2]": "float64 (1000, 1) min=21 max=662 mean=133.354 sum=133354"
+  },
+  "calls": 1
+ },
+ "count_encoder:CountEncoder.compression_rate | 1 - unique pairs / observations": {
+  "stable": "ef8f93dfe05aa2b47590bfb4fa90658350e043fc76e6d80d20f198899908f9f2",
+  "exact": "698448c25d07d5772a94157bc9c81ae80faa8a91f2a4af7bf1bfb41df20bc1b0",
+  "summary": {
+   "call0": "float 0.155"
+  },
+  "calls": 1
+ },
+ "count_encoder:CountEncoder.construct_unique_encoding | zero-depth entries collapse to (0, 0) when asked; the mapping counts each pair's observations": {
+  "stable": "f3d70b04483968ae1a5341b8c7e1e2509cbf4266f5767ab215b3e5c72502283a",
+  "exact": "c7fa9e49711642e1f0565abd7b017794dc64e0e7474dca8c8010ed3ec7044709",
+  "summary": {
+   "call0[0][0]": "int64 (2, 2) min=0 max=9 sum=14",
+   "call0[1][0].data": "float64 (4,) min=1 max=1 mean=1 sum=4",
+   "call0[1][0].indices": "int64 (4,) min=0 max=1 sum=1",
+   "call0[1][0].indptr": "int64 (5,) min=0 max=4 sum=10",
+   "call1[0][0]": "int64 (3, 2) min=0 max=9 sum=17",
+   "call1[1][0].data": "float64 (4,) min=1 max=1 mean=1 sum=4",
+   "call1[1][0].indices": "int64 (4,) min=0 max=2 sum=4",
+   "call1[1][0].indptr": "int64 (5,) min=0 max=4 sum=10"
+  },
+  "calls": 2
+ },
+ "count_encoder:CountEncoder.decode_array | decode maps each unique pair's value to every observation carrying it": {
+  "stable": "4cd90bf79b3ba847d7af7680721ce0b8582688898df0f8fd508a8c0cf2e6ba4e",
+  "exact": "d23f42d78c67208f77cc44af58a4ff5549cfe90379949a54e6b721d799653d11",
+  "summary": {
+   "call0": "float64 (2, 1000) min=-662 max=4062 mean=332.685 sum=665370"
+  },
+  "calls": 1
+ },
+ "count_encoder:CountEncoder.get_unique_obs | the first column of the unique pairs": {
+  "stable": "107a4f435fc76bd0d0b9e42fabd49bf5b50ef28c6b9ed6fb714d00a702df4d2b",
+  "exact": "2ba5fb7832fed33b3eee3df68cdd00fc7c46d6732f52a2d1b601a58fb307449a",
+  "summary": {
+   "call0": "float64 (845,) min=10 max=340 mean=69.5219 sum=58746"
+  },
+  "calls": 1
+ },
+ "count_encoder:CountEncoder.get_unique_total | the second column of the unique pairs": {
+  "stable": "6975f3d565abeac24dce9f2ecde50aec2f4a8461d2b7d7987c29c2e9a5186a90",
+  "exact": "470a9d80e719e792cd2e96e3d1ec77f8cbd70c7514cbb00a90a95eb7c342a7a5",
+  "summary": {
+   "call0": "float64 (845,) min=21 max=662 mean=139.089 sum=117530"
+  },
+  "calls": 1
+ },
+ "filter:get_filter_genes | one gene per line": {
+  "stable": "1ad7e10a64bf820a8f22294f590d03bd5e54b6ce4e3796984e571b0ebf06a762",
+  "exact": "1ad7e10a64bf820a8f22294f590d03bd5e54b6ce4e3796984e571b0ebf06a762",
+  "summary": {
+   "call0[0]": "str (2,)"
+  },
+  "calls": 1
+ },
+ "filter:get_filter_ranges | chr prefix dropped, sorted by (Chr, Start)": {
+  "stable": "e579f9a8835bb72391f1f99d04b6a5e6808312a27603c0d56784153dd0eabe86",
+  "exact": "e579f9a8835bb72391f1f99d04b6a5e6808312a27603c0d56784153dd0eabe86",
+  "summary": {
+   "call0[Chr]": "int64 (3,) min=2 max=6 sum=14",
+   "call0[Start]": "int64 (3,) min=10 max=300 sum=410",
+   "call0[End]": "int64 (3,) min=20 max=400 sum=620"
+  },
+  "calls": 1
+ },
+ "he:get_he_image | without an image the positions pass through (Ticket#113, Ticket#311 for the image path)": {
+  "stable": "bf1ed540a4c82d57d1369f92bd03fc218f0358d4eba0ade320a4bd05d93f3472",
+  "exact": "89f1c376531496bbd96c1911bbf838748803e07e7dd14507efd40efe87b52fb7",
+  "summary": {
+   "call0[barcode]": "str (1,)",
+   "call0[x]": "float64 (1,) min=0 max=0 mean=0 sum=0",
+   "call0[y]": "float64 (1,) min=0 max=0 mean=0 sum=0"
+  },
+  "calls": 1
+ },
+ "he:join_tables_xy | each row of first takes its nearest row of second and the distance, by brute force (Ticket#113, Ticket#311 for the image path)": {
+  "stable": "2968dda631b7291ebef650c94694997c77c152d17b5e16025b3d3c2b9c1d46f9",
+  "exact": "cb95cc709550fc68bcbbbce57c0355c9123977b0921180389d71bbb31fb1419a",
+  "summary": {
+   "call0.columns[0]": "str len=1",
+   "call0.columns[1]": "str len=1",
+   "call0.columns[2]": "str len=2",
+   "call0.columns[3]": "str len=3",
+   "call0.columns[4]": "str len=1",
+   "call0.columns[5]": "str len=4",
+   "call0[x]": "float64 (3,) min=0 max=9 mean=4.66667 sum=14",
+   "call0[y]": "float64 (3,) min=0 max=5 mean=2 sum=6",
+   "call0[id]": "int64 (3,) min=1 max=3 sum=6",
+   "call0[lab]": "str (3,)",
+   "call0[v]": "float64 (3,) min=1 max=4 mean=2.33333 sum=7",
+   "call0[dist]": "float64 (3,) min=1 max=3.16228 mean=1.85883 sum=5.57649",
+   "...": "10 more leaves"
+  },
+  "calls": 2
+ },
+ "hmm:as_column | (n_states,) to (n_states, 1); None passes": {
+  "stable": "94ca4d5d21b1a403a46386293f58e599f69f13f84871fbb4338f83fbc5bab9a7",
+  "exact": "092a14e0411b7e07b211af53102754b03f5e4eca0173d32ccac49cdfb423425f",
+  "summary": {
+   "call0": "float64 (3, 1) min=0.1 max=0.7 mean=0.366667 sum=1.1",
+   "call1": "float64 (3, 1) min=0.1 max=0.7 mean=0.366667 sum=1.1"
+  },
+  "calls": 3
+ },
+ "hmm:as_states | inverts as_column bitwise; a second axis other than 1 is refused": {
+  "stable": "099774d3b6a0508825e40fa468a39c5fa9ace53aaa5516d68de9ed35c022c3ab",
+  "exact": "cc5af7c3cdd35529ae3a22d629509ff7c4de007607c7362f29db1061e64c3bb5",
+  "summary": {
+   "call0": "float64 (3,) min=0.1 max=0.7 mean=0.366667 sum=1.1",
+   "call2": "raised AssertionError"
+  },
+  "calls": 3
+ },
+ "hmm:compute_copy_state_posterior | alpha + beta normalized is the enumerated marginal; forward sums to log P(obs)": {
+  "stable": "7ebc17cd00214060b539be5d58d11ff99efe5a8112c3f91a07e4e7a3f2924576",
+  "exact": "0fdd7b0166ceb731d7bf11f0306898523a6e6ba6dc60e4626358737ceb15a587",
+  "summary": {
+   "call0": "float64 (3, 6) min=-2.60476 max=-0.233267 mean=-1.42512 sum=-25.6521"
+  },
+  "calls": 1
+ },
+ "hmm:compute_copy_state_posterior | the final E step's posteriors are finite and normalized per bin": {
+  "stable": "f01ca1215d1b1b33ae41026fff31edddfb10cf98f911a313cc986866b540d027",
+  "exact": "62ec75775ac26af653953a60970ad623629753798bd4f858a625b0d943bf4099",
+  "summary": {
+   "call0": "float64 (7, 6308) min=-471.169 max=0 mean=-42.7942 sum=-1.88962e+06"
+  },
+  "calls": 1
+ },
+ "hmm:pipeline_baum_welch | BAF fit: the closing E step at the stored parameters reproduces the stored posteriors (1e-9)": {
+  "stable": "28fa6e14090f7fc319c56530c992d5e7651dc119a5f7ace2a8001d2b4b490a07",
+  "exact": "4168287fd18b4d48c37be128c745017f80b4881efff54740090185b0df899394",
+  "summary": {
+   "['judged'][0]": "float64 (7, 7388) min=-327.171 max=0 mean=-24.4222 sum=-1.26302e+06",
+   "['judged'][1]": "float64 (7, 7388) min=-327.171 max=0 mean=-24.4222 sum=-1.26302e+06"
+  },
+  "calls": 0
+ },
+ "hmm:pipeline_baum_welch | RDR fit: the closing E step at the stored parameters reproduces the stored posteriors (1e-9)": {
+  "stable": "4bc02e6447735af7d32a696569bf5966b5f4a390739eee0127bbb0e4a4642bb5",
+  "exact": "036f50fbdc3a810b6592f317d55ea1626b8dd6b78dc0eef717ae4a1a030ed277",
+  "summary": {
+   "['judged'][0]": "float64 (7, 6308) min=-471.169 max=0 mean=-42.7942 sum=-1.88962e+06",
+   "['judged'][1]": "float64 (7, 6308) min=-471.169 max=0 mean=-42.7942 sum=-1.88962e+06"
+  },
+  "calls": 0
+ },
+ "hmm:pipeline_baum_welch | no input mutation; normalized posteriors; llf the forward total; states split at the planted change": {
+  "stable": "497be8fd4b5565d171ca6c12041d33ff185a1efd6a3844bce712dfc4d8586a0e",
+  "exact": "5d2d124be2346ec466f312b796aef2b9e0958ace074f4ba80e80bd9b84128655",
+  "summary": {
+   "call0.params.new_log_mu": "float64 (2,) min=0 max=0 mean=0 sum=0",
+   "call0.params.new_alphas": "float64 (2,) min=0.5 max=0.5 mean=0.5 sum=1",
+   "call0.params.new_p_binom": "float64 (2,) min=0.202236 max=0.501301 mean=0.351768 sum=0.703537",
+   "call0.params.new_taus": "float64 (2,) min=112240 max=112240 mean=112240 sum=224479",
+   "call0.params.new_log_startprob": "float64 (2,) min=-0.693147 max=-0.693147 mean=-0.693147 sum=-1.38629",
+   "call0.params.new_log_transmat": "float64 (2, 2) min=-13.8155 max=-1e-06 mean=-6.90776 sum=-27.631",
+   "call0.profile.log_gamma": "float64 (2, 600) min=-60.7746 max=0 mean=-19.7604 sum=-23712.5",
+   "call0.profile.pred_cnv": "int64 (600,) min=0 max=1 sum=300",
+   "call0.llf": "float64 -1665.44",
+   "call0.n_states": "int 2",
+   "call0.assignment.total_llf": "float nan"
+  },
+  "calls": 1
+ },
+ "hmm_emission:OptimizationResult.__post_init__ | statsmodels-style mle_retvals and mle_settings": {
+  "stable": "9f450e0605fdbf010c2d56ce9876a6a9943c22466d6866d016ad5779aecabb7c",
+  "exact": "0140b412fc7478f1090ddb14a315a4014d5d72b75699e193178c5bfaf07b6726",
+  "summary": {
+   "call0['mutated'][0][0].optimizer": "str len=8",
+   "call0['mutated'][0][0].params": "float64 (2,) min=1 max=1 mean=1 sum=2",
+   "call0['mutated'][0][0].llf": "float -1",
+   "call0['mutated'][0][0].converged": "True",
+   "call0['mutated'][0][0].iterations": "int 7",
+   "call0['mutated'][0][0].fcalls": "int 9"
+  },
+  "calls": 1
+ },
+ "hmm_emission:Weighted_BetaBinom_mix.__init__ | a 1-d exog is one state column": {
+  "stable": "adf8379a990f94702d26e37dee3b74d32890cd41c6c284b2f9e0448004147e18",
+  "exact": "c2fae8b81f5a77e5b4732b588ece1522f79419a3c16f384ee6725d4d7b317d6e",
+  "summary": {
+   "call0['mutated'][0][0].endog": "float64 (4,) min=1 max=1 mean=1 sum=4",
+   "call0['mutated'][0][0].exog": "float64 (4, 1) min=1 max=1 mean=1 sum=4",
+   "call0['mutated'][0][0].exposure": "float64 (4,) min=3 max=3 mean=3 sum=12",
+   "call0['mutated'][0][0].fixed_dispersion": "False",
+   "call0['mutated'][0][0].num_states": "int 1",
+   "call0['mutated'][0][0].shared_dispersion": "True",
+   "call0['mutated'][0][0].weights": "float64 (4,) min=1 max=1 mean=1 sum=4",
+   "call0['mutated'][0][1]": "float64 (4,) min=1 max=1 mean=1 sum=4",
+   "call0['mutated'][0][2]": "float64 (4,) min=1 max=1 mean=1 sum=4",
+   "call0['mutated'][0][3]": "float64 (4,) min=1 max=1 mean=1 sum=4",
+   "call0['mutated'][0][4]": "float64 (4,) min=3 max=3 mean=3 sum=12",
+   "call1['mutated'][0][0].endog": "float64 (4,) min=1 max=1 mean=1 sum=4",
+   "...": "11 more leaves"
+  },
+  "calls": 2
+ },
+ "hmm_emission:Weighted_BetaBinom_mix.fit | every option sent to scipy is one it takes": {
+  "stable": "acc48f6b79755861ef7810f1f719bb65fdb469fcd522612fde2db7827135b1e5",
+  "exact": "464e11b61ef6adfdcce5946e400d1ed15aa39330410f8bf9e234527e977006cf",
+  "summary": {
+   "call0.optimizer": "str len=8",
+   "call0.params": "float64 (2,) min=0.292739 max=999.993 mean=500.143 sum=1000.29",
+   "call0.llf": "float64 -315.767",
+   "call0.converged": "True",
+   "call0.iterations": "int 3",
+   "call0.fcalls": "int 15"
+  },
+  "calls": 1
+ },
+ "hmm_emission:Weighted_BetaBinom_mix.fit | the fit is scipy's MLE: p to 0.005, tau to 20%": {
+  "stable": "f9041054f054b8918ffab372ec424e4921c919b6c7498ba147511fcaa4e37b92",
+  "exact": "4142a97d4fd62e01a2cf1e8d0eaebea6349b918f32896b36e0cc322474c1ed0d",
+  "summary": {
+   "call0.optimizer": "str len=8",
+   "call0.params": "float64 (2,) min=0.301055 max=999.953 mean=500.127 sum=1000.25",
+   "call0.llf": "float64 -2399.59",
+   "call0.converged": "True",
+   "call0.iterations": "int 3",
+   "call0.fcalls": "int 15"
+  },
+  "calls": 1
+ },
+ "hmm_emission:Weighted_BetaBinom_mix.get_bounds | one bound per parameter": {
+  "stable": "f529a0f840072793e63306c8268cb6e0133ec2521d0ecb5fad406c6ef510be14",
+  "exact": "e70a93357e98e61467063a0d782220088090b7b5c5fa4d9c575d4f7167811bd5",
+  "summary": {
+   "call0[0][0]": "float 1e-06",
+   "call0[0][1]": "float 0.999999",
+   "call0[1][0]": "float 1e-06",
+   "call0[1][1]": "float 1e+06",
+   "call1[0][0]": "float 1e-06",
+   "call1[0][1]": "float 0.999999",
+   "call1[1][0]": "float 1e-06",
+   "call1[1][1]": "float 0.999999",
+   "call1[2][0]": "float 1e-06",
+   "call1[2][1]": "float 1e+06",
+   "call1[3][0]": "float 1e-06",
+   "call1[3][1]": "float 1e+06"
+  },
+  "calls": 2
+ },
+ "hmm_emission:Weighted_BetaBinom_mix.get_default_params | one p per state and one shared (or per-state) dispersion": {
+  "stable": "b6db047826272215d7c265ce45dafe23931b8b17438cc29fadf5a3491c6ff9fb",
+  "exact": "ba6d283be9fdeb3da74c575fb49e7976f7fe68240ac307b03dc03c8686337537",
+  "summary": {
+   "call0": "float64 (2,) min=0.5 max=1000 mean=500.25 sum=1000.5",
+   "call1": "float64 (4,) min=0.5 max=1000 mean=500.25 sum=2001"
+  },
+  "calls": 2
+ },
+ "hmm_emission:Weighted_BetaBinom_mix.nloglikeobs | the negative log-likelihood is scipy's, with and without the zero point": {
+  "stable": "bbd8a2bf9564435317a5157e826caa4a1a2063088de1fca67e29d2db14761fc7",
+  "exact": "ad7385d1279880cff812313e6e02f36b6f03eb32453cd25ce35a64748ab7f336",
+  "summary": {
+   "call0": "float64 2426.89",
+   "call1": "float64 2426.89"
+  },
+  "calls": 2
+ },
+ "hmm_emission:betabinom_logpmf | zero point + lgamma terms is scipy's log-pmf": {
+  "stable": "0d800a4865b05e9c7b20b95c80c47bb927af57840575b5b0a4938de7b0378026",
+  "exact": "c5d89a4c42d186693ef07c6804bf115de2b54c41938c771d80cf3576eb3db25f",
+  "summary": {
+   "call0": "float64 (3,) min=-12.2629 max=-1.92693 mean=-5.5722 sum=-16.7166"
+  },
+  "calls": 1
+ },
+ "hmm_emission:betabinom_logpmf_zp | the log binomial coefficient completes scipy's log-pmf": {
+  "stable": "4aa57bc984815508b7e899c95e480c4375bf25f8b30ff3ff5c96e130eb721e74",
+  "exact": "957ec7f606a5df1ac738880e15753b5706a28cb991d8584466016fd31f7664de",
+  "summary": {
+   "call0": "float64 (3,) min=0 max=4.78749 mean=1.59583 sum=4.78749"
+  },
+  "calls": 1
+ },
+ "hmm_emission:compute_bb_ab | a = p tau, b = (1 - p) tau for each row's state": {
+  "stable": "581a3ca41874f015629d984ba3bbaba3b5e030f5b583f35051b57a8a118f951c",
+  "exact": "79fbb5e361907e9b694693dc443e9ad27d1e608e3a4608bfb57e00b389dee930",
+  "summary": {
+   "call0[0]": "float64 (3,) min=3 max=6 mean=5 sum=15",
+   "call0[1]": "float64 (3,) min=2 max=24 mean=16.6667 sum=50"
+  },
+  "calls": 1
+ },
+ "hmm_emission:flush_perf | the fit's timing row goes to <paths.output_dir>/cnamaste.perf": {
+  "stable": "c12d5f2a2c879a4c719ef22848653afb57dd63e9b6fec88956fd53b0692efe8f",
+  "exact": "c12d5f2a2c879a4c719ef22848653afb57dd63e9b6fec88956fd53b0692efe8f",
+  "summary": {
+   "call0['mutated'][0][0]": "str",
+   "call0['mutated'][0][1]": "int",
+   "call0['mutated'][0][2]": "int",
+   "call0['mutated'][0][3]": "bool",
+   "call0['mutated'][0][4]": "float",
+   "call0['mutated'][0][5]": "float",
+   "call0['mutated'][0][6].optimizer": "str",
+   "call0['mutated'][0][6].params": "float64 (2,)",
+   "call0['mutated'][0][6].llf": "float64",
+   "call0['mutated'][0][6].converged": "bool",
+   "call0['mutated'][0][6].iterations": "int",
+   "call0['mutated'][0][6].fcalls": "int"
+  },
+  "calls": 1
+ },
+ "hmm_emission:get_betabinom_start_params | betabinom.start_params and start_disp, parsed": {
+  "stable": "0d16eb03b42fd7218b21b9252422199539d9710ade3288502576f81825bb9f99",
+  "exact": "3ebf0a95e2c3111281497cb9349016487c8cefdbf71423fc7d8f7bac2e1318ec",
+  "summary": {
+   "call0[0][0]": "float 0.5",
+   "call0[0][1]": "float 0.5",
+   "call0[0][2]": "float 0.5",
+   "call0[0][3]": "float 0.5",
+   "call0[0][4]": "float 0.5",
+   "call0[0][5]": "float 0.5",
+   "call0[0][6]": "float 0.5",
+   "call0[1]": "float 1000",
+   "call1[0][0]": "float 0.5",
+   "call1[0][1]": "float 0.5",
+   "call1[0][2]": "float 0.5",
+   "call1[0][3]": "float 0.5",
+   "...": "12 more leaves"
+  },
+  "calls": 3
+ },
+ "hmm_emission:nloglikeobs_bb | scipy's betabinom.logpmf summed, negated": {
+  "stable": "bbd8a2bf9564435317a5157e826caa4a1a2063088de1fca67e29d2db14761fc7",
+  "exact": "ad7385d1279880cff812313e6e02f36b6f03eb32453cd25ce35a64748ab7f336",
+  "summary": {
+   "call0": "float64 2426.89",
+   "call1": "float64 2426.89"
+  },
+  "calls": 2
+ },
+ "hmm_initialize:gmm_init | only_minor: p in [0, 1/2], near the planted (0.2, 0.5) to 0.06; no input mutation": {
+  "stable": "c2d34505dfaf09f488cbd342ece81cbdde4c3122120fd1761a498133f789c520",
+  "exact": "e5d6ef888178d82d00682a2712f52d5f87ddd96496d65279c0ad4f9697478a2f",
+  "summary": {
+   "call0[1]": "float64 (2, 1) min=0.20548 max=0.447701 mean=0.32659 sum=0.653181"
+  },
+  "calls": 1
+ },
+ "hmm_initialize:gmm_init | the RDR mixture accounts for each bin's exposure": {
+  "stable": "4f1342035f54b27f0f7cb1de9708c4e28351302bc77e0cb35816a3bf08bc22c3",
+  "exact": "4f1342035f54b27f0f7cb1de9708c4e28351302bc77e0cb35816a3bf08bc22c3",
+  "summary": {},
+  "calls": 0
+ },
+ "hmm_initialize:gmm_init | with RDR: mu near the planted (0.5, 1.5)": {
+  "stable": "ab9631e4369656d480462e53f577240110e39f90fc9d02d8123a5d1a4545465e",
+  "exact": "6a49a6606ebf1dec159d23685362e4c32e22dea4fe0830ca432ed3a803ed83ff",
+  "summary": {
+   "call0[0]": "float64 (2, 1) min=-0.707783 max=0.35406 mean=-0.176861 sum=-0.353722",
+   "call0[1]": "float64 (2, 1) min=0.201836 max=0.5 mean=0.350918 sum=0.701836"
+  },
+  "calls": 1
+ },
+ "hmm_nophasing:_bb_logpmf_1d | the 1-d BB kernel is scipy's, one state": {
+  "stable": "dc3df0e7e4c1f3535ac215c856add8e30ac77df91c2a93907641322978026750",
+  "exact": "b21231b11890baa7cd716c49c97e4a12689354103e1a02f9dd62de70074fe6d2",
+  "summary": {
+   "call0['mutated'][0][0]": "float64 (300,) min=11 max=253 mean=64.47 sum=19341",
+   "call0['mutated'][0][1]": "float64 (300,) min=23 max=469 mean=129.21 sum=38763",
+   "call0['mutated'][0][2]": "float 0.501953",
+   "call0['mutated'][0][3]": "float 459792",
+   "call0['mutated'][0][4]": "float64 (300,) min=-6.52164 max=-1.82934 mean=-3.08059 sum=-924.177"
+  },
+  "calls": 1
+ },
+ "hmm_nophasing:_dense_bb_logpmf | the dense BB log-pmf is scipy's betabinom.logpmf(x; n, p tau, (1-p) tau)": {
+  "stable": "b9e17478ba0788ce0a6bb3b52503eb5bffa2df96858a7aac619741b4baf8a1dc",
+  "exact": "b70042a45e43338f026e9fa6345cafc444170584ab224675eadc9d9030cfc6ff",
+  "summary": {
+   "call0": "float64 (7, 300, 1) min=-323.754 max=-1.82365 mean=-21.9164 sum=-46024.4"
+  },
+  "calls": 1
+ },
+ "hmm_nophasing:_dense_nb_logpmf | the dense NB log-pmf is scipy's nbinom.logpmf(x; 1/alpha, 1/(1 + alpha mu base)), 0 at no baseline": {
+  "stable": "d7f669ccef7928a749be9cb81a73e96acdfb12d2ece106f3cc7c3450f6c8c813",
+  "exact": "29ada14068e0cd715bdba007f3589b3b5b1cd6546ce929039644cb1161dc60f0",
+  "summary": {
+   "call0": "float64 (7, 300, 1) min=-38.6927 max=0 mean=-6.78795 sum=-14254.7"
+  },
+  "calls": 1
+ },
+ "hmm_nophasing:_nb_logpmf_1d | the 1-d NB kernel is scipy's, one state": {
+  "stable": "6a2b26b2939a608a2c0f1924db39af9ddb8f4de2d0087adb15314a6880b7d5d6",
+  "exact": "836552be00992f784e0c864cf6e3a908a367dbc0ac09f15e8a6079dfd53f5b3c",
+  "summary": {
+   "call0['mutated'][0][0]": "float64 (300,) min=0 max=2703 mean=259.097 sum=77729",
+   "call0['mutated'][0][1]": "float64 (300,) min=0 max=1610.03 mean=276.938 sum=83081.3",
+   "call0['mutated'][0][2]": "float 1.64588",
+   "call0['mutated'][0][3]": "float 0.595765",
+   "call0['mutated'][0][4]": "float64 (300,) min=-11.286 max=0 mean=-6.58114 sum=-1974.34"
+  },
+  "calls": 1
+ },
+ "hmm_nophasing:betabinom_logpmf_numba | the scalar BB log-pmf is scipy's on a 24-point grid": {
+  "stable": "8a32535ae07929407de495974ada0a7d2a97470183cda0f10ba6bc37ab24d7f5",
+  "exact": "ccbce1d321e76c62ce8b707b56ed9b55c5c69f61a3bd4aaa24d2669a90569990",
+  "summary": {
+   "call0": "float -1.04301",
+   "call1": "float -0.0147915",
+   "call2": "float -15.0401",
+   "call3": "float -0.573481",
+   "call4": "float -1.60024",
+   "call5": "float -0.047693",
+   "call6": "float -30.0973",
+   "call7": "float -1.8509",
+   "call8": "float -2.60341",
+   "call9": "float -16.198",
+   "call10": "float -6.21513",
+   "call11": "float -6.37125",
+   "...": "12 more leaves"
+  },
+  "calls": 24
+ },
+ "hmm_nophasing:get_log_transmat | closed form: t on the diagonal, (1-t)/(K-1) off it; a 1-state chain is [[0]]": {
+  "stable": "a876484aec27b1aa7f59c068ba0a8a3df28d17cdc1c6dc011f42e75f8e956436",
+  "exact": "a595affa4251118b46dd4be241966c64098a316927aedfc29094a656d33679d0",
+  "summary": {
+   "call0": "float64 (4, 4) min=-4.60517 max=-0.0304592 mean=-3.46149 sum=-55.3839",
+   "call1": "float64 (1, 1) min=0 max=0 mean=0 sum=0"
+  },
+  "calls": 2
+ },
+ "hmm_nophasing:hmm_nophasing.__init__ | stores params and t": {
+  "stable": "b0e5f03ddc1e9e485bc3cf126f1fb7a9a73532bf8ffb88fd309d90ce212ecbc0",
+  "exact": "59f93d64980f02b18f9e61a3ea0c03b0cc979e50d47a1e32e1a1abe240ba55df",
+  "summary": {
+   "call0['mutated'][0][0].params": "str len=2",
+   "call0['mutated'][0][0].t": "float 0.25",
+   "call0['mutated'][1]['params']": "str len=2",
+   "call0['mutated'][1]['t']": "float 0.25"
+  },
+  "calls": 1
+ },
+ "hmm_nophasing:hmm_nophasing._run_optimization_pipeline | EM recovers the planted p (0.2, 0.5) to 0.02": {
+  "stable": "bad5b192e2a6771d1463c89dcad3e0ab241a428ce91290ad66df502d971b1391",
+  "exact": "c50c0f56897fef2dc5e052238722a31ba4962a83e77f021f47dce9ae675d1788",
+  "summary": {
+   "call0['llf']": "float64 -4120.52",
+   "call0['log_gamma']": "float64 (2, 600) min=-97.3512 max=0 mean=-23.1948 sum=-27833.8",
+   "call0['n_states']": "int 2",
+   "call0['new_alphas']": "float64 (2, 1) min=0.0179855 max=0.0179855 mean=0.0179855 sum=0.035971",
+   "call0['new_log_mu']": "float64 (2, 1) min=-0.709561 max=0.41817 mean=-0.145695 sum=-0.29139",
+   "call0['new_log_startprob']": "float64 (2,) min=-0.693147 max=-0.693147 mean=-0.693147 sum=-1.38629",
+   "call0['new_log_transmat']": "float64 (2, 2) min=-6.90776 max=-0.0010005 mean=-3.45438 sum=-13.8175",
+   "call0['new_p_binom']": "float64 (2, 1) min=0.202648 max=0.501847 mean=0.352247 sum=0.704494",
+   "call0['new_taus']": "float64 (2, 1) min=279.31 max=279.31 mean=279.31 sum=558.621",
+   "call0['pred_cnv']": "int64 (600,) min=0 max=1 sum=300"
+  },
+  "calls": 1
+ },
+ "hmm_nophasing:hmm_nophasing._run_optimization_pipeline | the fit's log-likelihood is at least the start's": {
+  "stable": "499e82605af062b13a4d09ec538f84d5fed66ecf6ad65a7032e78ce3b0701328",
+  "exact": "b4739a5c5a68267d0f1ae7736c867f24c2a6113d5bf77bf93adb3d10a9dcc7f0",
+  "summary": {
+   "call0['llf']": "float64 -1643.72",
+   "call0['log_gamma']": "float64 (2, 600) min=-43.2166 max=0 mean=-11.9307 sum=-14316.8",
+   "call0['n_states']": "int 2",
+   "call0['new_alphas']": "float64 (2, 1) min=0.5 max=0.5 mean=0.5 sum=1",
+   "call0['new_log_mu']": "float64 (2, 1) min=-0.1 max=0.1 mean=0 sum=0",
+   "call0['new_log_startprob']": "float64 (2,) min=-0.693147 max=-0.693147 mean=-0.693147 sum=-1.38629",
+   "call0['new_log_transmat']": "float64 (2, 2) min=-6.90776 max=-0.0010005 mean=-3.45438 sum=-13.8175",
+   "call0['new_p_binom']": "float64 (2, 1) min=0.202468 max=0.501506 mean=0.351987 sum=0.703974",
+   "call0['new_taus']": "float64 (2, 1) min=179.06 max=657.584 mean=418.322 sum=836.644",
+   "call0['pred_cnv']": "int64 (600,) min=0 max=1 sum=300"
+  },
+  "calls": 1
+ },
+ "hmm_nophasing:hmm_nophasing.backward_lattice | RDR fit: the lattices' MAP states are the stored pred_cnv": {
+  "stable": "175c47f29c3f338556a3b2807f706d041afc4b3ea4d95878d3fa3ac5ad0715b3",
+  "exact": "1effd7d1a554bbd3bd202e267cfc7c14d65ec1ffff90e0d0f067ccda65b71359",
+  "summary": {
+   "call0": "float64 (7, 6308) min=-1619.47 max=0 mean=-431.761 sum=-1.90648e+07"
+  },
+  "calls": 1
+ },
+ "hmm_nophasing:hmm_nophasing.backward_lattice | log beta is the textbook recursion, restarted at each segment": {
+  "stable": "baaded97eeb3d050d5951d50a24ffbc335f60308483cd2a3545f071932d58097",
+  "exact": "e641603e8f57382efbab9b0ca272b91068efa756eec74e61572aea5409b163a2",
+  "summary": {
+   "call0": "float64 (7, 300) min=-1935.37 max=0 mean=-811.719 sum=-1.70461e+06"
+  },
+  "calls": 1
+ },
+ "hmm_nophasing:hmm_nophasing.compute_emission_probability_nb_betabinom | the dense emission is scipy's NB and BB log-pmfs": {
+  "stable": "8248bcbe2f177907bba231cc08f0cf8e4d3a5ca5dbbc228f68ec4e4390724f42",
+  "exact": "7ebbd64b46e247524a21fa76e431510a843d7fdc536d607444b24f7167fcafd6",
+  "summary": {
+   "call0[0]": "float64 (7, 300, 1) min=-38.6927 max=0 mean=-6.78795 sum=-14254.7",
+   "call0[1]": "float64 (7, 300, 1) min=-323.754 max=-1.82365 mean=-21.9164 sum=-46024.4"
+  },
+  "calls": 1
+ },
+ "hmm_nophasing:hmm_nophasing.compute_emission_probability_nb_betabinom | the dense emission on the final stack is the one the stored posteriors were computed from": {
+  "stable": "b1f3ec59ad59db0ce93ab37ebfa818618cb868915b2753be0946b05f09dc9594",
+  "exact": "3df21719c1e0a3c401c7d58a9d48185553609338a2eba7ef230d2bae06a13c2d",
+  "summary": {
+   "call0[0]": "float64 (7, 6308, 1) min=-94.392 max=0 mean=-6.90298 sum=-304808",
+   "call0[1]": "float64 (7, 6308, 1) min=-440.75 max=-0.704743 mean=-20.9695 sum=-925931"
+  },
+  "calls": 1
+ },
+ "hmm_nophasing:hmm_nophasing.compute_emission_probability_nb_betabinom_coded | BAF fit (integer depths): the coded emission equals the dense one (a second implementation), to 1e-10": {
+  "stable": "1effe82be50e76b470044946b892e49c6447c7391d0653c03c325ed5000b0efa",
+  "exact": "2e925a70940f19c982ea714728a8195f98ed7962a66d356413376403248f5a96",
+  "summary": {
+   "call0[0]": "float64 (7, 300) min=0 max=0 mean=0 sum=0",
+   "call0[1]": "float64 (7, 300) min=-213.638 max=-1.90914 mean=-13.7172 sum=-28806.1"
+  },
+  "calls": 1
+ },
+ "hmm_nophasing:hmm_nophasing.compute_emission_probability_nb_betabinom_coded | RDR fit: the coded emission (the M step's) equals the dense one (the E step's), to 1e-10": {
+  "stable": "6c5d3bd32e60db1e3d5d51dc27f13a6e9882bd105c180a4847a591d635dd71c8",
+  "exact": "c0997e9c4404cfd4608ac272995240b042bb95ed23a1441f06d84bcaa2a9c2f5",
+  "summary": {
+   "call0[0]": "float64 (7, 300) min=-38.733 max=0 mean=-6.78755 sum=-14253.9",
+   "call0[1]": "float64 (7, 300) min=-323.754 max=-1.82365 mean=-21.9164 sum=-46024.4"
+  },
+  "calls": 1
+ },
+ "hmm_nophasing:hmm_nophasing.compute_emission_probability_nb_betabinom_coded | a flag discards the data-only terms": {
+  "stable": "4f1342035f54b27f0f7cb1de9708c4e28351302bc77e0cb35816a3bf08bc22c3",
+  "exact": "4f1342035f54b27f0f7cb1de9708c4e28351302bc77e0cb35816a3bf08bc22c3",
+  "summary": {},
+  "calls": 0
+ },
+ "hmm_nophasing:hmm_nophasing.forward_lattice | BAF fit: the lattices' MAP states are the stored pred_cnv": {
+  "stable": "c5068ece7993ec6c86adbf6bae1db55b52f1bd28320ebeb77dddf2f600f14dbd",
+  "exact": "095d3b751366699a461c83096da21872fa1be4191b5460f5002e5e7ff45e376b",
+  "summary": {
+   "call0": "float64 (7, 7388) min=-701.796 max=-3.94634 mean=-172.287 sum=-8.91002e+06"
+  },
+  "calls": 1
+ },
+ "hmm_nophasing:hmm_nophasing.forward_lattice | log alpha is the textbook recursion, restarted at each segment": {
+  "stable": "c1a4f9d8ef3bb4a7f990da5df4736049d6cc494ddab88b48669f0247297ccf45",
+  "exact": "4c65f9367dff90ec1aeff28af2e18f2df182ed8113363394143fe2cb79d9454a",
+  "summary": {
+   "call0": "float64 (7, 300) min=-2120.43 max=-12.4835 mean=-831.054 sum=-1.74521e+06"
+  },
+  "calls": 1
+ },
+ "hmm_nophasing:hmm_nophasing.get_bounds | one bound per packed parameter, dispersions in log space at the stated limits": {
+  "stable": "98e004a7e07b1d2865e411baa13598eb33312c774018acfa573d452fc440eacb",
+  "exact": "10a52390273f4482246e270f29d920adc31702e55369bfdad4ee322d6cd7a82c",
+  "summary": {
+   "call0[15][0]": "float -13.8155",
+   "call0[15][1]": "float 6.90776",
+   "call0[16][0]": "float -9.21034",
+   "call0[16][1]": "float 8.51719",
+   "call0[17][0]": "float -9.21034",
+   "call0[17][1]": "float 8.51719",
+   "call0[18][0]": "float -9.21034",
+   "call0[18][1]": "float 8.51719",
+   "call0[19][0]": "float -9.21034",
+   "call0[19][1]": "float 8.51719",
+   "call0[20][0]": "float -9.21034",
+   "call0[20][1]": "float 8.51719"
+  },
+  "calls": 1
+ },
+ "hmm_nophasing:hmm_nophasing.get_initial_params | defaults: linspace mu and p, normalized start and transitions; given values pass through": {
+  "stable": "8d15c31bb8eebb2822da6e65f53c5d924aee626b02c18b388d67c06817b2950d",
+  "exact": "87a7734c009829d6de9ca4b63946a30d041ca8956ad61146b5f6bba13f2f0f4f",
+  "summary": {
+   "call0[0]": "float64 (4, 1) min=-0.1 max=0.1 mean=-6.93889e-18 sum=-2.77556e-17",
+   "call0[1]": "float64 (4, 1) min=0.05 max=0.45 mean=0.25 sum=1",
+   "call0[2]": "float64 (4, 1) min=0.5 max=0.5 mean=0.5 sum=2",
+   "call0[3]": "float64 (4, 1) min=1000 max=1000 mean=1000 sum=4000",
+   "call0[4]": "float64 (4,) min=-1.38629 max=-1.38629 mean=-1.38629 sum=-5.54518",
+   "call0[5]": "float64 (4, 4) min=-3.4012 max=-0.105361 mean=-2.57724 sum=-41.2358",
+   "call1[0]": "float64 (4, 1) min=1 max=1 mean=1 sum=4",
+   "call1[1]": "float64 (4, 1) min=0.05 max=0.45 mean=0.25 sum=1",
+   "call1[2]": "float64 (4, 1) min=0.5 max=0.5 mean=0.5 sum=2",
+   "call1[3]": "float64 (4, 1) min=1000 max=1000 mean=1000 sum=4000",
+   "call1[4]": "float64 (4,) min=-1.38629 max=-1.38629 mean=-1.38629 sum=-5.54518",
+   "call1[5]": "float64 (4, 4) min=-10.309 max=-0.000100005 mean=-7.73174 sum=-123.708"
+  },
+  "calls": 2
+ },
+ "hmm_nophasing:hmm_nophasing.get_state_posteriors | the posteriors are the marginals of all 3^6 paths, enumerated": {
+  "stable": "7ebc17cd00214060b539be5d58d11ff99efe5a8112c3f91a07e4e7a3f2924576",
+  "exact": "0fdd7b0166ceb731d7bf11f0306898523a6e6ba6dc60e4626358737ceb15a587",
+  "summary": {
+   "call0": "float64 (3, 6) min=-2.60476 max=-0.233267 mean=-1.42512 sum=-25.6521"
+  },
+  "calls": 1
+ },
+ "hmm_nophasing:hmm_nophasing.optimize | EM recovers the planted mu (0.5, 1.5) to 0.05": {
+  "stable": "bad5b192e2a6771d1463c89dcad3e0ab241a428ce91290ad66df502d971b1391",
+  "exact": "c50c0f56897fef2dc5e052238722a31ba4962a83e77f021f47dce9ae675d1788",
+  "summary": {
+   "call0['llf']": "float64 -4120.52",
+   "call0['log_gamma']": "float64 (2, 600) min=-97.3512 max=0 mean=-23.1948 sum=-27833.8",
+   "call0['n_states']": "int 2",
+   "call0['new_alphas']": "float64 (2, 1) min=0.0179855 max=0.0179855 mean=0.0179855 sum=0.035971",
+   "call0['new_log_mu']": "float64 (2, 1) min=-0.709561 max=0.41817 mean=-0.145695 sum=-0.29139",
+   "call0['new_log_startprob']": "float64 (2,) min=-0.693147 max=-0.693147 mean=-0.693147 sum=-1.38629",
+   "call0['new_log_transmat']": "float64 (2, 2) min=-6.90776 max=-0.0010005 mean=-3.45438 sum=-13.8175",
+   "call0['new_p_binom']": "float64 (2, 1) min=0.202648 max=0.501847 mean=0.352247 sum=0.704494",
+   "call0['new_taus']": "float64 (2, 1) min=279.31 max=279.31 mean=279.31 sum=558.621",
+   "call0['pred_cnv']": "int64 (600,) min=0 max=1 sum=300"
+  },
+  "calls": 1
+ },
+ "hmm_nophasing:hmm_nophasing.pack_params | unpack(pack(x)) == x; bounds match the packed length": {
+  "stable": "46a4680b3db4696e7495927a249b9658e31171f45768ba19c59d573ffdf43ebf",
+  "exact": "b34d7315ae49ed9343c94184b15f55f99b401eaf26e8339103d7cec846c8e833",
+  "summary": {
+   "call0": "float64 (11,) min=-2.55567 max=3.68888 mean=-0.237924 sum=-2.61717",
+   "call1": "float64 (15,) min=-2.55567 max=4.03436 mean=0.228905 sum=3.43357",
+   "call2": "float64 (7,) min=-1.60944 max=3.68888 mean=-0.188078 sum=-1.31655",
+   "call3": "float64 (9,) min=-1.60944 max=4.56502 mean=0.81736 sum=7.35624",
+   "call4": "float64 (8,) min=-2.55567 max=3.68888 mean=0.111174 sum=0.889392",
+   "call5": "float64 (12,) min=-2.55567 max=4.58099 mean=0.551342 sum=6.61611",
+   "call6": "float64 (4,) min=-1.5485 max=3.68888 mean=0.547503 sum=2.19001",
+   "call7": "float64 (6,) min=-1.5485 max=4.37695 mean=1.62019 sum=9.72114"
+  },
+  "calls": 8
+ },
+ "hmm_nophasing:hmm_nophasing.run_baum_welch_nb_bb | optimize is EM mode, bitwise; posteriors normalized, pred_cnv their argmax": {
+  "stable": "8b6d7f7a8e18e3aeaa553bc2f779e809c9f74d8e309a202f9b91250ddfe9d306",
+  "exact": "8da40ba87d96969ac064149f63a9bd403715d34b9a7d26fb7841dc16ee340ad3",
+  "summary": {
+   "call0['llf']": "float64 -1643.74",
+   "call0['log_gamma']": "float64 (2, 600) min=-47.6074 max=0 mean=-14.1799 sum=-17015.9",
+   "call0['n_states']": "int 2",
+   "call0['new_alphas']": "float64 (2, 1) min=0.5 max=0.5 mean=0.5 sum=1",
+   "call0['new_log_mu']": "float64 (2, 1) min=-0.1 max=0.1 mean=0 sum=0",
+   "call0['new_log_startprob']": "float64 (2,) min=-0.693147 max=-0.693147 mean=-0.693147 sum=-1.38629",
+   "call0['new_log_transmat']": "float64 (2, 2) min=-9.21034 max=-0.000100005 mean=-4.60522 sum=-18.4209",
+   "call0['new_p_binom']": "float64 (2, 1) min=0.202518 max=0.501102 mean=0.35181 sum=0.703621",
+   "call0['new_taus']": "float64 (2, 1) min=175.414 max=624.892 mean=400.153 sum=800.305",
+   "call0['pred_cnv']": "int64 (600,) min=0 max=1 sum=300",
+   "call1['llf']": "float64 -1643.74",
+   "call1['log_gamma']": "float64 (2, 600) min=-47.6074 max=0 mean=-14.1799 sum=-17015.9",
+   "...": "8 more leaves"
+  },
+  "calls": 2
+ },
+ "hmm_nophasing:hmm_nophasing.unpack_param_errors | delta method: sd(p) = p(1-p) sd(logit p), sd(alpha) = alpha sd(log alpha)": {
+  "stable": "3c2792a8681003d7732d107d51593d7a231cd14f781b27b819f5e0504d4ac5b7",
+  "exact": "4f4e3f4cf5e038080f9ceed407ee5e98937e40c9a33bcae7bb6e98126247124f",
+  "summary": {
+   "call0[0]": "float64 (2,) min=0 max=0 mean=0 sum=0",
+   "call0[1]": "float64 (2, 1) min=0.2 max=0.3 mean=0.25 sum=0.5",
+   "call0[2]": "float64 (2, 1) min=0.0977833 max=0.098306 mean=0.0980446 sum=0.196089",
+   "call0[3]": "float64 (2, 1) min=0.2 max=0.2 mean=0.2 sum=0.4",
+   "call0[4]": "float64 (2, 1) min=10 max=10 mean=10 sum=20"
+  },
+  "calls": 1
+ },
+ "hmm_nophasing:hmm_nophasing.unpack_params | unpack(pack(x)) == x for every params string and sharing": {
+  "stable": "4f5b7d8598d7c0a70f3077ae03ac1663aeb9e6987368551ab45d678d2d111433",
+  "exact": "fdd0fa3e79c471563c48bf59d390c824d40c1b140e6d3564307308452a734602",
+  "summary": {
+   "call0[0]": "float64 (3,) min=-1.60944 max=-0.693147 mean=-1.16885 sum=-3.50656",
+   "call0[1]": "float64 (3, 1) min=-2.55567 max=2.04092 mean=-0.0322157 sum=-0.0966471",
+   "call0[2]": "float64 (3, 1) min=0.175303 max=0.56573 mean=0.395845 sum=1.18753",
+   "call0[3]": "float64 (3, 1) min=0.3 max=0.3 mean=0.3 sum=0.9",
+   "call0[4]": "float64 (3, 1) min=40 max=40 mean=40 sum=120",
+   "call1[0]": "float64 (3,) min=-1.60944 max=-0.693147 mean=-1.16885 sum=-3.50656",
+   "call1[1]": "float64 (3, 1) min=-2.55567 max=2.04092 mean=-0.0322157 sum=-0.0966471",
+   "call1[2]": "float64 (3, 1) min=0.175303 max=0.56573 mean=0.395845 sum=1.18753",
+   "call1[3]": "float64 (3, 1) min=0.243765 max=0.761119 mean=0.51201 sum=1.53603",
+   "call1[4]": "float64 (3, 1) min=20.2305 max=56.5066 mean=40.6492 sum=121.948",
+   "call2[0]": "float64 (3,) min=-1.60944 max=-0.693147 mean=-1.16885 sum=-3.50656",
+   "call2[1]": "float64 (3, 1) min=-2.55567 max=2.04092 mean=-0.0322157 sum=-0.0966471",
+   "...": "28 more leaves"
+  },
+  "calls": 8
+ },
+ "hmm_nophasing:nbinom_logpmf_numba | the scalar NB log-pmf is scipy's on a 27-point grid": {
+  "stable": "026864ff793f34dd97df7f3db3e7f57a8ade2f95edccb18c4139784b3b370407",
+  "exact": "dd5deb26a5ee6ba9080a6b56253faf97216b60911a90afcde1fde3e8789a2c30",
+  "summary": {
+   "call0": "float -1.49787",
+   "call1": "float -0.346574",
+   "call2": "float -0.0256466",
+   "call3": "float -14.9787",
+   "call4": "float -3.46574",
+   "call5": "float -0.256466",
+   "call6": "float -149.787",
+   "call7": "float -34.6574",
+   "call8": "float -2.56466",
+   "call9": "float -2.8149",
+   "call10": "float -3.58917",
+   "call11": "float -10.176",
+   "...": "15 more leaves"
+  },
+  "calls": 27
+ },
+ "hmm_nophasing:np_sum_ax_squeeze | the axis sum is numpy's": {
+  "stable": "269791812b779224589767f9c3831c75febead813fd8e3adb2db427a5c8bfbbf",
+  "exact": "40839c1bcafe38f3bd3402ab536584c090e08594154214e611c5329e3eb180ae",
+  "summary": {
+   "call0": "float64 (4,) min=15 max=123 mean=69 sum=276",
+   "call1": "float64 (6,) min=36 max=56 mean=46 sum=276"
+  },
+  "calls": 2
+ },
+ "hmm_nophasing:numba_logsumexp | logsumexp is scipy's, with -inf and overflow-scale inputs": {
+  "stable": "e00a492f76b677c9b5b8a8692e348a7124f836138ad55dbfd85310d4331a0348",
+  "exact": "eadfae392a3b4a2ee89b234dcd19aecc9d2f0de94ca927a659a8d5e425ca3d4d",
+  "summary": {
+   "call0": "float 0.313262",
+   "call1": "float 1000.13",
+   "call2": "float -inf",
+   "call3": "float 0"
+  },
+  "calls": 4
+ },
+ "hmm_phased:_switch_betabinom_1d | the switched BB is scipy's with alpha and beta exchanged": {
+  "stable": "dcc80e7a469cc41c2dba8b9c9e8004e2e2759b4e7e8f3723c4fd7c6a58e9a761",
+  "exact": "c4392e585f343f44c8f6313e5331adcf42cc205526948957266106597197d1d8",
+  "summary": {
+   "call0": "float64 (2, 4) min=-12.2629 max=-1.52118 mean=-5.05217 sum=-40.4174"
+  },
+  "calls": 1
+ },
+ "hmm_phased:hmm_phased.__init__ | stores params and t": {
+  "stable": "e2a899cefb0de01e7d1f84b0c84de72407ae9bbf1142dd1129ad8c92c3aa8d26",
+  "exact": "45a2560668e913e26d1ffc127df367f84bede5ba049b69186b06f88d51ec80f2",
+  "summary": {
+   "call0['mutated'][0][0].params": "str len=2",
+   "call0['mutated'][0][0].t": "float 0.3",
+   "call0['mutated'][1]['params']": "str len=2",
+   "call0['mutated'][1]['t']": "float 0.3"
+  },
+  "calls": 1
+ },
+ "hmm_phased:hmm_phased.backward_lattice | the textbook backward recursion over the paired chain": {
+  "stable": "0767544dc36bac4ebdf8155b4c8f88b3c7359715bb62f06e3234ea10c97f388e",
+  "exact": "4e348eb33c5fab4e87185814c740b0995d19771c0e4bef52d0715738f4e715dd",
+  "summary": {
+   "call0": "float64 (4, 7) min=-0.92192 max=2.37609 mean=0.352663 sum=9.87456"
+  },
+  "calls": 1
+ },
+ "hmm_phased:hmm_phased.compute_emission_probability_nb_betabinom | states K..2K-1 are the BB at 1 - p; RDR zero without a baseline": {
+  "stable": "fda281c7118d37f4e8a34011168828c4e9609453d112b9455a0497c8ef8963f1",
+  "exact": "3db9d8be114b7122265f39e5c0053d02382ab93022a4fd4f95f3976327c27e56",
+  "summary": {
+   "call0[0]": "float64 (4, 30, 1) min=0 max=0 mean=0 sum=0",
+   "call0[1]": "float64 (4, 30, 1) min=-17.6075 max=-0.952679 mean=-4.72217 sum=-566.66"
+  },
+  "calls": 1
+ },
+ "hmm_phased:hmm_phased.compute_emission_probability_nb_betabinom_coded | the coded phased emission is scipy's, both phases": {
+  "stable": "fda281c7118d37f4e8a34011168828c4e9609453d112b9455a0497c8ef8963f1",
+  "exact": "3db9d8be114b7122265f39e5c0053d02382ab93022a4fd4f95f3976327c27e56",
+  "summary": {
+   "call0[0]": "float64 (4, 30, 1) min=0 max=0 mean=0 sum=0",
+   "call0[1]": "float64 (4, 30, 1) min=-17.6075 max=-0.952679 mean=-4.72217 sum=-566.66"
+  },
+  "calls": 1
+ },
+ "hmm_phased:hmm_phased.forward_lattice | the textbook recursion over the paired chain, switch probability per bin": {
+  "stable": "64cc1e002297bec07ef5fbd6862fb070cc8cae9ba51f7bb84eb9000cb6e5d229",
+  "exact": "15f0e431ef1cd887a68f583a367e870df99b41ffe6f42ac047240ed626df1e3f",
+  "summary": {
+   "call0": "float64 (4, 7) min=-2.9301 max=1.47099 mean=-1.03669 sum=-29.0274"
+  },
+  "calls": 1
+ },
+ "hmm_phased:update_combined_transmat | [[(1-s)A, sA], [sA, (1-s)A]]; rows sum to one": {
+  "stable": "55158f5c6541be4b977955dc97c70b650ac7cb44fa0171050c494dffbbc309dd",
+  "exact": "7bc49c4c49036a349416f27fa0262f7286739b4e4e1da72a218c47528a3cf86b",
+  "summary": {
+   "call0['mutated'][0][0]": "float64 (6, 6) min=-4.60517 max=-0.328504 mean=-2.81341 sum=-101.283",
+   "call0['mutated'][0][1]": "int 3",
+   "call0['mutated'][0][2]": "float64 (3, 3) min=-2.30259 max=-0.223144 mean=-1.60944 sum=-14.4849",
+   "call0['mutated'][0][3]": "float64 -0.105361",
+   "call0['mutated'][0][4]": "float64 -2.30259",
+   "call0['mutated'][0][5]": "False",
+   "call0['mutated'][0][6]": "float64 -0.693147"
+  },
+  "calls": 1
+ },
+ "hmm_utils:get_em_solver_params | L-BFGS-B's keys from hmm.em_*, as floats; an unknown solver raises": {
+  "stable": "f160bcb7c59d90d687b576b83593b5c05e1547309f672ad070cd256ad0278732",
+  "exact": "04f5bcd4fb4707d25a086a2437226e5df0c8b48898902719385b2b0d157ca989",
+  "summary": {
+   "call0['disp']": "float 0",
+   "call0['ftol']": "float 0.0001",
+   "call0['maxiter']": "float 1500",
+   "call1": "raised ValueError"
+  },
+  "calls": 2
+ },
+ "hmm_utils:get_solver | the configured solver; an unknown one is refused": {
+  "stable": "80c1e26f0aac13ed793e1fdab87ea8636cd1bbe225e6ab8f311587791345ea75",
+  "exact": "80c1e26f0aac13ed793e1fdab87ea8636cd1bbe225e6ab8f311587791345ea75",
+  "summary": {
+   "call0": "str len=8",
+   "call1": "raised AssertionError"
+  },
+  "calls": 2
+ },
+ "hmrf:compute_loglike_spot_assignment | the field is w_s * RDR + BAF summed over each clone's states, w_s = valid BAF / valid RDR bins": {
+  "stable": "b2fc069b41264a576591b9bf7073e917f75f21408200c470402489fb3296c3ca",
+  "exact": "961696ffb2120bd78d53e9f67e8d0c40737a093a3a87385e43c0d2fc1a37649a",
+  "summary": {
+   "call0": "float64 (5, 2) min=-5.87305 max=4.32542 mean=-0.42339 sum=-4.2339",
+   "call1": "float64 (5, 2) min=-5.87305 max=4.32542 mean=-0.42339 sum=-4.2339"
+  },
+  "calls": 2
+ },
+ "hmrf:merge_by_minspots | groups partition the clones; survivors >= the floor; representatives' paths kept": {
+  "stable": "334304dce44eef674423ef8bce459cfd2cf674190a29578476ddf73c5fc6ad25",
+  "exact": "2914c433dbe7de9f34157e6a9b589755bceddee238e46b9b224aa2376b9a7897",
+  "summary": {
+   "call0[0][0][0]": "int64 0",
+   "call0[0][0][1]": "int64 1",
+   "call0[0][0][2]": "int64 3",
+   "call0[0][1][0]": "int64 2",
+   "call0[1].params.new_log_mu": "float64 (3, 1) min=0 max=0 mean=0 sum=0",
+   "call0[1].params.new_alphas": "float64 (3, 1) min=0 max=0 mean=0 sum=0",
+   "call0[1].params.new_p_binom": "float64 (3, 1) min=0 max=0 mean=0 sum=0",
+   "call0[1].params.new_taus": "float64 (3, 1) min=0 max=0 mean=0 sum=0",
+   "call0[1].params.new_log_startprob": "float64 (3, 1) min=0 max=0 mean=0 sum=0",
+   "call0[1].params.new_log_transmat": "float64 (3, 1) min=0 max=0 mean=0 sum=0",
+   "call0[1].profile.log_gamma": "float64 (3, 8) min=-1.09861 max=-1.09861 mean=-1.09861 sum=-26.3667",
+   "call0[1].profile.pred_cnv": "int64 (8,) min=0 max=2 sum=6",
+   "...": "4 more leaves"
+  },
+  "calls": 1
+ },
+ "hmrf:pipeline_clone_assignment | the field is scipy's BB log-likelihood under each clone's MAP path": {
+  "stable": "58712ffbe5a8941cda7bb7f77e584363683692a4e2f4510dc8a3182f29e32b5a",
+  "exact": "2a56355274f7248997b03da516c13dfea1833ec2821e19092b2003a3aad343a3",
+  "summary": {
+   "call0[0]": "int64 (300,) min=0 max=0 sum=0",
+   "call0[1]": "float64 (300, 4) min=-425.48 max=-51.2866 mean=-170.112 sum=-204135",
+   "call0[2]": "float64 -49489.3"
+  },
+  "calls": 1
+ },
+ "hmrf:pipeline_clone_assignment | the returned objective is the Potts energy (w / 2 per stored edge)": {
+  "stable": "58712ffbe5a8941cda7bb7f77e584363683692a4e2f4510dc8a3182f29e32b5a",
+  "exact": "2a56355274f7248997b03da516c13dfea1833ec2821e19092b2003a3aad343a3",
+  "summary": {
+   "call0[0]": "int64 (300,) min=0 max=0 sum=0",
+   "call0[1]": "float64 (300, 4) min=-425.48 max=-51.2866 mean=-170.112 sum=-204135",
+   "call0[2]": "float64 -49489.3"
+  },
+  "calls": 1
+ },
+ "hmrf:reindex_clones | a label permutation; paths and posteriors move with it; the rest by size": {
+  "stable": "4871d90b5f0246d504278020d294d5c8bbd05db189f8f66ec826d3e107f8097e",
+  "exact": "881ba91ff165efbabebd10afda81d364aafe919d1b30d6ee1075764df6b7d710",
+  "summary": {
+   "call0[0].params.new_log_mu": "float64 (7,) min=-1.14895 max=0.498273 mean=-0.0550282 sum=-0.385197",
+   "call0[0].params.new_alphas": "float64 (7,) min=0.595765 max=0.595765 mean=0.595765 sum=4.17035",
+   "call0[0].params.new_p_binom": "float64 (7,) min=0.0843248 max=0.632485 mean=0.376047 sum=2.63233",
+   "call0[0].params.new_taus": "float64 (7,) min=459792 max=459792 mean=459792 sum=3.21854e+06",
+   "call0[0].params.new_log_startprob": "float64 (7,) min=-1.94591 max=-1.94591 mean=-1.94591 sum=-13.6214",
+   "call0[0].params.new_log_transmat": "float64 (7, 7) min=-17.9099 max=-1e-07 mean=-15.3513 sum=-752.214",
+   "call0[0].profile.log_gamma": "float64 (7, 1577, 4) min=-471.169 max=0 mean=-42.7942 sum=-1.88962e+06",
+   "call0[0].profile.pred_cnv": "int64 (1577, 4) min=0 max=6 sum=8540",
+   "call0[0].llf": "float64 -60678.5",
+   "call0[0].n_states": "int 7",
+   "call0[0].assignment.prev_assignment": "int64 (3000,) min=0 max=3 sum=4487",
+   "call0[0].assignment.new_assignment": "int64 (3000,) min=0 max=3 sum=4959",
+   "...": "1 more leaves"
+  },
+  "calls": 1
+ },
+ "hmrf:reindex_clones | the result it is handed is not rewritten": {
+  "stable": "4871d90b5f0246d504278020d294d5c8bbd05db189f8f66ec826d3e107f8097e",
+  "exact": "881ba91ff165efbabebd10afda81d364aafe919d1b30d6ee1075764df6b7d710",
+  "summary": {
+   "call0[0].params.new_log_mu": "float64 (7,) min=-1.14895 max=0.498273 mean=-0.0550282 sum=-0.385197",
+   "call0[0].params.new_alphas": "float64 (7,) min=0.595765 max=0.595765 mean=0.595765 sum=4.17035",
+   "call0[0].params.new_p_binom": "float64 (7,) min=0.0843248 max=0.632485 mean=0.376047 sum=2.63233",
+   "call0[0].params.new_taus": "float64 (7,) min=459792 max=459792 mean=459792 sum=3.21854e+06",
+   "call0[0].params.new_log_startprob": "float64 (7,) min=-1.94591 max=-1.94591 mean=-1.94591 sum=-13.6214",
+   "call0[0].params.new_log_transmat": "float64 (7, 7) min=-17.9099 max=-1e-07 mean=-15.3513 sum=-752.214",
+   "call0[0].profile.log_gamma": "float64 (7, 1577, 4) min=-471.169 max=0 mean=-42.7942 sum=-1.88962e+06",
+   "call0[0].profile.pred_cnv": "int64 (1577, 4) min=0 max=6 sum=8540",
+   "call0[0].llf": "float64 -60678.5",
+   "call0[0].n_states": "int 7",
+   "call0[0].assignment.prev_assignment": "int64 (3000,) min=0 max=3 sum=4487",
+   "call0[0].assignment.new_assignment": "int64 (3000,) min=0 max=3 sum=4959",
+   "...": "1 more leaves"
+  },
+  "calls": 1
+ },
+ "hmrf:run_core_inference | labels 0..M-1, the last ICM labels re-indexed; prev the last input labels": {
+  "stable": "a9f37a699661170dfd60d2cd7eab794ed629f0d234b21996e59e1b5868e09556",
+  "exact": "a259d553f46ea392a687b3cc7fa147842d3a562d5a46c84927c565c9a97e41f9",
+  "summary": {
+   "['judged'][0].params.new_log_mu": "float64 (7,) min=-0.1 max=0.1 mean=-3.96508e-18 sum=-2.77556e-17",
+   "['judged'][0].params.new_alphas": "float64 (7,) min=0.5 max=0.5 mean=0.5 sum=3.5",
+   "['judged'][0].params.new_p_binom": "float64 (7,) min=0.0822218 max=0.583153 mean=0.431048 sum=3.01734",
+   "['judged'][0].params.new_taus": "float64 (7,) min=2732.83 max=2732.83 mean=2732.83 sum=19129.8",
+   "['judged'][0].params.new_log_startprob": "float64 (7,) min=-1.94591 max=-1.94591 mean=-1.94591 sum=-13.6214",
+   "['judged'][0].params.new_log_transmat": "float64 (7, 7) min=-17.9099 max=-1e-07 mean=-15.3513 sum=-752.214",
+   "['judged'][0].profile.log_gamma": "float64 (7, 7388) min=-327.171 max=0 mean=-24.4222 sum=-1.26302e+06",
+   "['judged'][0].profile.pred_cnv": "int64 (7388,) min=0 max=6 sum=12346",
+   "['judged'][0].llf": "float64 -22275.5",
+   "['judged'][0].n_states": "int 7",
+   "['judged'][0].assignment.prev_assignment": "int64 (3000,) min=0 max=3 sum=4013",
+   "['judged'][0].assignment.new_assignment": "int64 (3000,) min=0 max=3 sum=4013",
+   "...": "217 more leaves"
+  },
+  "calls": 0
+ },
+ "hmrf:run_core_inference | the clone field is scored under each clone's posterior, not its argmax": {
+  "stable": "4f1342035f54b27f0f7cb1de9708c4e28351302bc77e0cb35816a3bf08bc22c3",
+  "exact": "4f1342035f54b27f0f7cb1de9708c4e28351302bc77e0cb35816a3bf08bc22c3",
+  "summary": {},
+  "calls": 0
+ },
+ "hmrf_utils:cast_csr | row lists unpack to the matrix's COO triplets": {
+  "stable": "b6c8a106f2158f40f4e3fabf61dc08775723da6c32e2ca92645a6ae9b859c6e7",
+  "exact": "4f08d07be109e15feeac9273a63d16a1ecb24b76da772e689e83e887cde1e8c8",
+  "summary": {
+   "call0[0][0][0]": "int32 4",
+   "call0[0][0][1]": "float64 0.56277",
+   "call0[1][0][0]": "int32 2",
+   "call0[1][0][1]": "float64 0.841041",
+   "call0[1][1][0]": "int32 5",
+   "call0[1][1][1]": "float64 0.662686",
+   "call0[2][0][0]": "int32 1",
+   "call0[2][0][1]": "float64 0.713566",
+   "call0[2][1][0]": "int32 2",
+   "call0[2][1][1]": "float64 0.0637698",
+   "call0[2][2][0]": "int32 3",
+   "call0[2][2][1]": "float64 0.871072",
+   "...": "28 more leaves"
+  },
+  "calls": 1
+ },
+ "hmrf_utils:clone_stack_obs | clone c's bins are rows c*n..(c+1)*n; lengths and switch probabilities tile, tumor proportions repeat": {
+  "stable": "2e1711e8121e40add5953414c656ba9513ae5510e6dec2ff3f271b688729a28f",
+  "exact": "fb8169170df0fd23c85dd9b38b961a108d16caab9836a143a8caeccd1c473ead",
+  "summary": {
+   "call0[0]": "float64 (12, 2, 1) min=0.00889581 max=0.987445 mean=0.480226 sum=11.5254",
+   "call0[1]": "float64 (12, 1) min=0.10688 max=0.886964 mean=0.504676 sum=6.05611",
+   "call0[2]": "float64 (12, 1) min=0.0597573 max=0.970489 mean=0.554137 sum=6.64965",
+   "call0[3]": "int64 (6,) min=1 max=3 sum=12",
+   "call0[4]": "float64 (12,) min=0 max=3 mean=1.5 sum=18",
+   "call0[5]": "float64 (12, 1) min=0.2 max=0.9 mean=0.533333 sum=6.4"
+  },
+  "calls": 1
+ },
+ "hmrf_utils:get_clone_assignment | inverts get_clone_indices": {
+  "stable": "69687cc37043a3acf0bb85777206bf61138491578cf5a8ace51685530a7b1ea1",
+  "exact": "69687cc37043a3acf0bb85777206bf61138491578cf5a8ace51685530a7b1ea1",
+  "summary": {
+   "call0": "int64 (3000,) min=0 max=3 sum=4495"
+  },
+  "calls": 1
+ },
+ "hmrf_utils:get_clone_indices | indices partition the spots by label": {
+  "stable": "d051a4ecf55fcdae28bd58128232ce71b20ecd8f4341df27ac93c8a7e72f9c4d",
+  "exact": "d051a4ecf55fcdae28bd58128232ce71b20ecd8f4341df27ac93c8a7e72f9c4d",
+  "summary": {
+   "call0[0]": "int64 (860,) min=0 max=2316 sum=502217",
+   "call0[1]": "int64 (669,) min=25 max=2009 sum=724412",
+   "call0[2]": "int64 (587,) min=1021 max=2972 sum=1070916",
+   "call0[3]": "int64 (884,) min=409 max=2999 sum=2200955"
+  },
+  "calls": 1
+ },
+ "icm:icm_sweep_deque | on an asymmetric graph: the reported cost is the energy gained (w / 2 per stored edge), each spot at its conditional maximum": {
+  "stable": "03eff13fa0f88bcbdd4dcd74ba943bb98c9901167933b65addb5d13cd44fc9d6",
+  "exact": "dff34e2b79345ad75973db65f677656d27e061ac564cf723d24e4175523e9ea2",
+  "summary": {
+   "call0[0]": "int 4",
+   "call0[1]": "float64 138.189"
+  },
+  "calls": 1
+ },
+ "icm:icm_sweep_deque | the reported cost is the Potts energy gained, and every spot ends at its conditional maximum": {
+  "stable": "b0a3bbc2080c1058da4208d0ef6a56079ba58f4800384839ba7db6169637d244",
+  "exact": "2df422ffb0ec740257f193db7f728ae8036c89c093e7d165f66c4ce567b5d9be",
+  "summary": {
+   "call0[0]": "int 5",
+   "call0[1]": "float64 119.184"
+  },
+  "calls": 1
+ },
+ "icm:merge_assignment | on an asymmetric graph: the best merge's cost is the merged labels' energy": {
+  "stable": "f7b3d43757706ccff68895fdc2a456de381b5845e799f539ef59692a5a5f9a72",
+  "exact": "fe1d4eaf4c969e5402c29479a8aca3ca752814ac971dce50730c421b8ab8208a",
+  "summary": {
+   "call0[0]": "float64 10.1533",
+   "call0[1]": "float64 54.8725",
+   "call0[2][0]": "int 0",
+   "call0[2][1]": "int 2"
+  },
+  "calls": 1
+ },
+ "icm:merge_assignment | on an asymmetric graph: the current cost is the energy (w / 2 per stored edge)": {
+  "stable": "f7b3d43757706ccff68895fdc2a456de381b5845e799f539ef59692a5a5f9a72",
+  "exact": "fe1d4eaf4c969e5402c29479a8aca3ca752814ac971dce50730c421b8ab8208a",
+  "summary": {
+   "call0[0]": "float64 10.1533",
+   "call0[1]": "float64 54.8725",
+   "call0[2][0]": "int 0",
+   "call0[2][1]": "int 2"
+  },
+  "calls": 1
+ },
+ "icm:merge_assignment | the best merge's cost is the merged labels' Potts energy": {
+  "stable": "36273d60e5ac8f17164a990ce65faa32af633ed67cd040ca2c74e0bb5beb773e",
+  "exact": "672eea496d183afc9c96b3a57eea95cdc84ef4e6c92a6b2ea7184f0bdc336da1",
+  "summary": {
+   "call0[0]": "float64 11.3141",
+   "call0[1]": "float64 53.6747",
+   "call0[2][0]": "int 2",
+   "call0[2][1]": "int 0"
+  },
+  "calls": 1
+ },
+ "icm:merge_assignment | the current cost is the Potts energy (unary + weight x aligned edges)": {
+  "stable": "36273d60e5ac8f17164a990ce65faa32af633ed67cd040ca2c74e0bb5beb773e",
+  "exact": "672eea496d183afc9c96b3a57eea95cdc84ef4e6c92a6b2ea7184f0bdc336da1",
+  "summary": {
+   "call0[0]": "float64 11.3141",
+   "call0[1]": "float64 53.6747",
+   "call0[2][0]": "int 2",
+   "call0[2][1]": "int 0"
+  },
+  "calls": 1
+ },
+ "icm:merge_assignment | the recorded merges map the ICM labels to the raw labels the run kept": {
+  "stable": "318a472d95def1686f40350a4defcae6d0e2670a6cfc52794b4a402ff00cf263",
+  "exact": "b4cf86632821b61014190151c5850b6c40da12a20976b35f57e69ef88a0ee721",
+  "summary": {
+   "['judged']['internal']['ari'][0]": "float 0.711438",
+   "['judged']['internal']['ari'][1]": "float 0.816011",
+   "['judged']['internal']['ari'][2]": "float 0.9835",
+   "['judged']['internal']['ari'][3]": "float 0.990248",
+   "['judged']['internal']['ari'][4]": "float 0.984557",
+   "['judged']['internal']['ari'][5]": "float 0.996047",
+   "['judged']['internal']['ari'][6]": "float 0.996048",
+   "['judged']['internal']['ari'][7]": "float 0.985911",
+   "['judged']['internal']['ari'][8]": "float 0.991952",
+   "['judged']['internal']['ari'][9]": "float 0.998982",
+   "['judged']['internal']['ari'][10]": "float 1",
+   "['judged']['internal']['ari'][11]": "float 0.886622",
+   "...": "118 more leaves"
+  },
+  "calls": 0
+ },
+ "icm:unpack_adjacency | (spot, neighbour, weight) are scipy's COO row, col, data": {
+  "stable": "9f96f4598c944192dfa72a9401c8725fac8d20103a02d8eed4cb26beda8b4690",
+  "exact": "d6fba8c2aaf3f3664804180301851e316bf163c9b7266b2d95562554198b6bce",
+  "summary": {
+   "call0[0]": "int64 (20,) min=0 max=6 sum=63",
+   "call0[1]": "int64 (20,) min=0 max=6 sum=61",
+   "call0[2]": "float64 (20,) min=0.0231176 max=0.871072 mean=0.531454 sum=10.6291"
+  },
+  "calls": 1
+ },
+ "integer_copy:find_diploid_balanced_state | the balanced, frequent state with mu closest to 1; none raises": {
+  "stable": "fbfc84a1dec6da7898a1b7e6a252aabc72315e0d944e379d66c3f873fafd41d4",
+  "exact": "fbfc84a1dec6da7898a1b7e6a252aabc72315e0d944e379d66c3f873fafd41d4",
+  "summary": {
+   "call0": "int64 1",
+   "call1": "int64 2",
+   "call2": "raised ValueError"
+  },
+  "calls": 3
+ },
+ "integer_copy:hill_climbing_integer_copynumber_fixdiploid_milp | copies within the allele and total caps, the diploid state (1, 1), ploidy in 1..4; no input mutation": {
+  "stable": "9030b60db7c20318db6c8f4a08aae7b9f68dec7a12e754f1a559ecd963b51461",
+  "exact": "f2269d47efccd1dfe84646f9397be1763dd0bbd8b0f511d4968b4fbe3e9995e2",
+  "summary": {
+   "call0[0]": "int64 (7, 2) min=0 max=2 sum=17",
+   "call0[1]": "float 4.93921",
+   "call0[2]": "int 2",
+   "call1[0]": "int64 (7, 2) min=0 max=2 sum=17",
+   "call1[1]": "float 63.3487",
+   "call1[2]": "int 3",
+   "call2[0]": "int64 (7, 2) min=0 max=2 sum=17",
+   "call2[1]": "float 58.0918",
+   "call2[2]": "int 3",
+   "call3[0]": "int64 (7, 2) min=0 max=2 sum=17",
+   "call3[1]": "float 52.5474",
+   "call3[2]": "int 3"
+  },
+  "calls": 4,
+  "staged": [
+   "09_outputs/integer_copy_0",
+   "09_outputs/integer_copy_1",
+   "09_outputs/integer_copy_2",
+   "09_outputs/integer_copy_3"
+  ]
+ },
+ "integer_copy:hill_climbing_integer_copynumber_fixdiploid_milp | on each recorded call: the least ploidy bound the solution meets": {
+  "stable": "01e75e7ab479cd5805da1f5d12cb42c0b35ccfc766c85387824550278d42c19a",
+  "exact": "f148e4c28d21457004319eefa1c275a2dac41ff0b91fb74c931fc62f15f29cd6",
+  "summary": {
+   "['judged'][0]['args'][0]": "float64 (7,) min=-1.14895 max=0.498273 mean=-0.0550282 sum=-0.385197",
+   "['judged'][0]['args'][1]": "float64 (1577,) min=0 max=4013.17 mean=688.155 sum=1.08522e+06",
+   "['judged'][0]['args'][2]": "float64 (7,) min=0.0843248 max=0.632485 mean=0.376047 sum=2.63233",
+   "['judged'][0]['args'][3]": "int64 (1577,) min=0 max=2 sum=184",
+   "['judged'][0]['kwargs']['nonbalance_bafdist']": "float 1",
+   "['judged'][0]['kwargs']['nondiploid_rdrdist']": "float 10",
+   "['judged'][0]['out'][0]": "int64 (7, 2) min=0 max=2 sum=17",
+   "['judged'][0]['out'][1]": "float 4.93921",
+   "['judged'][0]['out'][2]": "int 2",
+   "['judged'][1]['args'][0]": "float64 (7,) min=-1.14895 max=0.498273 mean=-0.0550282 sum=-0.385197",
+   "['judged'][1]['args'][1]": "float64 (1577,) min=0 max=1212.09 mean=207.843 sum=327768",
+   "['judged'][1]['args'][2]": "float64 (7,) min=0.0843248 max=0.632485 mean=0.376047 sum=2.63233",
+   "...": "24 more leaves"
+  },
+  "calls": 0
+ },
+ "integer_copy:hill_climbing_integer_copynumber_fixdiploid_milp | on each recorded call: the per-state argmin on occupied states, and its cost": {
+  "stable": "01e75e7ab479cd5805da1f5d12cb42c0b35ccfc766c85387824550278d42c19a",
+  "exact": "f148e4c28d21457004319eefa1c275a2dac41ff0b91fb74c931fc62f15f29cd6",
+  "summary": {
+   "['judged'][0]['args'][0]": "float64 (7,) min=-1.14895 max=0.498273 mean=-0.0550282 sum=-0.385197",
+   "['judged'][0]['args'][1]": "float64 (1577,) min=0 max=4013.17 mean=688.155 sum=1.08522e+06",
+   "['judged'][0]['args'][2]": "float64 (7,) min=0.0843248 max=0.632485 mean=0.376047 sum=2.63233",
+   "['judged'][0]['args'][3]": "int64 (1577,) min=0 max=2 sum=184",
+   "['judged'][0]['kwargs']['nonbalance_bafdist']": "float 1",
+   "['judged'][0]['kwargs']['nondiploid_rdrdist']": "float 10",
+   "['judged'][0]['out'][0]": "int64 (7, 2) min=0 max=2 sum=17",
+   "['judged'][0]['out'][1]": "float 4.93921",
+   "['judged'][0]['out'][2]": "int 2",
+   "['judged'][1]['args'][0]": "float64 (7,) min=-1.14895 max=0.498273 mean=-0.0550282 sum=-0.385197",
+   "['judged'][1]['args'][1]": "float64 (1577,) min=0 max=1212.09 mean=207.843 sum=327768",
+   "['judged'][1]['args'][2]": "float64 (7,) min=0.0843248 max=0.632485 mean=0.376047 sum=2.63233",
+   "...": "24 more leaves"
+  },
+  "calls": 0
+ },
+ "integer_copy:hill_climbing_integer_copynumber_fixdiploid_milp | run_cnamaste passes int_copy_num's caps": {
+  "stable": "4f1342035f54b27f0f7cb1de9708c4e28351302bc77e0cb35816a3bf08bc22c3",
+  "exact": "4f1342035f54b27f0f7cb1de9708c4e28351302bc77e0cb35816a3bf08bc22c3",
+  "summary": {},
+  "calls": 0
+ },
+ "integer_copy:hill_climbing_integer_copynumber_oneclone | copies within the caps, ploidy in 1..3, and no one-state move lowers the cost (a coordinate-wise minimum); no input mutation": {
+  "stable": "f52d0a309ff99569a277ba7b0cdbb3ac964e64284705126b2da4f5c777e0b8cb",
+  "exact": "6dbc06db5772d3e1cfefaf05898c1258384f6efcdc0262ff97e023f938ea8653",
+  "summary": {
+   "call0[0]": "int64 (3, 2) min=0 max=3 sum=6",
+   "call0[1]": "float64 18.9283",
+   "call0[2]": "int 2",
+   "call1[0]": "int64 (3, 2) min=0 max=3 sum=7",
+   "call1[1]": "float64 25.1884",
+   "call1[2]": "int 3",
+   "call2[0]": "int64 (3, 2) min=0 max=2 sum=10",
+   "call2[1]": "float64 8.66483",
+   "call2[2]": "int 3",
+   "call3[0]": "int64 (3, 2) min=0 max=3 sum=9",
+   "call3[1]": "float64 18.2116",
+   "call3[2]": "int 3",
+   "...": "108 more leaves"
+  },
+  "calls": 40
+ },
+ "integer_copy:hill_climbing_integer_copynumber_oneclone | planted copy states: the brute-force minimum, cost 0, and its least ploidy": {
+  "stable": "318d9c42dd874b79f92ca1a6d83774f41e06bcf382cb522a177adf12762a8b29",
+  "exact": "1508ceec43034ce0ff57b4fed7f4ac239deaef30775ab928794b2f28ef4590ea",
+  "summary": {
+   "call0[0]": "int64 (3, 2) min=0 max=2 sum=6",
+   "call0[1]": "float64 0",
+   "call0[2]": "int 3",
+   "call1[0]": "int64 (3, 2) min=1 max=3 sum=10",
+   "call1[1]": "float64 0",
+   "call1[2]": "int 4",
+   "call2[0]": "int64 (4, 2) min=1 max=3 sum=13",
+   "call2[1]": "float64 0",
+   "call2[2]": "int 4"
+  },
+  "calls": 3
+ },
+ "integer_copy:hill_climbing_integer_copynumber_oneclone | the cost is the copies' objective, never below the brute force over 13^3 tuples x 3 ploidies; equal to it on 36 of 40": {
+  "stable": "f52d0a309ff99569a277ba7b0cdbb3ac964e64284705126b2da4f5c777e0b8cb",
+  "exact": "6dbc06db5772d3e1cfefaf05898c1258384f6efcdc0262ff97e023f938ea8653",
+  "summary": {
+   "call0[0]": "int64 (3, 2) min=0 max=3 sum=6",
+   "call0[1]": "float64 18.9283",
+   "call0[2]": "int 2",
+   "call1[0]": "int64 (3, 2) min=0 max=3 sum=7",
+   "call1[1]": "float64 25.1884",
+   "call1[2]": "int 3",
+   "call2[0]": "int64 (3, 2) min=0 max=2 sum=10",
+   "call2[1]": "float64 8.66483",
+   "call2[2]": "int 3",
+   "call3[0]": "int64 (3, 2) min=0 max=3 sum=9",
+   "call3[1]": "float64 18.2116",
+   "call3[2]": "int 3",
+   "...": "108 more leaves"
+  },
+  "calls": 40
+ },
+ "io:construct_df_clone_label | one row per barcode with its label, sorted by (sample, x, y); no input mutation": {
+  "stable": "2aaebed1fafe37380ea7ed7514bf88725e995c3116285c8ba7147dfc46839862",
+  "exact": "2aaebed1fafe37380ea7ed7514bf88725e995c3116285c8ba7147dfc46839862",
+  "summary": {
+   "call0[sample_id]": "str (3000,)",
+   "call0[x]": "int64 (3000,) min=0 max=99 sum=148500",
+   "call0[y]": "int64 (3000,) min=0 max=59 sum=88500",
+   "call0[clone_label]": "int64 (3000,) min=0 max=3 sum=4959"
+  },
+  "calls": 1,
+  "staged": [
+   "09_outputs/construct_df_clone_label"
+  ]
+ },
+ "io:get_aggregated_barcodes | one sample: every barcode carries the known sample id (Ticket#446 for 2+)": {
+  "stable": "7a5fa6646fd58ff03f168bfc5e5b54372588149af156db0627ef4db7ce1ffeef",
+  "exact": "7a5fa6646fd58ff03f168bfc5e5b54372588149af156db0627ef4db7ce1ffeef",
+  "summary": {
+   "call0[combined_barcode]": "str (2,)",
+   "call0[barcode]": "str (2,)",
+   "call0[sample_id]": "str (2,)"
+  },
+  "calls": 1
+ },
+ "io:get_alignments | an alignment builds the across-slice adjacency": {
+  "stable": "c8ed39d9afaae0913f3c1ba3672857d0070c6bfa878bf08b5353b204f0726a54",
+  "exact": "c8ed39d9afaae0913f3c1ba3672857d0070c6bfa878bf08b5353b204f0726a54",
+  "summary": {
+   "call0": "raised NameError"
+  },
+  "calls": 1
+ },
+ "io:get_alignments | no alignment files: None": {
+  "stable": "9144e4fc0ff6ee6bfba6e2535460870fbcf3ffdf83a1e9863c135293444b7893",
+  "exact": "9144e4fc0ff6ee6bfba6e2535460870fbcf3ffdf83a1e9863c135293444b7893",
+  "summary": {},
+  "calls": 1
+ },
+ "io:get_barcodes | reads the first of the known extensions; none found raises": {
+  "stable": "fa4230a9d945c2ef2569d5e25e38392ee3dcdf0164faf2719ced2fd5fe63b2df",
+  "exact": "fa4230a9d945c2ef2569d5e25e38392ee3dcdf0164faf2719ced2fd5fe63b2df",
+  "summary": {
+   "call0[combined_barcode]": "str (2,)",
+   "call1": "raised RuntimeError"
+  },
+  "calls": 2
+ },
+ "io:get_sample_list | samples in order of appearance; ids index them": {
+  "stable": "faa470fd9e2ea0b914deccd847e9d7f26c30ffb50836f63f251e9a0f89ca1e41",
+  "exact": "faa470fd9e2ea0b914deccd847e9d7f26c30ffb50836f63f251e9a0f89ca1e41",
+  "summary": {
+   "call0[0][0]": "str len=1",
+   "call0[0][1]": "str len=1",
+   "call0[1]": "int64 (5,) min=0 max=1 sum=3"
+  },
+  "calls": 1
+ },
+ "io:get_sample_sheet | reads the sheet; a missing required column raises": {
+  "stable": "506011dc4aade869a9d42c86147f7966d479cccd83e84a6175279e1f1ec09aa9",
+  "exact": "506011dc4aade869a9d42c86147f7966d479cccd83e84a6175279e1f1ec09aa9",
+  "summary": {
+   "call0[bam]": "str (1,)",
+   "call0[sample_id]": "str (1,)",
+   "call0[spaceranger_dir]": "str (1,)",
+   "call0[snp_dir]": "str (1,)",
+   "call1": "raised AssertionError"
+  },
+  "calls": 2
+ },
+ "io:get_spaceranger_counts | integer counts, NaN to 0, unique gene names": {
+  "stable": "a5aeca29e240ce9ca99b4f967b63c87dc1d7d3938310b1ed2b11a532429ba823",
+  "exact": "eec9e480268c73e279123fa2aa74483cbeb953c50c1be26774a7082530dde3ff",
+  "summary": {
+   "call0.X.data": "float64 (4,) min=1 max=3 mean=2 sum=6 nonfinite=1",
+   "call0.X.indices": "int64 (4,) min=0 max=1 sum=2",
+   "call0.X.indptr": "int64 (3,) min=0 max=4 sum=6",
+   "call0.layers['count']": "int64 (2, 2) min=0 max=3 sum=6",
+   "call0.layers[None].data": "float64 (4,) min=1 max=3 mean=2 sum=6 nonfinite=1",
+   "call0.layers[None].indices": "int64 (4,) min=0 max=1 sum=2",
+   "call0.layers[None].indptr": "int64 (3,) min=0 max=4 sum=6"
+  },
+  "calls": 1
+ },
+ "io:get_spatial_positions | the in-tissue rows, or all; no file raises": {
+  "stable": "2ac5f5e171fa71c01d8c1f2b4f8f4bdf6b7d87ccc6ae851432f3b2e92b055e8c",
+  "exact": "2ac5f5e171fa71c01d8c1f2b4f8f4bdf6b7d87ccc6ae851432f3b2e92b055e8c",
+  "summary": {
+   "call0[barcode]": "str (2,)",
+   "call0[in_tissue]": "int64 (2,) min=1 max=1 sum=2",
+   "call0[x]": "int64 (2,) min=0 max=1 sum=1",
+   "call0[y]": "int64 (2,) min=0 max=0 sum=0",
+   "call0[pixel_row]": "int64 (2,) min=10 max=12 sum=22",
+   "call0[pixel_col]": "int64 (2,) min=20 max=22 sum=42",
+   "call1[barcode]": "str (3,)",
+   "call1[in_tissue]": "int64 (3,) min=0 max=1 sum=2",
+   "call1[x]": "int64 (3,) min=0 max=1 sum=1",
+   "call1[y]": "int64 (3,) min=0 max=1 sum=1",
+   "call1[pixel_row]": "int64 (3,) min=10 max=12 sum=33",
+   "call1[pixel_col]": "int64 (3,) min=20 max=22 sum=63",
+   "...": "1 more leaves"
+  },
+  "calls": 3
+ },
+ "io:load_input_data | aligned shapes; every spot over the SNP-UMI floor, every gene over the expressed fraction, filtered genes gone": {
+  "stable": "2c0553bb0959ef32c2e9e8be9fa770afe79545430875eb217b1e75727f37720e",
+  "exact": "63cb93c9f9c13a122db64c7ff8bbc8c3aae89c5689f45b3f2cae3dc8db64cec8",
+  "summary": {
+   "['judged']['config'].betabinom.run_default": "False",
+   "['judged']['config'].betabinom.start_disp": "float 1000",
+   "['judged']['config'].betabinom.start_params": "str len=27",
+   "['judged']['config'].hmm.compression_decimals": "int 0",
+   "['judged']['config'].hmm.em_disp": "int 0",
+   "['judged']['config'].hmm.em_ftol": "float 0.0001",
+   "['judged']['config'].hmm.em_maxiter": "int 1500",
+   "['judged']['config'].hmm.em_xrtol": "float 0.0001",
+   "['judged']['config'].hmm.em_xtol": "float 0.0001",
+   "['judged']['config'].hmm.fix_BB_dispersion": "False",
+   "['judged']['config'].hmm.fix_NB_dispersion": "False",
+   "['judged']['config'].hmm.gmm_max_binom_prob": "float 1",
+   "...": "7311 more leaves"
+  },
+  "calls": 0
+ },
+ "io:map_unique_snps_enum | {contig}_{pos}_{k}, k numbering repeats in order": {
+  "stable": "c1db5c6e94a6b39f12328faa37fdf8df0c643ae03b10faa3aa23a4a017de4691",
+  "exact": "c1db5c6e94a6b39f12328faa37fdf8df0c643ae03b10faa3aa23a4a017de4691",
+  "summary": {
+   "call0": "str (5,)"
+  },
+  "calls": 1
+ },
+ "io:read_tumor_prop | the Tumor column by barcode; None without a file": {
+  "stable": "af95d08e9390cdd99dba1d9c4e25201908b78a6cefe500489522c93cbf0179e7",
+  "exact": "4c76fef01b9a43295bf8ea81973626ccb23d30a651cfad3284b829b9728f94a6",
+  "summary": {
+   "call0": "float64 (2,) min=0.25 max=0.75 mean=0.5 sum=1",
+   "call1['mutated'][0][0].X": "float64 (2, 1) min=0 max=0 mean=0 sum=0",
+   "call1['mutated'][0][0].obs[tumor_proportion]": "float64 (2,) min=0.25 max=0.75 mean=0.5 sum=1",
+   "call1['mutated'][0][0].layers[None]": "float64 (2, 1) min=0 max=0 mean=0 sum=0"
+  },
+  "calls": 2
+ },
+ "logger:RuntimeFormatter.format | stamps minutes since start": {
+  "stable": "81284af95f9ab2c27bdacdd472a689697c938780afa8233ef5a75dc94d5461a3",
+  "exact": "81284af95f9ab2c27bdacdd472a689697c938780afa8233ef5a75dc94d5461a3",
+  "summary": {
+   "call0": "str"
+  },
+  "calls": 1
+ },
+ "logger:RuntimePhaseFilter.filter | stamps the shared phase": {
+  "stable": "b3f3a5ea00c73eba4577a63574b547337c1b8aa1f7a5eda98cf3ec17725d2092",
+  "exact": "b3f3a5ea00c73eba4577a63574b547337c1b8aa1f7a5eda98cf3ec17725d2092",
+  "summary": {
+   "call0": "True"
+  },
+  "calls": 1
+ },
+ "logger:SharedStateLogger.runtime_phase | one phase shared by every cnamaste logger": {
+  "stable": "7e3dcf188702214bc0644419d3cfbe646a51d5f81bc14570c989496f88bb4e69",
+  "exact": "7e3dcf188702214bc0644419d3cfbe646a51d5f81bc14570c989496f88bb4e69",
+  "summary": {
+   "call0['mutated'][0][0].disabled": "False",
+   "call0['mutated'][0][0].level": "int 0",
+   "call0['mutated'][0][0].name": "str len=20",
+   "call0['mutated'][0][0].propagate": "True",
+   "call0['mutated'][0][1]": "str len=5",
+   "call1": "str len=5"
+  },
+  "calls": 2
+ },
+ "logger:info_once | a message logs once": {
+  "stable": "fbd8300313488eff6e3d250a160e006c25b4b209ee3f2f9a5c34f7797199db6e",
+  "exact": "fbd8300313488eff6e3d250a160e006c25b4b209ee3f2f9a5c34f7797199db6e",
+  "summary": {
+   "call0['mutated'][0][0].disabled": "False",
+   "call0['mutated'][0][0].filters[0].name": "str len=0",
+   "call0['mutated'][0][0].filters[0].nlen": "int 0",
+   "call0['mutated'][0][0].handlers[0]": "StreamHandler",
+   "call0['mutated'][0][0].handlers[1]": "StreamHandler",
+   "call0['mutated'][0][0].level": "int 20",
+   "call0['mutated'][0][0].name": "str len=19",
+   "call0['mutated'][0][0].propagate": "False",
+   "call0['mutated'][0][1]": "str len=1",
+   "call1['mutated'][0][0].disabled": "False",
+   "call1['mutated'][0][0].filters[0].name": "str len=0",
+   "call1['mutated'][0][0].filters[0].nlen": "int 0",
+   "...": "6 more leaves"
+  },
+  "calls": 2
+ },
+ "logger:warning_once | a message logs once": {
+  "stable": "88725bdec4adc9623a966a13e2862cf329154c28b293c510f0268db42c990cf9",
+  "exact": "88725bdec4adc9623a966a13e2862cf329154c28b293c510f0268db42c990cf9",
+  "summary": {
+   "call0['mutated'][0][0].disabled": "False",
+   "call0['mutated'][0][0].filters[0].name": "str len=0",
+   "call0['mutated'][0][0].filters[0].nlen": "int 0",
+   "call0['mutated'][0][0].handlers[0]": "StreamHandler",
+   "call0['mutated'][0][0].handlers[1]": "StreamHandler",
+   "call0['mutated'][0][0].level": "int 20",
+   "call0['mutated'][0][0].name": "str len=19",
+   "call0['mutated'][0][0].propagate": "False",
+   "call0['mutated'][0][1]": "str len=1",
+   "call1['mutated'][0][0].disabled": "False",
+   "call1['mutated'][0][0].filters[0].name": "str len=0",
+   "call1['mutated'][0][0].filters[0].nlen": "int 0",
+   "...": "6 more leaves"
+  },
+  "calls": 2
+ },
+ "normal_spot:determine_normal_baseline | lambda = normal sums floored and normalized; base = lambda x spot totals": {
+  "stable": "33f19a4ac3973dbbc50713d6cf71a65b3978783c3eb5473e4601022b23fbfac3",
+  "exact": "6abd383f8dd4a28fce1eacdc64037839910d1f22a1d9b1f82668ca668ee1f27d",
+  "summary": {
+   "call0[0]": "float64 (1577,) min=0 max=0.00369802 mean=0.000634115 sum=1",
+   "call0[1]": "int64 (1577, 3000) min=0 max=528 sum=2328609",
+   "call0[2]": "float64 (1577, 3000) min=0 max=19.0226 mean=0.492202 sum=2.32861e+06"
+  },
+  "calls": 1
+ },
+ "normal_spot:determine_normal_candidates | recomputed from its input: the low-spread spots of the most balanced clone; no input mutation": {
+  "stable": "9a2abadea9648fd890d2fb769bce57ceef6b4560d65beef50b5ef24a67bb9f13",
+  "exact": "9a2abadea9648fd890d2fb769bce57ceef6b4560d65beef50b5ef24a67bb9f13",
+  "summary": {
+   "call0": "bool (3000,) min=False max=True sum=663"
+  },
+  "calls": 1
+ },
+ "normal_spot:filter_normal_diffexp | a flat gene's bin keeps its UMIs; a strongly tumour-up gene's bin loses them": {
+  "stable": "1427ce6db8743417e3c92245000325f0cdf1fc058c4df52e7faeb2d6fc3737ed",
+  "exact": "aec1cfd63eaa952fb4ba5a8137dde0cbf5a12e352a8f4a7919272be1c764bc82",
+  "summary": {
+   "call0[0]": "float64 (7, 200) min=0 max=37 mean=17.35 sum=24290",
+   "call0[1]{0}": "str len=2"
+  },
+  "calls": 1
+ },
+ "normal_spot:filter_normal_diffexp | on easy it only removes UMIs, from some bins and not others": {
+  "stable": "95272bb23b8eb6fa00ca8cd70af23ada9416a91a7f2a17e1764bd8d0b063effe",
+  "exact": "ab5a17c557091335d3c373d60654c765b174e483a1537c7f427a70434b49cabc",
+  "summary": {
+   "['judged'][0]": "float64 (1829, 3000) min=0 max=528 mean=0.425199 sum=2.33307e+06",
+   "['judged'][1]": "int64 (1829, 3000) min=0 max=540 sum=4534094"
+  },
+  "calls": 0
+ },
+ "normal_spot:normal_baf_bin_filter | removes exactly the planted allele-specific bin; re-ranks the rest; lengths per contig": {
+  "stable": "c5b992f720f463c038dddbd8e3c4fc11560ce6220bfa078c586fdc8239ab7e86",
+  "exact": "56612f2057403914a1aa971b5e4ded6f2f553419e15ffbc0b5c375151398b352",
+  "summary": {
+   "call0[0][CHR]": "int64 (12,) min=1 max=2 sum=16",
+   "call0[0][START]": "int64 (12,) min=0 max=11 sum=66",
+   "call0[0][END]": "int64 (12,) min=1 max=12 sum=78",
+   "call0[0][bin_id]": "object (12,)",
+   "call0[1].lengths": "int64 (2,) min=4 max=7 sum=11",
+   "call0[1].X": "int64 (11, 2, 40) min=11 max=72 sum=31773",
+   "call0[1].base_nb_mean": "float64 (11, 40) min=0 max=0 mean=0 sum=0",
+   "call0[1].total_bb_RD": "int64 (11, 40) min=30 max=59 sum=19689"
+  },
+  "calls": 1
+ },
+ "normal_spot:normal_baf_bin_filter | the caller's gene table is not rewritten": {
+  "stable": "f07013396d8f53251fc9cc56ecd3522c0cbf962d61bee910ea780a430cef41ce",
+  "exact": "7f9d03c5a6a30d045cf87faf004ad78cdf364367fd6a337ab6bc1de545482ad4",
+  "summary": {
+   "call0[0][CHR]": "int64 (6,) min=1 max=1 sum=6",
+   "call0[0][START]": "int64 (6,) min=0 max=5 sum=15",
+   "call0[0][END]": "int64 (6,) min=1 max=6 sum=21",
+   "call0[0][bin_id]": "object (6,)",
+   "call0[1].lengths": "int64 (1,) min=6 max=6 sum=6",
+   "call0[1].X": "int64 (6, 2, 10) min=8 max=67 sum=4387",
+   "call0[1].base_nb_mean": "float64 (6, 10) min=0 max=0 mean=0 sum=0",
+   "call0[1].total_bb_RD": "int64 (6, 10) min=31 max=59 sum=2756"
+  },
+  "calls": 1
+ },
+ "omics:assign_initial_blocks | blocks ascend; only a contig's end block falls under phasing_min_snp_umis": {
+  "stable": "ad0a81a0919eee3314bc2d1816cf02f2781887898fcf079848056b0259bccf34",
+  "exact": "ad0a81a0919eee3314bc2d1816cf02f2781887898fcf079848056b0259bccf34",
+  "summary": {
+   "['judged']['floor']": "int 50",
+   "['judged']['frame'][CHR]": "int64 (15175,) min=1 max=22 sum=137107",
+   "['judged']['frame'][START]": "int64 (15175,) min=84271 max=247670812 sum=1192181762270",
+   "['judged']['frame'][END]": "int64 (15175,) min=84435 max=247679739 sum=1193033752454",
+   "['judged']['frame'][snp_id]": "object (15175,)",
+   "['judged']['frame'][gene]": "str (15175,)",
+   "['judged']['frame'][is_interval]": "bool (15175,) min=False max=True sum=7232",
+   "['judged']['frame'][block_id]": "int64 (15175,) min=0 max=3051 sum=23152430",
+   "['judged']['total']": "int64 (3052, 3000) min=0 max=7 sum=767520"
+  },
+  "calls": 0
+ },
+ "omics:binned_gene_snp | per bin: first CHR and START, last END, distinct SNPs, its genes; no input mutation": {
+  "stable": "b178266fcb40c1e68076a8bc37ce71af29f6d26da4f26b0d583e4c262a2295a3",
+  "exact": "47752bafeea37d2566951ead88b6e718ee43f3fc65ab7787ecf01efe967fe1ab",
+  "summary": {
+   "call0[bin_id]": "float64 (1577,) min=0 max=1576 mean=788 sum=1.24268e+06",
+   "call0[CHR]": "int64 (1577,) min=1 max=22 sum=14019",
+   "call0[START]": "int64 (1577,) min=84271 max=246566444 sum=121566118209",
+   "call0[END]": "int64 (1577,) min=202117 max=247679739 sum=123817489818",
+   "call0[INCLUDED_GENES]": "str (1577,)",
+   "call0[INCLUDED_SNP_IDS]": "str (1577,)",
+   "call0[NORMAL_COUNT]": "float64 (1577,) nonfinite=1577",
+   "call0[N_SNPS]": "int64 (1577,) min=1 max=27 sum=7862"
+  },
+  "calls": 1,
+  "staged": [
+   "07_rebin/binned_gene_snp"
+  ]
+ },
+ "omics:create_bin_ranges | recomputed, the run's frame; no bin crosses a refined segment; under-floor bins are a run's only bin or length-capped": {
+  "stable": "b1ec7d5b208049b2a6acd73005059c580ff18410752feb32b4c554675238aa22",
+  "exact": "b1ec7d5b208049b2a6acd73005059c580ff18410752feb32b4c554675238aa22",
+  "summary": {
+   "call0[CHR]": "int64 (15175,) min=1 max=22 sum=137107",
+   "call0[START]": "int64 (15175,) min=84271 max=247670812 sum=1192181762270",
+   "call0[END]": "int64 (15175,) min=84435 max=247679739 sum=1193033752454",
+   "call0[snp_id]": "object (15175,)",
+   "call0[gene]": "str (15175,)",
+   "call0[is_interval]": "bool (15175,) min=False max=True sum=7232",
+   "call0[block_id]": "int64 (15175,) min=0 max=3051 sum=23152430",
+   "call0[phase]": "object (15175,)",
+   "call0[bin_id]": "int64 (15175,) min=0 max=1846 sum=14115216"
+  },
+  "calls": 1,
+  "staged": [
+   "04_bins/create_bin_ranges"
+  ]
+ },
+ "omics:create_bin_ranges | the caller's gene table is not rewritten": {
+  "stable": "b1ec7d5b208049b2a6acd73005059c580ff18410752feb32b4c554675238aa22",
+  "exact": "b1ec7d5b208049b2a6acd73005059c580ff18410752feb32b4c554675238aa22",
+  "summary": {
+   "call0[CHR]": "int64 (15175,) min=1 max=22 sum=137107",
+   "call0[START]": "int64 (15175,) min=84271 max=247670812 sum=1192181762270",
+   "call0[END]": "int64 (15175,) min=84435 max=247679739 sum=1193033752454",
+   "call0[snp_id]": "object (15175,)",
+   "call0[gene]": "str (15175,)",
+   "call0[is_interval]": "bool (15175,) min=False max=True sum=7232",
+   "call0[block_id]": "int64 (15175,) min=0 max=3051 sum=23152430",
+   "call0[phase]": "object (15175,)",
+   "call0[bin_id]": "int64 (15175,) min=0 max=1846 sum=14115216"
+  },
+  "calls": 1,
+  "staged": [
+   "04_bins/create_bin_ranges"
+  ]
+ },
+ "omics:form_gene_snp_table | gene rows carry no SNP id; every SNP lies inside its gene's span": {
+  "stable": "8d9d9a106eae05c44f064e77aa6d118cd00df837ddb17b1d73c56d3b1743dc7a",
+  "exact": "8d9d9a106eae05c44f064e77aa6d118cd00df837ddb17b1d73c56d3b1743dc7a",
+  "summary": {
+   "['judged'][CHR]": "int64 (15175,) min=1 max=22 sum=137107",
+   "['judged'][START]": "int64 (15175,) min=84271 max=247670812 sum=1192181762270",
+   "['judged'][END]": "int64 (15175,) min=84435 max=247679739 sum=1193033752454",
+   "['judged'][snp_id]": "object (15175,)",
+   "['judged'][gene]": "str (15175,)",
+   "['judged'][is_interval]": "bool (15175,) min=False max=True sum=7232"
+  },
+  "calls": 0
+ },
+ "omics:greedy_binning_nobreak | the shortest runs meeting the SNP-UMI floor; a failing tail joins the previous bin; no floor, one block per bin": {
+  "stable": "b514010e356af6f7974f4556ec32b23ae7bb70d7e8df4ded1b274159e7195143",
+  "exact": "b514010e356af6f7974f4556ec32b23ae7bb70d7e8df4ded1b274159e7195143",
+  "summary": {
+   "call0": "int64 (7,) min=0 max=2 sum=8",
+   "call1": "int64 (7,) min=0 max=6 sum=21"
+  },
+  "calls": 2
+ },
+ "omics:summarize_blocks | returns None; logs block, UMI and SNP-UMI totals (Ticket#191: the result is discarded)": {
+  "stable": "09e715a81a6dd93cfeb1fb527e46d6db52982a8a0a8f4cc2df1b9db479ea1f09",
+  "exact": "d0275036258bba5a626051db27862aa631c406ad6c2cbf133b3c10add0da5cbc",
+  "summary": {
+   "call0['mutated'][0][0][CHR]": "int64 (3,) min=1 max=1 sum=3",
+   "call0['mutated'][0][0][START]": "int64 (3,) min=0 max=20 sum=25",
+   "call0['mutated'][0][0][END]": "int64 (3,) min=6 max=30 sum=46",
+   "call0['mutated'][0][0][snp_id]": "object (3,)",
+   "call0['mutated'][0][0][gene]": "str (3,)",
+   "call0['mutated'][0][0][is_interval]": "bool (3,) min=False max=True sum=2",
+   "call0['mutated'][0][0][block_id]": "int64 (3,) min=0 max=1 sum=1",
+   "call0['mutated'][0][1].X": "float64 (2, 2) min=1 max=1 mean=1 sum=4",
+   "call0['mutated'][0][1].layers['count']": "int64 (2, 2) min=1 max=4 sum=10",
+   "call0['mutated'][0][1].layers[None]": "float64 (2, 2) min=1 max=1 mean=1 sum=4",
+   "call0['mutated'][0][2]": "int64 (2, 1) min=2 max=5 sum=7",
+   "call0['mutated'][0][3]": "int64 (2, 1) min=1 max=1 sum=2",
+   "...": "2 more leaves"
+  },
+  "calls": 1
+ },
+ "omics:summarize_counts_for_bins | a bin's UMIs are its genes' counts in the AnnData": {
+  "stable": "7446ad1c7ce6864d34cb33cdc17ca03ac0ec59ed939aae0a3489314a3ae22474",
+  "exact": "efb7e444127bb7c1456d9e4b94b17fdd018b002a32d666582ea6520d097fe3be",
+  "summary": {
+   "['judged']['a']": "int64 (3000, 13333) min=0 max=4 sum=635614",
+   "['judged']['adata'].X.data": "int64 (701688,) min=1 max=829 sum=9052915",
+   "['judged']['adata'].X.indices": "int64 (701688,) min=0 max=7231 sum=2505529692",
+   "['judged']['adata'].X.indptr": "int64 (3001,) min=0 max=701688 sum=1062951564",
+   "['judged']['adata'].obs[labels]": "str (3000,)",
+   "['judged']['adata'].obs[sample]": "str (3000,)",
+   "['judged']['adata'].obsm['X_pos']": "int64 (3000, 2) min=0 max=99 sum=237000",
+   "['judged']['adata'].layers['count']": "int64 (3000, 7232) min=0 max=540 sum=4580031",
+   "['judged']['adata'].layers[None].data": "int64 (701688,) min=1 max=829 sum=9052915",
+   "['judged']['adata'].layers[None].indices": "int64 (701688,) min=0 max=7231 sum=2505529692",
+   "['judged']['adata'].layers[None].indptr": "int64 (3001,) min=0 max=701688 sum=1062951564",
+   "['judged']['b']": "int64 (3000, 13333) min=0 max=4 sum=652755",
+   "...": "14 more leaves"
+  },
+  "calls": 0
+ },
+ "omics:summarize_counts_for_bins | after re-binning too": {
+  "stable": "1b148ae3da752de6bdd7cb520d3d00c452abee70d13857739a3a340f3286914c",
+  "exact": "3fdcf4c789d6a065d6fc2bce1d3b76ec165b374115b62326d1b609baaa0d2efe",
+  "summary": {
+   "['judged']['a']": "int64 (3000, 13333) min=0 max=4 sum=635614",
+   "['judged']['adata'].X.data": "int64 (701688,) min=1 max=829 sum=9052915",
+   "['judged']['adata'].X.indices": "int64 (701688,) min=0 max=7231 sum=2505529692",
+   "['judged']['adata'].X.indptr": "int64 (3001,) min=0 max=701688 sum=1062951564",
+   "['judged']['adata'].obs[labels]": "str (3000,)",
+   "['judged']['adata'].obs[sample]": "str (3000,)",
+   "['judged']['adata'].obsm['X_pos']": "int64 (3000, 2) min=0 max=99 sum=237000",
+   "['judged']['adata'].layers['count']": "int64 (3000, 7232) min=0 max=528 sum=2362222",
+   "['judged']['adata'].layers[None].data": "int64 (701688,) min=1 max=829 sum=9052915",
+   "['judged']['adata'].layers[None].indices": "int64 (701688,) min=0 max=7231 sum=2505529692",
+   "['judged']['adata'].layers[None].indptr": "int64 (3001,) min=0 max=701688 sum=1062951564",
+   "['judged']['b']": "int64 (3000, 13333) min=0 max=4 sum=652755",
+   "...": "14 more leaves"
+  },
+  "calls": 0
+ },
+ "omics:summarize_counts_for_blocks | A-allele and A+B sums over each block's SNPs; UMIs over its genes": {
+  "stable": "e5a17af9108184d30ad82c6d470e8ce51752f8340b3b5371a2b934f964a055eb",
+  "exact": "542e068d382f339779a17a6646e15574b53926cbbbe89b7e1cfa163113638571",
+  "summary": {
+   "['judged']['a']": "int64 (3000, 13333) min=0 max=4 sum=635614",
+   "['judged']['adata'].X.data": "int64 (701688,) min=1 max=829 sum=9052915",
+   "['judged']['adata'].X.indices": "int64 (701688,) min=0 max=7231 sum=2505529692",
+   "['judged']['adata'].X.indptr": "int64 (3001,) min=0 max=701688 sum=1062951564",
+   "['judged']['adata'].obs[labels]": "str (3000,)",
+   "['judged']['adata'].obs[sample]": "str (3000,)",
+   "['judged']['adata'].obsm['X_pos']": "int64 (3000, 2) min=0 max=99 sum=237000",
+   "['judged']['adata'].layers['count']": "int64 (3000, 7232) min=0 max=540 sum=4580031",
+   "['judged']['adata'].layers[None].data": "int64 (701688,) min=1 max=829 sum=9052915",
+   "['judged']['adata'].layers[None].indices": "int64 (701688,) min=0 max=7231 sum=2505529692",
+   "['judged']['adata'].layers[None].indptr": "int64 (3001,) min=0 max=701688 sum=1062951564",
+   "['judged']['b']": "int64 (3000, 13333) min=0 max=4 sum=652755",
+   "...": "12 more leaves"
+  },
+  "calls": 0
+ },
+ "phasing:initial_phase_given_partition | phase = majority vote of non-balanced clones; refined lengths split at minor-BAF jumps (recomputed)": {
+  "stable": "190e7c9cf56cf939c738c11f6fa52f463e09ba32a6bf5e7f71bf0475ab662347",
+  "exact": "520c4ef02648ae08f4563a7d40e4dee8965091265fcab9e314df90beeee1dae3",
+  "summary": {
+   "['judged']['config'].betabinom.run_default": "False",
+   "['judged']['config'].betabinom.start_disp": "float 1000",
+   "['judged']['config'].betabinom.start_params": "str len=27",
+   "['judged']['config'].hmm.compression_decimals": "int 0",
+   "['judged']['config'].hmm.em_disp": "int 0",
+   "['judged']['config'].hmm.em_ftol": "float 0.0001",
+   "['judged']['config'].hmm.em_maxiter": "int 1500",
+   "['judged']['config'].hmm.em_xrtol": "float 0.0001",
+   "['judged']['config'].hmm.em_xtol": "float 0.0001",
+   "['judged']['config'].hmm.fix_BB_dispersion": "False",
+   "['judged']['config'].hmm.fix_NB_dispersion": "False",
+   "['judged']['config'].hmm.gmm_max_binom_prob": "float 1",
+   "...": "79 more leaves"
+  },
+  "calls": 0
+ },
+ "pseudobulk:merge_pseudobulk_by_index_mix | each clone's pseudobulk is its spots' sum; an empty clone is zero; no input mutation": {
+  "stable": "2dd8926cf3339cae4b87cf36acd4c676b783ef5d9a98155a59aba0778963beac",
+  "exact": "7bdf0dda62b125f78fb8977a2aaf024b81d66b1e5af576b1991b34753f41f03a",
+  "summary": {
+   "call0[0]": "float64 (2, 2, 2) min=0 max=14 mean=5.25 sum=42",
+   "call0[1]": "float64 (2, 2) min=0.4 max=1.4 mean=0.9 sum=3.6",
+   "call0[2]": "float64 (2, 2) min=3 max=7 mean=5 sum=20",
+   "call1[0]": "float64 (5, 2, 3) min=0 max=31 mean=12 sum=360",
+   "call1[1]": "float64 (5, 3) min=0 max=3.57467 mean=1.41218 sum=21.1827",
+   "call1[2]": "float64 (5, 3) min=0 max=27 mean=10.5333 sum=158"
+  },
+  "calls": 2
+ },
+ "pseudobulk:merge_pseudobulk_by_index_mix | with tumor proportions: sums over spots strictly above the threshold, tumor the kept mean; a clone with none is zero; no input mutation": {
+  "stable": "e3e0644d22ea3903fad825d3328fb601e19de08c170c0afe19154d42fd6d1f72",
+  "exact": "234121e6b11d6d9e5d3c1a7d1e6f234c9e46f60113312ec95852590147eb4b90",
+  "summary": {
+   "call0[0]": "float64 (2, 2, 2) min=0 max=14 mean=2.5 sum=20",
+   "call0[1]": "float64 (2, 2) min=0 max=7 mean=2.25 sum=9",
+   "call0[2]": "float64 (2, 2) min=0 max=4 mean=1.5 sum=6",
+   "call0[3]": "float64 (2,) min=0 max=0.8 mean=0.4 sum=0.8"
+  },
+  "calls": 1
+ },
+ "recomb:assert_logical_order | accepts ties and contig 2 before 10; refuses 10 before 2 and a falling position": {
+  "stable": "ca3e9155e4200b3aec528c160e41f57286b4cd45d7e6472e12b67363da0e6ef3",
+  "exact": "ca3e9155e4200b3aec528c160e41f57286b4cd45d7e6472e12b67363da0e6ef3",
+  "summary": {
+   "call0['mutated'][0][0][0][0]": "int 1",
+   "call0['mutated'][0][0][0][1]": "int 100",
+   "call0['mutated'][0][0][1][0]": "int 1",
+   "call0['mutated'][0][0][1][1]": "int 100",
+   "call0['mutated'][0][0][2][0]": "int 2",
+   "call0['mutated'][0][0][2][1]": "int 50",
+   "call0['mutated'][0][0][3][0]": "int 10",
+   "call0['mutated'][0][0][3][1]": "int 10",
+   "call1": "raised AssertionError",
+   "call2": "raised AssertionError"
+  },
+  "calls": 3
+ },
+ "recomb:assign_centiMorgans | linear interpolation between markers, from (0, 0) before the first": {
+  "stable": "19ebda59ff512aa4e7974f5ddaa06712ffd52b0a18878b80586af0dbc79b7dd2",
+  "exact": "1e5fdd7290c0363d71ff6e1c96d5c92c3f46b9e2dc8a6573472986647014cb4d",
+  "summary": {
+   "call0": "float64 (5,) min=0.5 max=3 mean=1.5 sum=7.5"
+  },
+  "calls": 1
+ },
+ "recomb:compute_numbat_phase_switch_prob | (1 - e^{-2 nu d}) / 2, floored at min_prob; boundaries, NaN and the end take min_prob": {
+  "stable": "05fc4ff4c557cfb2f27352e59fa55a65f6fb669cd795d1d2ce1e514e9165a64a",
+  "exact": "f57f0fe20d2077b7d68ea20594d24e3ba9ec6fd11bf0e4758e1df92fff329ee1",
+  "summary": {
+   "call0": "float64 (7,) min=0.01 max=0.498761 mean=0.123546 sum=0.864821"
+  },
+  "calls": 1
+ },
+ "recomb:get_sitewise_transmat | no contig has every bin at the min_prob floor (Ticket#438)": {
+  "stable": "bdf2a52bef90439d753a3bbaf752a843f949e0f702c0a2b31d3a8d41b8a0b73a",
+  "exact": "72b8491fed31508a64f61d89dbc2cd313f010db999a63f456641c8834f300ed2",
+  "summary": {
+   "['judged']['chr']": "int64 (1847,) min=1 max=22 sum=16558",
+   "['judged']['log']": "float64 (1847,) min=-2.60517 max=-0.693147 mean=-1.2145 sum=-2243.18",
+   "['judged']['min_prob']": "float 0.01",
+   "['judged']['shift']": "float -2"
+  },
+  "calls": 0
+ },
+ "recomb:get_sitewise_transmat | on the first 200 blocks it returns the run's first 199 entries; no input mutation": {
+  "stable": "4d1a01e061a02480e4cfe5e666d2ab23964e9ca3021a377e4eff2cd01fb65e52",
+  "exact": "5d37d361476ca0eb1898435f2ac9b7d7c47688085a73b3ba7b3ccd2f0564a644",
+  "summary": {
+   "call0": "float64 (200,) min=-2.60517 max=-0.693147 mean=-1.2522 sum=-250.44"
+  },
+  "calls": 1
+ },
+ "recomb:get_sitewise_transmat | one entry per bin in [log min_prob - shift, log 1/2]; contig ends at the floor": {
+  "stable": "bdf2a52bef90439d753a3bbaf752a843f949e0f702c0a2b31d3a8d41b8a0b73a",
+  "exact": "72b8491fed31508a64f61d89dbc2cd313f010db999a63f456641c8834f300ed2",
+  "summary": {
+   "['judged']['chr']": "int64 (1847,) min=1 max=22 sum=16558",
+   "['judged']['log']": "float64 (1847,) min=-2.60517 max=-0.693147 mean=-1.2145 sum=-2243.18",
+   "['judged']['min_prob']": "float 0.01",
+   "['judged']['shift']": "float -2"
+  },
+  "calls": 0
+ },
+ "reference:exp_cancer_gene | mitochondrial, ribosomal and five exact names": {
+  "stable": "25919e6d0802130b061e4451646e9015786d189aee159afd54e8596f58576741",
+  "exact": "25919e6d0802130b061e4451646e9015786d189aee159afd54e8596f58576741",
+  "summary": {
+   "call0": "True",
+   "call1": "True",
+   "call2": "True",
+   "call3": "False",
+   "call4": "False",
+   "call5": "True"
+  },
+  "calls": 6
+ },
+ "reference:get_reference_genes | chr1-22 as integers; gene rows only": {
+  "stable": "1231bea81842239355033aa5a7ab10fb1c2c4fda9580549cd1d0e019366eb240",
+  "exact": "1231bea81842239355033aa5a7ab10fb1c2c4fda9580549cd1d0e019366eb240",
+  "summary": {
+   "call0[CHR]": "int64 (35299,) min=1 max=22 sum=349204",
+   "call0[START]": "int64 (35299,) min=11103 max=248906196 sum=2611074203460",
+   "call0[END]": "int64 (35299,) min=16352 max=248919946 sum=2612850554353",
+   "call0[snp_id]": "object (35299,)",
+   "call0[gene]": "str (35299,)",
+   "call0[is_interval]": "bool (35299,) min=True max=True sum=35299"
+  },
+  "calls": 1
+ },
+ "reference:get_reference_recomb_rates | chr1-22 only, chr prefix dropped, integer contigs; positions and cM ascend within a contig": {
+  "stable": "0a7f4e62a14e34fbd09fe2676d0da4fe3c43d1125f1771868d49b70686f45be2",
+  "exact": "525420453a4a12a4acff895f1fa536d8c981d2dd6b8c596a401870cb53a8e569",
+  "summary": {
+   "call0[chrom]": "int64 (3298900,) min=1 max=22 sum=28452723",
+   "call0[pos]": "int64 (3298900,) min=11523 max=248924793 sum=259134333609234",
+   "call0[recomb_rate]": "float64 (3298900,) min=0 max=1058 mean=1.68117 sum=5.546e+06",
+   "call0[pos_cm]": "float64 (3298900,) min=0 max=286.279 mean=92.8731 sum=3.06379e+08"
+  },
+  "calls": 1
+ },
+ "reference:get_reference_recomb_rates | contigs in numeric order, as assign_centiMorgans' sweep needs (Ticket#438)": {
+  "stable": "0a7f4e62a14e34fbd09fe2676d0da4fe3c43d1125f1771868d49b70686f45be2",
+  "exact": "525420453a4a12a4acff895f1fa536d8c981d2dd6b8c596a401870cb53a8e569",
+  "summary": {
+   "call0[chrom]": "int64 (3298900,) min=1 max=22 sum=28452723",
+   "call0[pos]": "int64 (3298900,) min=11523 max=248924793 sum=259134333609234",
+   "call0[recomb_rate]": "float64 (3298900,) min=0 max=1058 mean=1.68117 sum=5.546e+06",
+   "call0[pos_cm]": "float64 (3298900,) min=0 max=286.279 mean=92.8731 sum=3.06379e+08"
+  },
+  "calls": 1
+ },
+ "scripts.run_cnamaste:run_cnamaste | each decoder call gets its clone's log_mu, p, path and pseudobulk baseline": {
+  "stable": "c3ca094791cdb9619ec8791a53d88e17fcf1574ca03f37d8591eb11af56593b1",
+  "exact": "5534a29d220b1d6b2b0cd274141f6ac309e6d14411d0675fab4e8a20a23139dd",
+  "summary": {
+   "['judged']['base']": "float64 (1577, 3000) min=0 max=19.0226 mean=0.492202 sum=2.32861e+06",
+   "['judged']['calls'][0][0]": "float64 (7,) min=-1.14895 max=0.498273 mean=-0.0550282 sum=-0.385197",
+   "['judged']['calls'][0][1]": "float64 (1577,) min=0 max=4013.17 mean=688.155 sum=1.08522e+06",
+   "['judged']['calls'][0][2]": "float64 (7,) min=0.0843248 max=0.632485 mean=0.376047 sum=2.63233",
+   "['judged']['calls'][0][3]": "int64 (1577,) min=0 max=2 sum=184",
+   "['judged']['calls'][1][0]": "float64 (7,) min=-1.14895 max=0.498273 mean=-0.0550282 sum=-0.385197",
+   "['judged']['calls'][1][1]": "float64 (1577,) min=0 max=1212.09 mean=207.843 sum=327768",
+   "['judged']['calls'][1][2]": "float64 (7,) min=0.0843248 max=0.632485 mean=0.376047 sum=2.63233",
+   "['judged']['calls'][1][3]": "int64 (1577,) min=0 max=6 sum=3072",
+   "['judged']['calls'][2][0]": "float64 (7,) min=-1.14895 max=0.498273 mean=-0.0550282 sum=-0.385197",
+   "['judged']['calls'][2][1]": "float64 (1577,) min=0 max=1644.74 mean=282.03 sum=444762",
+   "['judged']['calls'][2][2]": "float64 (7,) min=0.0843248 max=0.632485 mean=0.376047 sum=2.63233",
+   "...": "17 more leaves"
+  },
+  "calls": 0
+ },
+ "scripts.run_cnamaste:run_cnamaste | the glue's merged BAF profiles are each clone's MAP state BAF, phase applied": {
+  "stable": "05aa920115763006cc855d7290834e3d0054c613887cf0a806aa27eac1db1bac",
+  "exact": "dc7931e9ec13ae6dfd98b1b3add8598fb15a0bc35c8857ba98315b4b7c4494f9",
+  "summary": {
+   "['judged']['merged'].params.new_log_mu": "float64 (7,) min=-0.1 max=0.1 mean=-3.96508e-18 sum=-2.77556e-17",
+   "['judged']['merged'].params.new_alphas": "float64 (7,) min=0.5 max=0.5 mean=0.5 sum=3.5",
+   "['judged']['merged'].params.new_p_binom": "float64 (7,) min=0.0822218 max=0.583153 mean=0.431048 sum=3.01734",
+   "['judged']['merged'].params.new_taus": "float64 (7,) min=2732.83 max=2732.83 mean=2732.83 sum=19129.8",
+   "['judged']['merged'].params.new_log_startprob": "float64 (7,) min=-1.94591 max=-1.94591 mean=-1.94591 sum=-13.6214",
+   "['judged']['merged'].params.new_log_transmat": "float64 (7, 7) min=-17.9099 max=-1e-07 mean=-15.3513 sum=-752.214",
+   "['judged']['merged'].profile.log_gamma": "float64 (7, 7388) min=-327.171 max=0 mean=-24.4222 sum=-1.26302e+06",
+   "['judged']['merged'].profile.pred_cnv": "int64 (7388,) min=0 max=6 sum=12346",
+   "['judged']['merged'].llf": "float64 -22275.5",
+   "['judged']['merged'].n_states": "int 7",
+   "['judged']['merged'].assignment.prev_assignment": "int64 (3000,) min=0 max=3 sum=4013",
+   "['judged']['merged'].assignment.new_assignment": "int64 (3000,) min=0 max=3 sum=4013",
+   "...": "3 more leaves"
+  },
+  "calls": 0
+ },
+ "scripts.run_cnamaste:run_cnamaste | the written Z, A, B and log mu are the decoded copies along each clone's path": {
+  "stable": "5a5a7d30d350576d6bb86615a88ffe702a0f232f4bc8d6568af918635cfc4e7a",
+  "exact": "5108c7a8b40493c70f3c94b89ec426de2c210947bca29e7ac701f1da2b20ab83",
+  "summary": {
+   "['judged']['bins'][CHR]": "int64 (15175,) min=1 max=22 sum=137107",
+   "['judged']['bins'][START]": "int64 (15175,) min=84271 max=247670812 sum=1192181762270",
+   "['judged']['bins'][END]": "int64 (15175,) min=84435 max=247679739 sum=1193033752454",
+   "['judged']['bins'][snp_id]": "object (15175,)",
+   "['judged']['bins'][gene]": "str (15175,)",
+   "['judged']['bins'][is_interval]": "bool (15175,) min=False max=True sum=7232",
+   "['judged']['bins'][block_id]": "object (15175,)",
+   "['judged']['bins'][phase]": "object (15175,)",
+   "['judged']['bins'][bin_id]": "float64 (15175,) min=0 max=1576 mean=801.734 sum=1.20565e+07 nonfinite=137",
+   "['judged']['copies'][0]": "int64 (7, 2) min=0 max=2 sum=17",
+   "['judged']['copies'][1]": "int64 (7, 2) min=0 max=2 sum=17",
+   "['judged']['copies'][2]": "int64 (7, 2) min=0 max=2 sum=17",
+   "...": "50 more leaves"
+  },
+  "calls": 0
+ },
+ "scripts.run_cnamaste:set_numba_seed | seeds numba's generator": {
+  "stable": "fd7832ce595968c6b1864ea3ac95993cda285001e5b052b3996dd40e722969b1",
+  "exact": "fd7832ce595968c6b1864ea3ac95993cda285001e5b052b3996dd40e722969b1",
+  "summary": {
+   "call0['mutated'][0][0]": "int 3",
+   "call1['mutated'][0][0]": "int 3"
+  },
+  "calls": 2
+ },
+ "spatial:admits_assignment | equals the brute force over every block-to-clone map": {
+  "stable": "0abd3c593287ceb697b783c2f93123b088e2b53b0fee7c133ab38bd51283ac00",
+  "exact": "0abd3c593287ceb697b783c2f93123b088e2b53b0fee7c133ab38bd51283ac00",
+  "summary": {
+   "call0": "True",
+   "call1": "True",
+   "call2": "True",
+   "call3": "False",
+   "call4": "True",
+   "call5": "True",
+   "call6": "True",
+   "call7": "True",
+   "call8": "False",
+   "call9": "True",
+   "call10": "True",
+   "call11": "True",
+   "...": "28 more leaves"
+  },
+  "calls": 40
+ },
+ "spatial:banded | hand-computed bands: the axis with more distinct values, ties by the other axis then index": {
+  "stable": "fdb7b14304e880a049edbf2dcaf2917c520560ab5145a7849dbceb8a993aa997",
+  "exact": "fdb7b14304e880a049edbf2dcaf2917c520560ab5145a7849dbceb8a993aa997",
+  "summary": {
+   "call0[0][0]": "int64 (3,) min=2 max=4 sum=9",
+   "call0[0][1]": "int64 (3,) min=0 max=5 sum=6",
+   "call0[1]": "int64 (6,) min=0 max=1 sum=3",
+   "call1[0][0]": "int64 (4,) min=6 max=9 sum=30",
+   "call1[0][1]": "int64 (3,) min=3 max=5 sum=12",
+   "call1[0][2]": "int64 (3,) min=0 max=2 sum=3",
+   "call1[1]": "int64 (10,) min=0 max=2 sum=9"
+  },
+  "calls": 2
+ },
+ "spatial:banded | sizes within one of n/k, each above 20% of n/k, contiguous in the (axis, other axis, index) order; no input mutation": {
+  "stable": "b0eb554fd5c50530fae9210723605ae61662240b1fb651b80ac751297ff709ff",
+  "exact": "b0eb554fd5c50530fae9210723605ae61662240b1fb651b80ac751297ff709ff",
+  "summary": {
+   "call0[0][0]": "int64 (1,) min=1 max=1 sum=1",
+   "call0[0][1]": "int64 (1,) min=5 max=5 sum=5",
+   "call0[0][2]": "int64 (1,) min=2 max=2 sum=2",
+   "call0[0][3]": "int64 (1,) min=3 max=3 sum=3",
+   "call0[0][4]": "int64 (1,) min=6 max=6 sum=6",
+   "call0[0][5]": "int64 (1,) min=0 max=0 sum=0",
+   "call0[0][6]": "int64 (1,) min=4 max=4 sum=4",
+   "call0[1]": "int64 (7,) min=0 max=6 sum=21",
+   "call1[0][0]": "int64 (8,) min=0 max=25 sum=93",
+   "call1[0][1]": "int64 (7,) min=3 max=29 sum=95",
+   "call1[0][2]": "int64 (8,) min=10 max=28 sum=137",
+   "call1[0][3]": "int64 (7,) min=4 max=27 sum=110",
+   "...": "7 more leaves"
+  },
+  "calls": 3
+ },
+ "spatial:best_equal_partition | the first least-variance partition over the trials (exhaustive); at 200 trials the 6x6 grid's quadrants, variance 0, the global optimum": {
+  "stable": "bb69696b751129d56f477bf6c23ce89b774e246325f2d853d341f617404444d5",
+  "exact": "bb69696b751129d56f477bf6c23ce89b774e246325f2d853d341f617404444d5",
+  "summary": {
+   "call0[0][0]": "int64 (6,) min=0 max=8 sum=24",
+   "call0[0][1]": "int64 (6,) min=3 max=11 sum=42",
+   "call0[0][2]": "int64 (12,) min=12 max=32 sum=264",
+   "call0[0][3]": "int64 (12,) min=15 max=35 sum=300",
+   "call0[1]": "int64 (36,) min=0 max=3 sum=66",
+   "call1[0][0]": "int64 (9,) min=0 max=14 sum=63",
+   "call1[0][1]": "int64 (9,) min=3 max=17 sum=90",
+   "call1[0][2]": "int64 (9,) min=18 max=32 sum=225",
+   "call1[0][3]": "int64 (9,) min=21 max=35 sum=252",
+   "call1[1]": "int64 (36,) min=0 max=3 sum=54",
+   "call2[0][0]": "int64 (4,) min=0 max=5 sum=10",
+   "call2[0][1]": "int64 (4,) min=2 max=7 sum=18",
+   "...": "5 more leaves"
+  },
+  "calls": 3
+ },
+ "spatial:construct_lattice_adjacency | each spot's out-edges are its 8 nearest neighbours in the scaled metric": {
+  "stable": "606df81be149b9d16bf3f722ac334c130988e3dcb861f7ae94f5824b883e5a83",
+  "exact": "e19eaed543147a47e79d4d953679bcd12b81599196d24c3e76445f5cc0146a7f",
+  "summary": {
+   "call0.data": "float64 (480,) min=1 max=1 mean=1 sum=480",
+   "call0.indices": "int64 (480,) min=0 max=59 sum=13448",
+   "call0.indptr": "int64 (61,) min=0 max=480 sum=14640"
+  },
+  "calls": 1
+ },
+ "spatial:construct_multislice_lattice_adjacency | block diagonal of the per-slice adjacencies; no input mutation": {
+  "stable": "923a5c064808b09f8f9bf7b726a9e663cc2b598fe7a864922169409b334a2a9f",
+  "exact": "5530f97d16725d010430782351ecb2a5fb15bc25265dc314d827aad6fc99040b",
+  "summary": {
+   "call0.data": "float64 (400,) min=1 max=1 mean=1 sum=400",
+   "call0.indices": "int64 (400,) min=0 max=49 sum=9751",
+   "call0.indptr": "int64 (51,) min=0 max=400 sum=10200"
+  },
+  "calls": 1
+ },
+ "spatial:initialize_clones | 2x2 per slice: the run's initial clones": {
+  "stable": "e74f83fcbce0423721677fc50ddc975faef9a61f48547a3bb77c7de47bca17a7",
+  "exact": "e74f83fcbce0423721677fc50ddc975faef9a61f48547a3bb77c7de47bca17a7",
+  "summary": {
+   "call0[0]": "int64 (750,) min=0 max=1484 sum=556500",
+   "call0[1]": "int64 (750,) min=15 max=1499 sum=567750",
+   "call0[2]": "int64 (750,) min=1500 max=2984 sum=1681500",
+   "call0[3]": "int64 (750,) min=1515 max=2999 sum=1692750"
+  },
+  "calls": 1
+ },
+ "spatial:initialize_clones | the initial clones partition the spots into disjoint rectangles": {
+  "stable": "ca310b085204d2d7988e067b92d2582ff091d60286542478fc27033f97d5781e",
+  "exact": "ca310b085204d2d7988e067b92d2582ff091d60286542478fc27033f97d5781e",
+  "summary": {
+   "['judged']['coords']": "int64 (3000, 2) min=0 max=99 sum=237000",
+   "['judged']['initial'][0]": "int64 (750,) min=0 max=1484 sum=556500",
+   "['judged']['initial'][1]": "int64 (750,) min=15 max=1499 sum=567750",
+   "['judged']['initial'][2]": "int64 (750,) min=1500 max=2984 sum=1681500",
+   "['judged']['initial'][3]": "int64 (750,) min=1515 max=2999 sum=1692750",
+   "['judged']['sample_ids']": "int64 (3000,) min=0 max=0 sum=0"
+  },
+  "calls": 0
+ },
+ "spatial:initialize_rdr_clone_refininement | recomputed from its recorded input it returns the run's split; every spot starts in an allowed clone; no input mutation": {
+  "stable": "8c24e46c70f54b137d972d724836b83cc5b8d7ca5927d15633c96089fc8fe604",
+  "exact": "8c24e46c70f54b137d972d724836b83cc5b8d7ca5927d15633c96089fc8fe604",
+  "summary": {
+   "call0[0]": "int32 (3000,) min=0 max=7 sum=8793",
+   "call0[1]": "bool (3000, 8) min=False max=True sum=6000",
+   "call0[2]": "int 8"
+  },
+  "calls": 1,
+  "staged": [
+   "08_rdr/initialize_rdr_clone_refininement"
+  ]
+ },
+ "spatial:initialize_rectangular_clones | a partition into k non-empty clones above 20% of n/k, reproducible by seed": {
+  "stable": "8eea701463a7b04fd04d046b39c3aae129c42f6f8a0b374d426591e0feda5ae0",
+  "exact": "8eea701463a7b04fd04d046b39c3aae129c42f6f8a0b374d426591e0feda5ae0",
+  "summary": {
+   "call0[0][0]": "int64 (1500,) min=0 max=1499 sum=1124250",
+   "call0[1]": "int64 (1500,) min=0 max=0 sum=0",
+   "call1[0][0]": "int64 (1500,) min=0 max=1499 sum=1124250",
+   "call1[1]": "int64 (1500,) min=0 max=0 sum=0",
+   "call2[0][0]": "int64 (780,) min=720 max=1499 sum=865410",
+   "call2[0][1]": "int64 (720,) min=0 max=719 sum=258840",
+   "call2[1]": "int64 (1500,) min=0 max=1 sum=720",
+   "call3[0][0]": "int64 (780,) min=720 max=1499 sum=865410",
+   "call3[0][1]": "int64 (720,) min=0 max=719 sum=258840",
+   "call3[1]": "int64 (1500,) min=0 max=1 sum=720",
+   "call4[0][0]": "int64 (750,) min=0 max=1499 sum=561225",
+   "call4[0][1]": "int64 (435,) min=15 max=869 sum=192270",
+   "...": "16 more leaves"
+  },
+  "calls": 8
+ },
+ "spatial:log_sparse_matrix_stats | logs the median weight and each degree's fraction": {
+  "stable": "9a820155edb240b3f647acfe65baee1a2b1e97565d982365353b80473f24ad02",
+  "exact": "6a04049eb0ae2ccd1cce726e4cff8dc963786c7c8457b3e517ee3d65bc28db24",
+  "summary": {
+   "call0['mutated'][0][0].data": "float64 (4,) min=1 max=3 mean=2 sum=8",
+   "call0['mutated'][0][0].indices": "int64 (4,) min=0 max=2 sum=3",
+   "call0['mutated'][0][0].indptr": "int64 (4,) min=0 max=4 sum=9",
+   "call0['mutated'][0][1]": "str len=1"
+  },
+  "calls": 1
+ },
+ "spatial:rectangle_partition | 2x2 parts are the four quadrants": {
+  "stable": "74ff51a2c45637043441e4da83da1b6db52dfab0f258507b005299d93310a307",
+  "exact": "74ff51a2c45637043441e4da83da1b6db52dfab0f258507b005299d93310a307",
+  "summary": {
+   "call0[0][0]": "int64 (4,) min=0 max=5 sum=10",
+   "call0[0][1]": "int64 (4,) min=2 max=7 sum=18",
+   "call0[0][2]": "int64 (4,) min=8 max=13 sum=42",
+   "call0[0][3]": "int64 (4,) min=10 max=15 sum=50",
+   "call0[1]": "int64 (16,) min=0 max=3 sum=24"
+  },
+  "calls": 1
+ },
+ "spatial:rectangle_partition | the partition initialize_clones takes per slice is the run's": {
+  "stable": "cf6794feee5ba9a290784151f9b378cb9386310351b47fd1fda0a522972cf271",
+  "exact": "cf6794feee5ba9a290784151f9b378cb9386310351b47fd1fda0a522972cf271",
+  "summary": {
+   "call0[0][0]": "int64 (750,) min=0 max=1484 sum=556500",
+   "call0[0][1]": "int64 (750,) min=15 max=1499 sum=567750",
+   "call0[0][2]": "int64 (750,) min=1500 max=2984 sum=1681500",
+   "call0[0][3]": "int64 (750,) min=1515 max=2999 sum=1692750",
+   "call0[1]": "int64 (3000,) min=0 max=3 sum=4500"
+  },
+  "calls": 1
+ },
+ "spatio_genomic_counts:LockableMixin.__setattr__ | an unlocked container takes writes": {
+  "stable": "662ad7ac6bed93a9bf2308b4b1f9e2a8b81804b1bddb4036e4f9b7a3eef6dedf",
+  "exact": "662ad7ac6bed93a9bf2308b4b1f9e2a8b81804b1bddb4036e4f9b7a3eef6dedf",
+  "summary": {
+   "call0['mutated'][0][0].lengths": "int64 (2,) min=1 max=1 sum=2"
+  },
+  "calls": 1
+ },
+ "spatio_genomic_counts:LockableMixin.lock | a locked container refuses attribute and item writes and freezes its arrays; unlock restores both": {
+  "stable": "a3f87e1859a3371f4358495d763dbe2be3c9f4d71239c771f386cb7848abe4d0",
+  "exact": "83adb7424e262ed1dc300124de58a253c48ebec740679b94a66b05fb93e6e330",
+  "summary": {
+   "call0['mutated'][0][0].lengths": "int64 (2,) min=1 max=1 sum=2",
+   "call0['mutated'][0][0].X": "int64 (2, 2, 3) min=-1 max=11 sum=65",
+   "call0['mutated'][0][0].base_nb_mean": "float64 (2, 3) min=2 max=2 mean=2 sum=12",
+   "call0['mutated'][0][0].total_bb_RD": "float64 (2, 4) min=0 max=0 mean=0 sum=0"
+  },
+  "calls": 1
+ },
+ "spatio_genomic_counts:SpatioGenomicCounts.__getitem__ | a field or property by name, by identity; an unknown name raises KeyError": {
+  "stable": "bd26c25a377d07feb4cd05720808bfda41c813b6927b5a15cd717e3eb828c26a",
+  "exact": "bd26c25a377d07feb4cd05720808bfda41c813b6927b5a15cd717e3eb828c26a",
+  "summary": {
+   "call0": "int64 (2, 2, 3) min=0 max=11 sum=66",
+   "call1": "int 3",
+   "call2": "raised KeyError"
+  },
+  "calls": 3
+ },
+ "spatio_genomic_counts:SpatioGenomicCounts.__iter__ | unpacks as (lengths, X, base, depth), by identity": {
+  "stable": "cbabf09897aabbc5bf79a5146c3a1b9a479684fe1b7796f5d234da5dadda2967",
+  "exact": "cbabf09897aabbc5bf79a5146c3a1b9a479684fe1b7796f5d234da5dadda2967",
+  "summary": {
+   "call0": "generator"
+  },
+  "calls": 1
+ },
+ "spatio_genomic_counts:SpatioGenomicCounts.__post_init__ | validate refuses lengths or shapes that disagree with X": {
+  "stable": "c2e15c01cde93df3f7c5d842711f98853e569e589e4280ab2915bac6a2ea2b9d",
+  "exact": "ec1843e8b8cf8916c82923b203905331e69abcee2498a83fd6e7e881a420e8b3",
+  "summary": {
+   "call0['mutated'][0][0].lengths": "int64 (2,) min=1 max=1 sum=2",
+   "call0['mutated'][0][0].X": "int64 (2, 2, 3) min=0 max=11 sum=66",
+   "call0['mutated'][0][0].base_nb_mean": "float64 (2, 3) min=0 max=0 mean=0 sum=0",
+   "call0['mutated'][0][0].total_bb_RD": "int64 (2, 3) min=20 max=20 sum=120",
+   "call1": "raised ValueError",
+   "call2": "raised ValueError"
+  },
+  "calls": 3
+ },
+ "spatio_genomic_counts:SpatioGenomicCounts.__setitem__ | a valid set takes; a shape validate() refuses raises ValueError; an unknown name KeyError; a locked container RuntimeError": {
+  "stable": "1e0bf9f7ca810fd01bcceb251debf3808390d1aeb2f38ed71358408d5bd01e9f",
+  "exact": "144ed3b97ccd524efcb75620c58c277117f2474bc8c17db47bed0c7e4ddd9411",
+  "summary": {
+   "call0['mutated'][0][0].lengths": "int64 (2,) min=1 max=1 sum=2",
+   "call0['mutated'][0][0].X": "int64 (2, 2, 3) min=0 max=11 sum=66",
+   "call0['mutated'][0][0].base_nb_mean": "float64 (2, 3) min=2 max=2 mean=2 sum=12",
+   "call0['mutated'][0][0].total_bb_RD": "int64 (2, 3) min=20 max=20 sum=120",
+   "call0['mutated'][0][1]": "str len=12",
+   "call0['mutated'][0][2]": "float64 (2, 3) min=2 max=2 mean=2 sum=12",
+   "call1": "raised ValueError",
+   "call2": "raised KeyError",
+   "call3": "raised RuntimeError"
+  },
+  "calls": 4
+ },
+ "spatio_genomic_counts:SpatioGenomicCounts.__str__ | names each field": {
+  "stable": "5d023951d80ecb824dd46375d79fac9875fa95db5b92714159923d2d5b1b5119",
+  "exact": "5d023951d80ecb824dd46375d79fac9875fa95db5b92714159923d2d5b1b5119",
+  "summary": {
+   "call0": "str len=384",
+   "call1": "str len=384",
+   "call2": "str len=384"
+  },
+  "calls": 3
+ },
+ "spatio_genomic_counts:SpatioGenomicCounts.copy | shallow shares the arrays; deep holds equal, separate ones": {
+  "stable": "9ad5b6685df7b640589ebfb0fc6bc659bce5389f6c618e131047f28d4e65957f",
+  "exact": "4e1a88a39fdfb6270bd490721afba72c0ccfaeb61e21a6481bf465e3091af492",
+  "summary": {
+   "call0.lengths": "int64 (2,) min=1 max=1 sum=2",
+   "call0.X": "int64 (2, 2, 3) min=0 max=11 sum=66",
+   "call0.base_nb_mean": "float64 (2, 3) min=2 max=2 mean=2 sum=12",
+   "call0.total_bb_RD": "float64 (2, 4) min=0 max=0 mean=0 sum=0",
+   "call1.lengths": "int64 (2,) min=1 max=1 sum=2",
+   "call1.X": "int64 (2, 2, 3) min=0 max=11 sum=66",
+   "call1.base_nb_mean": "float64 (2, 3) min=2 max=2 mean=2 sum=12",
+   "call1.total_bb_RD": "float64 (2, 4) min=0 max=0 mean=0 sum=0"
+  },
+  "calls": 2
+ },
+ "spatio_genomic_counts:SpatioGenomicCounts.items | (key, field) pairs in keys() order, by identity": {
+  "stable": "9ce81f2fb950ec8ae7baabcea041b3d2d973fadd276e8a53fd827aff6287cfa2",
+  "exact": "7971b68d121f6f69e85d47cce4c56fcc1a3a576ca02c5d0ca09a5296d1b6e676",
+  "summary": {
+   "call0[0][0]": "str len=7",
+   "call0[0][1]": "int64 (2,) min=1 max=1 sum=2",
+   "call0[1][0]": "str len=1",
+   "call0[1][1]": "int64 (2, 2, 3) min=0 max=11 sum=66",
+   "call0[2][0]": "str len=12",
+   "call0[2][1]": "float64 (2, 3) min=1 max=1 mean=1 sum=6",
+   "call0[3][0]": "str len=11",
+   "call0[3][1]": "int64 (2, 3) min=20 max=20 sum=120",
+   "call1[0][0]": "str len=7",
+   "call1[0][1]": "int64 (2,) min=1 max=1 sum=2",
+   "call1[1][0]": "str len=1",
+   "call1[1][1]": "int64 (2, 2, 3) min=0 max=11 sum=66",
+   "...": "4 more leaves"
+  },
+  "calls": 2
+ },
+ "spatio_genomic_counts:SpatioGenomicCounts.keys | the four field names in order": {
+  "stable": "17789e748f918cb3a47aa720a1e641b4d896494d6b9c12ec426df311bdb751b5",
+  "exact": "17789e748f918cb3a47aa720a1e641b4d896494d6b9c12ec426df311bdb751b5",
+  "summary": {
+   "call0[0]": "str len=7",
+   "call0[1]": "str len=1",
+   "call0[2]": "str len=12",
+   "call0[3]": "str len=11",
+   "call1[0]": "str len=7",
+   "call1[1]": "str len=1",
+   "call1[2]": "str len=12",
+   "call1[3]": "str len=11",
+   "call2[0]": "str len=7",
+   "call2[1]": "str len=1",
+   "call2[2]": "str len=12",
+   "call2[3]": "str len=11"
+  },
+  "calls": 3
+ },
+ "spatio_genomic_counts:SpatioGenomicCounts.n_segments | X's first axis": {
+  "stable": "6aea6c38f1091e3ad4067a74e814a194e64938f480cbe02bcadd1af4bd2e1105",
+  "exact": "6aea6c38f1091e3ad4067a74e814a194e64938f480cbe02bcadd1af4bd2e1105",
+  "summary": {
+   "call0": "int 2",
+   "call1": "int 2",
+   "call2": "int 2",
+   "call3": "int 2"
+  },
+  "calls": 4
+ },
+ "spatio_genomic_counts:SpatioGenomicCounts.n_spots | X's last axis": {
+  "stable": "f82839d2afa4fd81e3b591462fb3708b04d753f81e9b2522e7b7220405bab6ee",
+  "exact": "f82839d2afa4fd81e3b591462fb3708b04d753f81e9b2522e7b7220405bab6ee",
+  "summary": {
+   "call0": "int 3",
+   "call1": "int 3",
+   "call2": "int 3",
+   "call3": "int 3"
+  },
+  "calls": 4
+ },
+ "spatio_genomic_counts:SpatioGenomicCounts.validate | sum(lengths) == segments; base and depth (segments, spots)": {
+  "stable": "c2e15c01cde93df3f7c5d842711f98853e569e589e4280ab2915bac6a2ea2b9d",
+  "exact": "ec1843e8b8cf8916c82923b203905331e69abcee2498a83fd6e7e881a420e8b3",
+  "summary": {
+   "call0['mutated'][0][0].lengths": "int64 (2,) min=1 max=1 sum=2",
+   "call0['mutated'][0][0].X": "int64 (2, 2, 3) min=0 max=11 sum=66",
+   "call0['mutated'][0][0].base_nb_mean": "float64 (2, 3) min=0 max=0 mean=0 sum=0",
+   "call0['mutated'][0][0].total_bb_RD": "int64 (2, 3) min=20 max=20 sum=120",
+   "call1": "raised ValueError",
+   "call2": "raised ValueError"
+  },
+  "calls": 3
+ },
+ "spatio_genomic_counts:SpatioGenomicCounts.values | the four fields in order": {
+  "stable": "3d28a769b0627e28f7f94e2f7f5587b275045778393b6e1ad25622bf35c1a490",
+  "exact": "c6a99c2095ff1a990afe01158c3cb7c5eb1e0b363ba2ece18821addb307cf298",
+  "summary": {
+   "call0[0]": "int64 (2,) min=1 max=1 sum=2",
+   "call0[1]": "int64 (2, 2, 3) min=0 max=11 sum=66",
+   "call0[2]": "float64 (2, 3) min=0 max=0 mean=0 sum=0",
+   "call0[3]": "int64 (2, 3) min=20 max=20 sum=120",
+   "call1[0]": "int64 (2,) min=1 max=1 sum=2",
+   "call1[1]": "int64 (2, 2, 3) min=0 max=11 sum=66",
+   "call1[2]": "float64 (2, 3) min=0 max=0 mean=0 sum=0",
+   "call1[3]": "int64 (2, 3) min=20 max=20 sum=120"
+  },
+  "calls": 2
+ },
+ "utils:cacher | the second call reads the cache, and the cached table equals the computed one": {
+  "stable": "c667897ae1a6728ca1e643e2ed17bbb77e2b363773b7c03b7108f2211e2cd6ee",
+  "exact": "c667897ae1a6728ca1e643e2ed17bbb77e2b363773b7c03b7108f2211e2cd6ee",
+  "summary": {},
+  "calls": 1
+ },
+ "utils:configure_output_dir | creates clone{n}_rectangle{seed}_w{weight} and its plots/": {
+  "stable": "f728a477b8764ad7aa2d695700c0c03b84bbd9c98847fed5c8f2591546e899c0",
+  "exact": "f728a477b8764ad7aa2d695700c0c03b84bbd9c98847fed5c8f2591546e899c0",
+  "summary": {
+   "call0[0]": "str len=38",
+   "call0[1]": "str len=45"
+  },
+  "calls": 1
+ },
+ "utils:get_output_dir | clone{n}_rectangle{seed}_w{weight:.1f}/ under paths.output_dir": {
+  "stable": "d8e4d1aeb136cfca2b6f5336866ae305c22b6997d31aea8c6410e85d890092e8",
+  "exact": "d8e4d1aeb136cfca2b6f5336866ae305c22b6997d31aea8c6410e85d890092e8",
+  "summary": {
+   "call0": "str len=38",
+   "call1": "str len=38"
+  },
+  "calls": 2
+ },
+ "utils:pause | returns at once unless run.pause": {
+  "stable": "5bb8cac13e2192e7f94f4e36c2e66bc80a646851f8be026243b73faad0024841",
+  "exact": "880c78c8cd1ce37ca342b46b9aae7c1b1cc16dc15390295770daedbadbe2e5b9",
+  "summary": {
+   "call0['mutated'][0][0].betabinom.run_default": "False",
+   "call0['mutated'][0][0].betabinom.start_disp": "float 1000",
+   "call0['mutated'][0][0].betabinom.start_params": "str len=27",
+   "call0['mutated'][0][0].hmm.compression_decimals": "int 0",
+   "call0['mutated'][0][0].hmm.em_disp": "int 0",
+   "call0['mutated'][0][0].hmm.em_ftol": "float 0.0001",
+   "call0['mutated'][0][0].hmm.em_maxiter": "int 1500",
+   "call0['mutated'][0][0].hmm.em_xrtol": "float 0.0001",
+   "call0['mutated'][0][0].hmm.em_xtol": "float 0.0001",
+   "call0['mutated'][0][0].hmm.fix_BB_dispersion": "False",
+   "call0['mutated'][0][0].hmm.fix_NB_dispersion": "False",
+   "call0['mutated'][0][0].hmm.gmm_max_binom_prob": "float 1",
+   "...": "65 more leaves"
+  },
+  "calls": 2
+ },
+ "utils:write_tsv | tab-separated, round trips with its index; no frame writes an empty file": {
+  "stable": "b3a09001e5870773805080f82c0a8bd67f83a81ce5937e9e625281b638869952",
+  "exact": "b3a09001e5870773805080f82c0a8bd67f83a81ce5937e9e625281b638869952",
+  "summary": {
+   "call0['mutated'][0][0]": "str len=16",
+   "call0['mutated'][0][1][a]": "int64 (2,) min=1 max=2 sum=3",
+   "call0['mutated'][0][1][b]": "str (2,)",
+   "call0['mutated'][1]['index']": "True",
+   "call0['mutated'][1]['index_label']": "str len=3",
+   "call1['mutated'][0][0]": "str len=16"
+  },
+  "calls": 2
+ }
+}

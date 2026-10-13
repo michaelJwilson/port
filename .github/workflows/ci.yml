@@ -11,10 +11,22 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# NB stated rather than inherited. Every job here reads; only the badge report
+#    below writes, and it writes a pull request comment rather than the
+#    repository -- `check_badges` refuses a figure that moved and was never
+#    written down, and a job that could push would make that refusal moot.
+permissions:
+  contents: read
+
 jobs:
   python:
     name: Python (lint, types, tests)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # the badge report's one comment, upserted. Absent on a fork's pull
+      # request, which is why that step degrades rather than fails.
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -31,81 +43,70 @@ jobs:
       # is caught here and not after a merge.
       - run: uv sync --locked --extra dev --extra test
 
-      - run: uv run --no-sync ruff check .
-      - run: uv run --no-sync ruff format --check .
-      - run: uv run --no-sync mypy
-      # NB the early gate, upstream's #237 read for this repository. It runs
-      #    before the tier so a broken referee or a fixture that stopped
-      #    planting what it claims surfaces in eight seconds rather than after
-      #    the whole run. `--no-cov` because the floor in `pyproject.toml` is
-      #    measured against the tier: the gate reaches 18.74 per cent of
-      #    `cnaster` against the tier's 33.77, and applying the tier's floor
-      #    to it would fail a passing gate.
+      # NB one entry point, the one a contributor runs locally (#403): lint,
+      #    types and the gate, then the two coverage guards and
+      #    `check_badges`. The steps, their selections and their budgets are
+      #    `scripts/ci.py`'s; this file only calls it.
+      - run: uv run --no-sync python -m scripts.ci --gate --badges
+      # NB what a pull request cannot otherwise say (#271). Every badge in
+      #    `README.md` is pinned to `/main/.badges/`, so a branch renders
+      #    main's figures and its own live only in a JSON diff. This renders
+      #    the comparison the reviewer needs: base against head, delta first.
       #
-      #    91 tests in 7.80 s on the development host, against the tier's
-      #    18.86 s. `tests/test_marker_discipline.py` is what keeps that ratio
-      #    from drifting: the gate takes only a test refereed from outside the
-      #    implementation and carrying no scale marker.
-      - run: uv run --no-sync pytest -m critical -q --no-cov
-      # NB the coverage gate is enforced here rather than in `addopts`, so a
-      #    local `pytest` stays fast and the floor still binds on every change.
-      #
-      #    `-m "not release"` is what makes that marker mean anything. Without
-      #    it the marker is documentation: `pyproject.toml` defines `release`
-      #    as "over the per-pull-request budget", and the job ran the
-      #    stress benchmarks it marks -- 78 seconds of them -- on every
-      #    change. The floor is measured against this selection, and the
-      #    release-marked tests contribute no statements of their own, so
-      #    deselecting them does not move it.
-      - run: uv run --no-sync pytest -m "not release" -q --no-cov
-      # NB the gate measures the validated types alone (#149). Coverage counts
-      #    what ran, so the counted set has to be the selection here rather
-      #    than a filter applied to the full run afterwards -- which is also
-      #    why the full suite runs first, above: every test still has to pass,
-      #    counted or not.
-      - run: >
-          uv run --no-sync pytest
-          -m "not release and (end2end or oracle)"
-          --cov --cov-report=term
-      # NB the referee's own floor, measured separately and over its own
-      #    denominator. One figure covering both would rise for importing more
-      #    of upstream, which is not validating more of the subject.
-      #    `preprocessing` is deselected: the input path has no upstream
-      #    referee, so those tests would dilute the oracle's denominator with
-      #    work it was never asked to do.
-      - run: >
-          uv run --no-sync coverage run --rcfile=.coveragerc-oracle
-          -m pytest -m "not release and not preprocessing" -q --no-cov
-      - run: uv run --no-sync coverage report --rcfile=.coveragerc-oracle
-      # NB the `e2e` badge measures `end2end` **alone**, which the gate above
-      #    does not: the gate is `end2end or oracle` at the floor #157
-      #    decided, and that floor is not this step's to move. The badge is
-      #    named `e2e` and there is a separate badge claiming `oracle`, so a
-      #    figure counting both under the first name was wrong however
-      #    defensible the union is as a gate.
-      #
-      #    `COVERAGE_FILE` keeps it off `.coverage`, hyphenated so it is not
-      #    read as a parallel shard and erased by a later `--cov` run;
-      #    `--cov-fail-under=0`
-      #    because the floor is the gate's job and failing twice on one
-      #    number tells nobody anything new. Measured: 44.81 per cent against
-      #    the gate's 45.69, so the oracle-marked tests are worth 62
-      #    statements over an identical denominator.
-      - run: >
-          COVERAGE_FILE=.coverage-e2e uv run --no-sync pytest
-          -m "not release and end2end"
-          --cov --cov-report=term --cov-fail-under=0
-      # NB the badges. `tests/test_badges_agree.py` already refuses a badge
-      #    that disagrees with `.badges/measurements.json`; what it cannot
-      #    catch is a measurement that moved and was never written down, so
-      #    this reads the two coverage runs above and fails the job when the
-      #    recorded figure is not the one just measured.
-      #
-      #    It refuses rather than commits. A job that rewrote the numbers and
-      #    pushed would make the badges always correct and always unreviewed,
-      #    which is the opposite of what a floor is for: a coverage change
-      #    should arrive in a diff someone reads.
-      - run: uv run --no-sync python -m tests.check_badges
+      #    It reports and never gates. `check_badges` above is what fails the
+      #    job on a figure that moved and was not written down, and it runs
+      #    first so a report can never stand in for it.
+      - name: Badge report
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          BASE: ${{ github.event.pull_request.base.ref }}
+        run: |
+          # A shallow fetch of the base is enough: only one file is read, and
+          # `|| true` because a missing base is a case the report renders
+          # rather than an error -- a first commit reaches it.
+          git fetch --depth=1 origin "$BASE" || true
+          git show FETCH_HEAD:.badges/measurements.json > /tmp/base-measurements.json || true
+
+          uv run --no-sync python -m scripts.badge_report \
+            --base /tmp/base-measurements.json > /tmp/badge-report.md
+
+          cat /tmp/badge-report.md >> "$GITHUB_STEP_SUMMARY"
+      # NB one comment, upserted, because a comment per push is the noise the
+      #    badges exist to avoid. Separate from the step above so the job
+      #    summary still renders when no token can write -- a fork's pull
+      #    request has none, and that is not a failure.
+      - name: Badge report comment
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          MARKER='<!-- badge-report -->'
+
+          {
+            echo "$MARKER"
+            cat /tmp/badge-report.md
+            echo
+            echo "_Posted by the \`Badge report\` step of CI, and rewritten in place on each push._"
+          } > /tmp/badge-comment.md
+
+          # `--paginate` runs the filter once per page, so a repository with
+          # enough comments to paginate can emit an id per page; take the
+          # first and rewrite that one.
+          EXISTING=$(gh api "repos/$REPOSITORY/issues/$NUMBER/comments" --paginate \
+            --jq "[.[] | select(.body | startswith(\"$MARKER\"))] | first | .id // empty" \
+            | head -n 1)
+
+          if [ -n "$EXISTING" ]; then
+            gh api -X PATCH "repos/$REPOSITORY/issues/comments/$EXISTING" \
+              -F body=@/tmp/badge-comment.md
+          else
+            gh api "repos/$REPOSITORY/issues/$NUMBER/comments" \
+              -F body=@/tmp/badge-comment.md
+          fi
 
   # The release tier. `CLAUDE.md` says the release gate runs everything, and
   # until this job existed nothing did: `release` was a marker every job
@@ -128,7 +129,7 @@ jobs:
       # `-m` on the command line replaces `addopts`' `-m "not release"`, so
       # this is the whole suite: the per-pull-request tier and the release
       # tier together, as the release gate is defined.
-      - run: uv run --no-sync pytest -m "release or not release" -q --no-cov
+      - run: uv run --no-sync pytest -m "(release or not release) and not oracle" -q --no-cov
 
   rust:
     name: Rust (lint, format)

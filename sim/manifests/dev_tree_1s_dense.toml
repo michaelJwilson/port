@@ -1,0 +1,29 @@
+# dev_tree_1s_easy with planted CNAs on more than 80% of the genome (T- #698):
+# events overlap on every lineage, each drawn on top of its lineage's state.
+version = 3
+extends = "dev_tree_1s_easy.toml"
+
+[sample]
+name = "dev_tree_1s_dense"
+# NB `port.sim.fixtures.realization_hash` of r0 as drawn here: a change to this
+#    manifest or to the simulator that moves it states the new one, so the hash
+#    names the generation (`tests/test_sim_r0_hash.py`).
+r0_hash = "33e3471e"
+
+[cna]
+# NB the Felsenstein tree of dev_tree_1s_easy at 60 expected events, not 7.
+#    `port.sim.draw.altered_share`, the bp share where any clone is not (1, 1),
+#    is 0.890 on average over seeds 0-99 and above 0.80 on 94; 0.920 at seed 0,
+#    64 events whose lengths sum to 2.38 genomes.
+expected_cnas = 60
+# NB a lost haplotype stays lost on the lineage, and every event changes its
+#    clone somewhere in its span (`port.sim.draw.admissible`).
+loh = "irreversible"
+
+[cna.length]
+# NB lognormal about 150 Mb, chromosome-arm scale, floored at 1 Mb (#619)
+law = "lognormal"
+mean = 1.5e8
+# NB 10% of events below half the median: port.sim.laws.lognormal_sigma(0.10, 0.5)
+sigma = 0.541
+minimum = 1e6

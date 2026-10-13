@@ -1,12 +1,11 @@
-"""Baselines for the single-chain path, recorded so a later change has one.
+"""Single-chain baselines for cnaster and `snakes_and_ladders` on one gate-size fixture
+(#9).
 
-These measure `cnaster` and `snakes_and_ladders` on the same fixture at the
-same size. They assert nothing about the ratio: a benchmark that fails on a
-machine's speed is a flaky test, and `CLAUDE.md` puts the bar for acting on
-a ratio at a stress size, which these are not. What they are is the number a
-proposal has to beat, and the number issue #9's crossover measurement
-reports against.
+No ratio is asserted.
 """
+
+from collections.abc import Callable
+from functools import partial
 
 import pytest
 import torch
@@ -14,94 +13,90 @@ from pytest_benchmark.fixture import BenchmarkFixture
 
 from tests.adapters import (
     cnaster_emission,
+    cnaster_phased_total_log_likelihood,
     cnaster_total_log_likelihood,
     from_negative_binomial_chains,
+    from_phased_chains,
+    upstream_phased_total_log_likelihood,
+    upstream_total_log_likelihood,
 )
-from tests.fixtures import negative_binomial_chains
-from tests.test_hmm_single_chain import upstream_total_log_likelihood
+from tests.fixtures import (
+    NegativeBinomialChains,
+    PhasedChains,
+    negative_binomial_chains,
+    phased_chains,
+)
 
 GATE_STATES = 5
 GATE_LENGTH = 200
 GATE_SEQUENCES = 8
 
 
-@pytest.mark.benchmark
-def test_cnaster_emission_baseline(benchmark: BenchmarkFixture) -> None:
-    """`cnaster`'s emission over the gate-size fixture."""
-    fixture = negative_binomial_chains(
+@pytest.fixture(scope="module")
+def chains() -> NegativeBinomialChains:
+    """The gate-size fixture every negative binomial row scores."""
+    return negative_binomial_chains(
         n_states=GATE_STATES,
         sequence_length=GATE_LENGTH,
         n_sequences=GATE_SEQUENCES,
     )
-    inputs = from_negative_binomial_chains(fixture)
-    benchmark(cnaster_emission, inputs)
 
 
-@pytest.mark.benchmark
-def test_upstream_emission_baseline(benchmark: BenchmarkFixture) -> None:
-    """The same scores from upstream, for the ratio between them."""
-    fixture = negative_binomial_chains(
-        n_states=GATE_STATES,
-        sequence_length=GATE_LENGTH,
-        n_sequences=GATE_SEQUENCES,
-    )
-    observations = torch.as_tensor(fixture.dataset.observations, dtype=torch.float64)
-    benchmark(fixture.family.log_density, observations)
-
-
-@pytest.mark.benchmark
-def test_cnaster_forward_baseline(benchmark: BenchmarkFixture) -> None:
-    """`cnaster`'s emission and forward recursion together."""
-    fixture = negative_binomial_chains(
-        n_states=GATE_STATES,
-        sequence_length=GATE_LENGTH,
-        n_sequences=GATE_SEQUENCES,
-    )
-    inputs = from_negative_binomial_chains(fixture)
-    benchmark(cnaster_total_log_likelihood, inputs)
-
-
-@pytest.mark.benchmark
-def test_upstream_forward_baseline(benchmark: BenchmarkFixture) -> None:
-    """Upstream's emission and forward recursion together."""
-    fixture = negative_binomial_chains(
-        n_states=GATE_STATES,
-        sequence_length=GATE_LENGTH,
-        n_sequences=GATE_SEQUENCES,
-    )
-    benchmark(upstream_total_log_likelihood, fixture)
-
-
-@pytest.mark.benchmark
-def test_cnaster_phased_forward_baseline(benchmark: BenchmarkFixture) -> None:
-    """`cnaster`'s phased lattice, which reassembles its transfer matrix per position."""
-    from tests.adapters import cnaster_phased_total_log_likelihood, from_phased_chains
-    from tests.fixtures import phased_chains
-
-    fixture = phased_chains(
+@pytest.fixture(scope="module")
+def phased() -> PhasedChains:
+    """The same size, phased."""
+    return phased_chains(
         n_copy_states=GATE_STATES,
         sequence_length=GATE_LENGTH,
         n_sequences=GATE_SEQUENCES,
     )
-    inputs = from_phased_chains(fixture)
-    benchmark(cnaster_phased_total_log_likelihood, inputs)
 
 
 @pytest.mark.benchmark
-def test_upstream_phased_forward_baseline(benchmark: BenchmarkFixture) -> None:
-    """The same recursion upstream, at the assembled constant transition.
+@pytest.mark.parametrize(
+    "arm",
+    [
+        lambda f: partial(cnaster_emission, from_negative_binomial_chains(f)),
+        lambda f: partial(
+            f.family.log_density,
+            torch.as_tensor(f.dataset.observations, dtype=torch.float64),
+        ),
+        lambda f: partial(
+            cnaster_total_log_likelihood, from_negative_binomial_chains(f)
+        ),
+        lambda f: partial(upstream_total_log_likelihood, f),
+    ],
+    ids=[
+        "emission-cnaster",
+        "emission-upstream",
+        "forward-cnaster",
+        "forward-upstream",
+    ],
+)
+def test_emission_and_forward(
+    benchmark: BenchmarkFixture,
+    chains: NegativeBinomialChains,
+    arm: Callable[[NegativeBinomialChains], Callable[[], object]],
+) -> None:
+    """The same scores from both, for the ratio between them; then the emission and forward recursion together."""
+    benchmark(arm(chains))
 
-    The gap between the two is the cost of reassembling a `2K x 2K` matrix
-    at every position where the kernel is constant and one matrix would do.
-    """
-    from tests.adapters import from_phased_chains
-    from tests.fixtures import phased_chains
-    from tests.test_hmm_phased import upstream_phased_total_log_likelihood
 
-    fixture = phased_chains(
-        n_copy_states=GATE_STATES,
-        sequence_length=GATE_LENGTH,
-        n_sequences=GATE_SEQUENCES,
-    )
-    inputs = from_phased_chains(fixture)
-    benchmark(upstream_phased_total_log_likelihood, fixture, inputs)
+@pytest.mark.benchmark
+@pytest.mark.parametrize(
+    "arm",
+    [
+        lambda f: partial(cnaster_phased_total_log_likelihood, from_phased_chains(f)),
+        lambda f: partial(
+            upstream_phased_total_log_likelihood, f, from_phased_chains(f)
+        ),
+    ],
+    ids=["cnaster", "upstream"],
+)
+def test_phased_forward(
+    benchmark: BenchmarkFixture,
+    phased: PhasedChains,
+    arm: Callable[[PhasedChains], Callable[[], object]],
+) -> None:
+    """cnaster's per-position phased lattice against upstream's at the assembled transition."""
+    benchmark(arm(phased))

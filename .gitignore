@@ -12,6 +12,7 @@ __pycache__/
 # NB the per-guard data files, named one by one rather than as `.coverage*`,
 #    which would also match the tracked `.coveragerc-oracle`. The dotted form
 #    is here for the shards coverage writes in parallel mode.
+.coverage-dropin
 .coverage-e2e
 .coverage-oracle
 .coverage-reach
@@ -35,3 +36,12 @@ python/port/*.dylib
 
 # Sphinx build output
 docs/_build/
+
+# NB samples drawn by `port.sim.draw` (#445); the manifests are what is tracked.
+sim/generated/
+
+# NB stage records of simulated samples (tests.sim_stages, #467), and the
+#    figures every generator writes by default (`tests/plots_dir.py`): local,
+#    rebuilt.
+.cache/
+cnamaste/.venv/

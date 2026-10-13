@@ -1,25 +1,9 @@
-"""`cnaster.spatial`, without the dense round trip and the repeated partition.
+"""Replaces `cnaster.spatial`'s adjacency, partition and rectangular-clone functions (#190).
 
-**Proposed for `cnaster`, written here.** #190. Two functions on the
-preprocessing path allocate or recompute what their answers do not need:
-
-*   `construct_multislice_lattice_adjacency` builds each slice's adjacency and
-    pooling matrices **sparse**, calls `.toarray()` on both, block-diagonalizes
-    the dense copies with `scipy.linalg.block_diag`, and converts the result
-    back to CSR. The graph is a k-nearest-neighbour lattice with eight edges
-    per spot, so the dense form is `n_spots^2` entries to carry `8 * n_spots`
-    of them: at 5,000 spots that is 200 MB per matrix to hold 0.3 MB of graph.
-*   `best_equal_partition` draws `n_trials` random grid partitions and keeps
-    the one whose clone sizes vary least. It builds every trial's index lists
-    to measure them, when the variance needs only the sizes -- `x_part *
-    y_part` calls to `np.where` per trial, of which all but the winner's are
-    discarded.
-
-`port` cannot land either (`CLAUDE.md`, **Working against a repository you do
-not own**), so both are written here with their referees beside them in
-`tests/test_preprocessing_sweep.py`.
-
-Both returns are **bitwise** what `cnaster` returns.
+`construct_multislice_lattice_adjacency` and `best_equal_partition` are built
+sparse and counted without index lists, bitwise `cnaster`'s.
+`lattice_multislice_adjacency` (#417) and `initialize_rectangular_clones`
+(T- #692) are stated departures.
 """
 
 from __future__ import annotations
@@ -32,25 +16,16 @@ import scipy.sparse as sp
 from cnaster.config import start_time
 from cnaster.logger import get_logger
 from cnaster.spatial import construct_lattice_adjacency, rectangle_partition
+from sal.opt.termination import Stop, Termination
 
 logger = get_logger(__name__, start_time=start_time)
 
 Adjacency = namedtuple("Adjacency", ["adjacency_mat", "smooth_mat"])
-"""`cnaster`'s own return shape, declared here because it declares it inline."""
+"""`cnaster`'s return shape, which it declares inline."""
 
 
 def _block_diagonal(blocks: list[Any]) -> Any:
-    """The block diagonal of sparse blocks, as CSR, without densifying.
-
-    `scipy.linalg.block_diag` takes dense arrays, so `cnaster` pays
-    `sum(n_i)^2` entries to place `sum(nnz_i)` of them. The sparse form places
-    the same entries by offsetting their indices.
-
-    The dtype is taken from the blocks explicitly. `scipy.linalg.block_diag`
-    promotes to the common type of its inputs and `scipy.sparse.block_diag`
-    does not always agree with it, and the two returns are compared bitwise,
-    which a silent promotion would break.
-    """
+    """The block diagonal of sparse blocks as CSR, dtype taken explicitly from the blocks."""
     dtype = np.result_type(*[block.dtype for block in blocks])
 
     return sp.block_diag(blocks, format="csr", dtype=dtype)
@@ -65,11 +40,9 @@ def construct_multislice_lattice_adjacency(
     unit_xsquared: int = 9,
     unit_ysquared: int = 3,
 ) -> Any:
-    """What `cnaster`'s returns, built sparse throughout.
+    """`cnaster`'s `construct_multislice_lattice_adjacency`, built sparse; bitwise.
 
-    Same graph, same weights, same order: the per-slice matrices come from
-    `cnaster`'s own `construct_lattice_adjacency`, and only how they are
-    assembled differs.
+    Not installed (T- #617): kept as the referee of `_block_diagonal`.
     """
     logger.info("Solving for multi-slice adjacency (and spot-pooling) matrix.")
 
@@ -98,21 +71,7 @@ def construct_multislice_lattice_adjacency(
 
 
 def _rectangle_counts(coords: np.ndarray) -> Any:
-    """A summed-area table over the distinct coordinates, or `None`.
-
-    Every trial counts the spots in each cell of an axis-aligned grid: the
-    grid changes and the spots do not. Built once, the inclusive
-    two-dimensional cumulative count answers any rectangle in four lookups, so
-    a trial costs `x_part * y_part` reads rather than a pass over the spots --
-    O(1) in the spot count where `cnaster` is O(n) twice over.
-
-    `None` where the table would be larger than the data it summarizes. A
-    slide's coordinates are a lattice, so the distinct values are about
-    `sqrt(n_spots)` per axis and the table is about `n_spots`; scattered
-    coordinates have as many distinct values as spots and the table would be
-    `n_spots^2`, which is the case this declines rather than the case it is
-    for.
-    """
+    """A summed-area table over the distinct coordinates, or `None` where it would exceed ~`n_spots`."""
     (x_values, x_index), (y_values, y_index) = (
         np.unique(coords[:, axis], return_inverse=True) for axis in (0, 1)
     )
@@ -132,12 +91,7 @@ def _trial_edges(
     parts: int,
     generator: np.random.Generator,
 ) -> np.ndarray:
-    """One axis's cell boundaries for one trial, on the data's own scale.
-
-    Drawn in `cnaster`'s order -- x before y, from one generator -- because
-    the two draws share a stream, so swapping them would be a different
-    partition at the same seed.
-    """
+    """One axis's cell boundaries for one trial; drawn x before y as `cnaster` does."""
     edges = np.sort(generator.uniform(0, 1, parts))
     edges[-1] = 1.01
 
@@ -155,19 +109,7 @@ def partition_sizes(
     trial: int,
     table: Any = None,
 ) -> np.ndarray:
-    """How many spots fall in each cell of one trial's grid, in clone order.
-
-    `cnaster` gets these by building the index array of every cell and taking
-    its length, which is `x_part * y_part` passes over the spots per trial.
-    With a summed-area table it is four lookups per cell and none; without one
-    it is a single `bincount` over the two digitizations.
-
-    A spot whose digitization lands past the last cell belongs to no clone in
-    `cnaster`'s double loop, so it is dropped here too rather than folded into
-    the last cell. The partition's last edge is set beyond the data, so this
-    cannot happen -- matching it costs nothing and relying on it would be a
-    claim about a constant in someone else's code.
-    """
+    """Spots in each cell of one trial's grid, in clone order; spots past the last cell dropped."""
     if single_tumor_prop is not None:
         range_coords = coords[np.where(single_tumor_prop >= threshold)[0]]
     else:
@@ -210,14 +152,7 @@ def partition_sizes(
 def _all_trial_edges(
     range_coords: np.ndarray, x_part: int, y_part: int, n_trials: int
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Every trial's cell boundaries, as two `(n_trials, parts)` arrays.
-
-    The draws stay in a Python loop because each trial seeds its own generator
-    and `cnaster`'s partition at a seed is what is being reproduced. Nothing
-    else does: with the boundaries in one array, the counting and the variance
-    run once across all trials rather than once per trial, which is what the
-    per-trial `numpy` call overhead was.
-    """
+    """Every trial's cell boundaries, as two `(n_trials, parts)` arrays, one seed per trial."""
     x_edges = np.empty((n_trials, x_part))
     y_edges = np.empty((n_trials, y_part))
 
@@ -245,14 +180,7 @@ def _all_trial_variances(
     n_trials: int,
     table: Any,
 ) -> np.ndarray:
-    """Every trial's clone-size variance, in one pass over the trials.
-
-    The counting is `n_trials * x_part * y_part` lookups into the summed-area
-    table and no pass over the spots at all, so the cost stops depending on
-    how many spots there are. The intermediate is the counts themselves --
-    `n_trials * x_part * y_part` integers, 72 KB at a thousand trials on a
-    3x3 grid.
-    """
+    """Every trial's clone-size variance from the summed-area table."""
     x_edges, y_edges = _all_trial_edges(range_coords, x_part, y_part, n_trials)
     x_values, y_values, cumulative = table
 
@@ -286,13 +214,7 @@ def best_equal_partition(
     threshold: float = 0.5,
     n_trials: int = 10_000,
 ) -> tuple[Any, Any]:
-    """`cnaster`'s partition, measured before it is built.
-
-    The trial kept is the same one: the comparison is strict, so the earliest
-    trial attaining the minimum variance wins, and the winner's index lists
-    come from `cnaster`'s own `rectangle_partition` at that seed rather than
-    from a second implementation of it.
-    """
+    """`cnaster`'s partition: the earliest minimum-variance trial, built by `rectangle_partition`."""
     table = _rectangle_counts(coords)
 
     if single_tumor_prop is not None:
@@ -331,3 +253,225 @@ def best_equal_partition(
     )
 
     return index, assignment
+
+
+RECTANGLE_REDRAWS = 10
+"""Boundary redraws after an infeasible draw before the partition is banded (T- #692, #248)."""
+
+
+class RectangularClones(tuple[list[np.ndarray], np.ndarray]):
+    """`cnaster`'s `(initial_clone_index, clone_id)` two-tuple, with `termination` and `redraws` (T- #692)."""
+
+    termination: Termination
+    redraws: int
+
+    def __new__(
+        cls,
+        initial_clone_index: list[np.ndarray],
+        clone_id: np.ndarray,
+        termination: Termination,
+        redraws: int,
+    ) -> RectangularClones:
+        result = super().__new__(cls, (initial_clone_index, clone_id))
+        result.termination = termination
+        result.redraws = redraws
+
+        return result
+
+
+def admits_assignment(block_sizes: np.ndarray, n_clones: int, floor: float) -> bool:
+    """Whether some assignment of blocks to clones gives every clone `> floor` spots.
+
+    Exactly when `cnaster`'s loop returns. Depth-first search, largest block first.
+    """
+    sizes = sorted((int(size) for size in block_sizes), reverse=True)
+    need = int(np.floor(floor)) + 1
+    remaining = [*np.cumsum(sizes[::-1])[::-1].tolist(), 0]
+    totals = [0] * n_clones
+
+    def place(block: int) -> bool:
+        deficits = [need - total for total in totals if total < need]
+        if not deficits:
+            return True
+        if block == len(sizes) or len(deficits) > len(sizes) - block:
+            return False
+        if sum(deficits) > remaining[block]:
+            return False
+
+        tried = set()
+        for clone in range(n_clones):
+            if totals[clone] in tried:
+                continue
+            tried.add(totals[clone])
+            totals[clone] += sizes[block]
+            if place(block + 1):
+                return True
+            totals[clone] -= sizes[block]
+
+        return False
+
+    return place(0)
+
+
+def _banded(coords: np.ndarray, n_clones: int) -> tuple[list[np.ndarray], np.ndarray]:
+    """`n_clones` equal-count bands along the axis with the most distinct values, deterministic."""
+    n_spots = len(coords)
+    axis = int(np.argmax([np.unique(coords[:, a]).size for a in (0, 1)]))
+    order = np.lexsort((np.arange(n_spots), coords[:, 1 - axis], coords[:, axis]))
+    clone_id = np.empty(n_spots, dtype=int)
+    clone_id[order] = np.arange(n_spots) * n_clones // n_spots
+
+    return [np.where(clone_id == i)[0] for i in range(n_clones)], clone_id
+
+
+def initialize_rectangular_clones(
+    coords: np.ndarray, n_clones: int, random_state: int = 0
+) -> RectangularClones:
+    """`cnaster.spatial.initialize_rectangular_clones`, which terminates.
+
+    Departure (T- #692, #304, #248): a draw that admits no passing assignment
+    (:func:`admits_assignment`) is redrawn up to :data:`RECTANGLE_REDRAWS` times,
+    then banded (`Stop.INFEASIBLE`). Where `cnaster` returns, the result is
+    bitwise. `termination.iterations` counts boundary draws.
+    """
+    # NB the legacy global stream: `cnaster` draws from it, so this is bitwise.
+    np.random.seed(random_state)  # noqa: NPY002
+
+    p = int(np.ceil(np.sqrt(n_clones)))
+
+    if n_clones <= 1:
+        clone_id = np.zeros(len(coords), dtype=int)
+
+        return RectangularClones(
+            [np.where(clone_id == i)[0] for i in range(n_clones)],
+            clone_id,
+            Termination.after(0, converged=True),
+            0,
+        )
+
+    def blocks() -> np.ndarray:
+        digits = []
+
+        for axis in (0, 1):
+            share = np.random.dirichlet(np.ones(p) * 10)  # noqa: NPY002
+            share[-1] += 1e-4
+
+            low = np.percentile(coords[:, axis], 5)
+            high = np.percentile(coords[:, axis], 95)
+
+            boundary = low + (high - low) * np.cumsum(share)
+            boundary[-1] = np.max(coords[:, axis]) + 1
+
+            digits.append(np.digitize(coords[:, axis], boundary, right=True))
+
+        block_id: np.ndarray = digits[0] * p + digits[1]
+
+        return block_id
+
+    floor = 0.2 * coords.shape[0] / n_clones
+
+    draws = 0
+
+    while draws <= RECTANGLE_REDRAWS:
+        block_id = blocks()
+        sizes = np.bincount(block_id, minlength=p**2)
+        draws += 1
+
+        if admits_assignment(sizes, n_clones, floor):
+            break
+
+        logger.info(
+            f"Rectangular blocks {sizes.tolist()} admit no {n_clones} clones above "
+            f"{floor:.2f} spots; redrawing (T- #692)."
+        )
+    else:
+        termination = Termination(
+            converged=False, iterations=draws, reason=Stop.INFEASIBLE
+        )
+        logger.info(
+            f"Rectangular clone initialization {termination.reason}: "
+            f"{n_clones} equal-count bands (T- #692)."
+        )
+
+        return RectangularClones(*_banded(coords, n_clones), termination, draws)
+
+    while True:
+        block_clone_map = np.random.randint(low=0, high=n_clones, size=p**2)  # noqa: NPY002
+
+        while len(np.unique(block_clone_map)) < n_clones:
+            counts = np.bincount(block_clone_map, minlength=n_clones)
+            block_clone_map[np.where(block_clone_map == np.argmax(counts))[0][0]] = (
+                np.where(counts == 0)[0][0]
+            )
+
+        clone_id = block_clone_map[block_id]
+        initial_clone_index = [np.where(clone_id == i)[0] for i in range(n_clones)]
+
+        if min(len(x) for x in initial_clone_index) > floor:
+            return RectangularClones(
+                initial_clone_index,
+                clone_id,
+                Termination.after(draws, converged=True),
+                draws - 1,
+            )
+
+
+def lattice_multislice_adjacency(
+    sample_ids: np.ndarray,
+    sample_list: Any,
+    coords: np.ndarray,
+    across_slice_adjacency_mat: Any,
+    maxspots_pooling: int,
+    unit_xsquared: int = 9,  # noqa: ARG001 -- a lattice has no metric to scale
+    unit_ysquared: int = 3,  # noqa: ARG001 -- a lattice has no metric to scale
+) -> Adjacency:
+    """`construct_multislice_lattice_adjacency`'s signature on the lattice graph (#417).
+
+    Identity pooling; raises `AdjacencyError` if `validate_adjacency` rejects the graph.
+    """
+    from port.extensions.adjacency import (
+        COORDINATION,
+        AdjacencyError,
+        adjacency_setting,
+        knn_adjacency,
+        lattice_adjacency,
+        lattice_kind,
+        neighbourhood_for,
+        validate_adjacency,
+    )
+
+    if maxspots_pooling != 1:
+        msg = f"maxspots_pooling={maxspots_pooling}; the lattice path pools nothing"
+        raise AdjacencyError(msg)
+
+    construction = adjacency_setting("construction")
+    build = knn_adjacency if construction == "knn" else lattice_adjacency
+    blocks, kinds = [], []
+
+    for index, _ in enumerate(sample_list):
+        this_coords = np.asarray(coords[np.flatnonzero(sample_ids == index), :])
+        kind = neighbourhood_for(lattice_kind(this_coords))
+        kinds.append(kind)
+        blocks.append(build(this_coords, kind))
+
+    if len(set(kinds)) != 1:
+        msg = f"slices are on different lattices: {kinds}"
+        raise AdjacencyError(msg)
+
+    adjacency_mat = _block_diagonal(blocks)
+    smooth_mat = sp.identity(adjacency_mat.shape[0], dtype=np.int8, format="csr")
+
+    if across_slice_adjacency_mat is not None:
+        adjacency_mat = adjacency_mat + across_slice_adjacency_mat
+
+    validate_adjacency(
+        adjacency_mat,
+        COORDINATION[kinds[0]],
+        construction=construction,  # type: ignore[arg-type]
+    )
+    logger.info(
+        f"{construction} {kinds[0]} adjacency: {adjacency_mat.nnz} entries over "
+        f"{adjacency_mat.shape[0]} spots, validated."
+    )
+
+    return Adjacency(adjacency_mat=adjacency_mat, smooth_mat=smooth_mat)

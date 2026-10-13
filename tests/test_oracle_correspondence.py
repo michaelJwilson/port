@@ -1,19 +1,7 @@
-"""The oracle surface is matched **one way, from `cnaster`** (#128).
+"""`.coveragerc-oracle`'s surface is matched one way, from `cnaster` (#128).
 
-`.coveragerc-oracle` says which `snakes_and_ladders` modules the claims rest
-on. What it cannot say by itself is *why* each one is there, and the direction
-matters: a module enters because `cnaster` does something it referees, never
-because upstream happens to ship it. Presence in `snakes_and_ladders` is not
-entry.
-
-Read the other way the surface would grow without bound and the figure would
-fall for every module upstream adds -- a metric that moves on someone else's
-commits. Read this way it moves only when `cnaster` gains a path or `port`
-builds a rung, which is what `CLAUDE.md` asks a coverage number to mean.
-
-`tests/test_coverage_scope.py` guards the other half: that no test referees
-against a module the config does not declare. Together they are a biconditional
--- declared if and only if refereed, refereed only if `cnaster` matches.
+A `sal` module is declared only for the `cnaster` code it referees; checked
+against the config, `cnaster`'s source and `sal.emissions`.
 """
 
 import ast
@@ -23,67 +11,53 @@ from pathlib import Path
 
 import pytest
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-ORACLE_CONFIG = PROJECT_ROOT / ".coveragerc-oracle"
+from tests import ROOT
+
+ORACLE_CONFIG = ROOT / ".coveragerc-oracle"
 
 CORRESPONDENCE: dict[str, tuple[str, ...]] = {
-    "snakes_and_ladders.emissions": ("cnaster.hmm_nophasing", "cnaster.hmm_emission"),
-    "snakes_and_ladders.opt.hmm": ("cnaster.hmm", "cnaster.hmm_nophasing"),
-    "snakes_and_ladders.opt.fit": ("cnaster.integer_copy",),
-    "snakes_and_ladders.ragged": ("cnaster.hmrf_utils",),
-    "snakes_and_ladders.likelihood.ragged_rust": ("cnaster.hmm_nophasing",),
-    "snakes_and_ladders.likelihood.forward_backward": ("cnaster.hmm_nophasing",),
-    "snakes_and_ladders.likelihood.spatio_sequential": ("cnaster.hmrf",),
-    "snakes_and_ladders.search.spatio_sequential": ("cnaster.hmrf",),
-    "snakes_and_ladders.search.alpha_expansion": ("cnaster.icm",),
-    "snakes_and_ladders.sim.count_pairs": ("cnaster.hmm_nophasing",),
-    "snakes_and_ladders.sim.spatio_sequential": ("cnaster.hmrf",),
-    "snakes_and_ladders.sim.graph": ("cnaster.hmrf_utils",),
-    "snakes_and_ladders.sim.hmm": ("cnaster.hmm_nophasing",),
+    "sal.emissions": ("cnaster.hmm_nophasing", "cnaster.hmm_emission"),
+    "sal.opt.hmm": ("cnaster.hmm", "cnaster.hmm_nophasing"),
+    "sal.opt.fit": ("cnaster.integer_copy",),
+    "sal.ragged": ("cnaster.hmrf_utils",),
+    "sal.likelihood.ragged": ("cnaster.hmm_nophasing",),
+    "sal.likelihood.forward_backward": ("cnaster.hmm_nophasing",),
+    "sal.likelihood.spatio_sequential": ("cnaster.hmrf",),
+    "sal.search.spatio_sequential": ("cnaster.hmrf",),
+    "sal.search.alpha_expansion": ("cnaster.icm",),
+    "sal.search.icm": ("cnaster.icm",),
+    "sal.search.trws": ("cnaster.icm",),
+    "sal.enumeration": ("cnaster.icm",),
+    "sal.sim.potts": ("cnaster.icm",),
+    "sal.backend": ("cnaster.icm",),
+    "sal.sim.count_pairs": ("cnaster.hmm_nophasing",),
+    "sal.sim.spatio_sequential": ("cnaster.hmrf",),
+    "sal.sim.graph": ("cnaster.hmrf_utils",),
+    "sal.sim.hmm": ("cnaster.hmm_nophasing",),
+    "sal.opt.emission_mixture": ("cnaster.hmm_initialize",),
+    "sal.opt.mixture": ("cnaster.hmm_initialize",),
+    "sal.search.mixture_starts": ("cnaster.hmm_initialize",),
+    "sal.opt.objective": ("cnaster.hmm_nophasing",),
+    "sal.opt.termination": ("cnaster.integer_copy",),
 }
-"""Each declared upstream module, and the `cnaster` code whose claim rests on it.
-
-The value is the counterpart, not the test: a rung is built or not, and this
-records what it would referee. Two modules are at zero coverage today
-(`likelihood.spatio_sequential`, `search.spatio_sequential`) and are listed
-because the correspondence exists and the rung does not -- which is #128's
-largest opportunity, and the thing this table exists to keep visible.
-"""
+"""Each declared upstream module and the `cnaster` code whose claim rests on it."""
 
 CNASTER_EMISSION_KERNELS = {"nb", "bb"}
-"""The families `cnaster` implements, derived below rather than asserted.
-
-`hmm_nophasing` defines `_nb_logpmf_1d` and `_bb_logpmf_1d` and nothing else
-of the kind. Every other family upstream ships -- Categorical, Gaussian,
-Poisson, Binomial, CountPair -- has no counterpart, so none of them is
-refereeable and none of their statements belongs in an opportunity.
-"""
+"""The emission families `cnaster` implements, derived from its kernels (#232)."""
 
 UNMATCHED_FAMILIES = {
     "CategoricalEmission",
     "GaussianEmission",
     "PoissonEmission",
     "BinomialEmission",
-    "CountPairEmission",
+    "RateConcentrationBetaBinomialEmission",
+    "RateConcentrationCountPairEmission",
 }
-"""Upstream families with no `cnaster` counterpart: 377 statements, **excluded
-from the denominator** by `.coveragerc-oracle`'s `exclude_also`.
-
-The figure measures coverage against what `cnaster` can do, so capability
-upstream adds that the subject has no counterpart for must not dilute it.
-Excluding these took `emissions.py` from 779 statements to 402 and the surface
-from 2,541 to 2,164 -- 37.78 to 38.63 per cent, for no change in what is
-validated.
-
-`CountPairEmission` is the one worth naming twice. `port` uses it -- the
-fixtures draw counts through it -- but drawing is the `upstream` role and not
-the `upstream_oracle` one (#69): it did not decide an expected value, so it
-does not referee, so it does not enter.
-"""
+"""Upstream families with no `cnaster` counterpart, excluded from the denominator (T- #707)."""
 
 
 def _declared_modules() -> set[str]:
-    """Dotted names from `.coveragerc-oracle`'s `[report] include` globs."""
+    """Return dotted names from `.coveragerc-oracle`'s `[report] include` globs."""
     parser = configparser.ConfigParser()
     parser.read(ORACLE_CONFIG)
     declared = set()
@@ -91,27 +65,24 @@ def _declared_modules() -> set[str]:
         glob = line.strip()
         if not glob:
             continue
-        tail = glob.split("snakes_and_ladders/", 1)[1].removesuffix(".py")
-        declared.add("snakes_and_ladders." + tail.replace("/", "."))
+        tail = glob.split("sal/", 1)[1].removesuffix("/*").removesuffix(".py")
+        declared.add("sal." + tail.replace("/", "."))
     return declared
 
 
 def _upstream_emissions_source() -> str:
-    spec = importlib.util.find_spec("snakes_and_ladders.emissions")
+    spec = importlib.util.find_spec("sal.emissions")
     assert spec is not None
     assert spec.origin is not None
-    return Path(spec.origin).read_text()
+    # NB a package since e0aeb19 (#410): families span its modules
+    return "\n".join(
+        p.read_text() for p in sorted(Path(spec.origin).parent.glob("*.py"))
+    )
 
 
 @pytest.mark.infra
 def test_every_declared_module_names_the_cnaster_code_it_referees() -> None:
-    """No module joins the surface without a counterpart on the subject's side.
-
-    The guard that makes the matching one-way. Adding a glob to
-    `.coveragerc-oracle` and nothing else fails here, which is the case the
-    rule exists to prevent: upstream's shape deciding what this repository
-    measures.
-    """
+    """Declared modules equal `CORRESPONDENCE`'s keys, both ways."""
     declared = _declared_modules()
     undeclared = set(CORRESPONDENCE) - declared
     unmatched = declared - set(CORRESPONDENCE)
@@ -122,12 +93,7 @@ def test_every_declared_module_names_the_cnaster_code_it_referees() -> None:
 
 @pytest.mark.infra
 def test_every_cnaster_counterpart_still_exists() -> None:
-    """A rename on the subject's side breaks the correspondence, loudly.
-
-    `find_spec` rather than `import`: importing executes the module body and
-    would lift the subject's coverage without a test having run, which is the
-    same reason `test_coverage_scope.py` resolves its modules this way.
-    """
+    """Every `cnaster` counterpart resolves via `find_spec`, without importing it."""
     missing = {
         upstream: counterpart
         for upstream, counterparts in CORRESPONDENCE.items()
@@ -140,17 +106,7 @@ def test_every_cnaster_counterpart_still_exists() -> None:
 
 @pytest.mark.infra
 def test_cnaster_implements_exactly_two_emission_families() -> None:
-    """**Derived from `cnaster`, not asserted about it (#128).**
-
-    The one-way rule needs the subject's side measured rather than assumed, so
-    this reads `hmm_nophasing` for its per-observation kernels and finds
-    `_nb_logpmf_1d` and `_bb_logpmf_1d` -- negative binomial and beta-binomial,
-    and nothing else.
-
-    If `cnaster` ever grows a third, this fails and the family it corresponds
-    to upstream becomes reachable for the first time. That is the only event
-    that should widen the emission surface.
-    """
+    """`hmm_nophasing`'s `_*_logpmf_1d` kernels are exactly `nb` and `bb` (#128)."""
     spec = importlib.util.find_spec("cnaster.hmm_nophasing")
     assert spec is not None
     assert spec.origin is not None
@@ -167,25 +123,19 @@ def test_cnaster_implements_exactly_two_emission_families() -> None:
 
 @pytest.mark.infra
 def test_the_unmatched_emission_families_are_the_ones_named() -> None:
-    """The emission surface's reachable part, pinned as a set rather than a hope.
-
-    `emissions.py` is the largest module on the surface and most of it is
-    unreachable: of 779 statements, 208 belong to the two matched families and
-    the shared base, and 377 to families with no counterpart. So the ceiling
-    on this module is **59 uncovered statements, not 401** -- 2.3 points of the
-    surface rather than 15.8, which is the difference between an opportunity
-    and a wish.
-
-    Upstream adding a family turns this red; the fix is to list it, not to
-    count it as reachable.
-    """
+    """Upstream's unmatched emission families equal `UNMATCHED_FAMILIES`."""
     tree = ast.parse(_upstream_emissions_source())
     families = {
         node.name
         for node in tree.body
         if isinstance(node, ast.ClassDef) and node.name.endswith("Emission")
     }
-    matched = {"NegativeBinomialEmission", "BetaBinomialEmission"}
+    matched = {
+        "NegativeBinomialEmission",
+        "BetaBinomialEmission",
+        # NB matched on #232: referees `cnaster`'s kernels to 1.4e-13 (#69)
+        "CountPairEmission",
+    }
     base = {"CountEmissionFamily", "EmissionFamily"}
 
     assert families - matched - base == UNMATCHED_FAMILIES, (
@@ -195,19 +145,7 @@ def test_the_unmatched_emission_families_are_the_ones_named() -> None:
 
 @pytest.mark.infra
 def test_every_unmatched_family_is_excluded_from_the_denominator() -> None:
-    """The two lists cannot drift, which is what makes the figure stable.
-
-    `UNMATCHED_FAMILIES` is derived from the two sources;
-    `.coveragerc-oracle`'s `exclude_also` is what the report acts on. If they
-    disagree, the denominator either counts capability `cnaster` cannot
-    referee -- the dilution the exclusion exists to prevent -- or hides a
-    family that does have a counterpart.
-
-    With `test_the_unmatched_emission_families_are_the_ones_named`, a family
-    added upstream fails here until it is either matched to `cnaster` code or
-    excluded, so upstream growth cannot move this repository's number silently
-    in either direction.
-    """
+    """`exclude_also` names exactly `UNMATCHED_FAMILIES`."""
     parser = configparser.ConfigParser()
     parser.read(ORACLE_CONFIG)
     excluded = {

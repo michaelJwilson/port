@@ -1,0 +1,73 @@
+name: Figures
+
+# Draw the dev instance's run_cnaster_port figures and the realization
+# figures, eight runs of one planted genome with the likelihood's errors
+# (#291), and upload them as a workflow artifact. The figures are a result,
+# not a referee: nothing here compares them with previous ones. What this
+# guarantees is that the figures a pull request's code draws can be read
+# beside it.
+#
+# Nothing is committed. `docs/` tracks no PNG outside two exceptions
+# (`tests/test_ci_entry.py`), and both generators write to `.cache/plots/`
+# (`port.qa.provenance.PLOTS`), untracked. The commit step #296 added, and the
+# stacked-branch check (#350) that existed only to decide it, are removed.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  figures:
+    name: Figures (run_cnaster_port, dev instance)
+    runs-on: ubuntu-latest
+    # NB measured locally: the dev instance 54 s at a 4.25 GB peak (#304);
+    #    the realizations eight runs of about 40 s, one process each, each
+    #    peaking at 4.7 GB, run one at a time because a private repository's
+    #    standard runner has 7 GB.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv sync --locked --extra dev --extra test
+
+      - run: uv run --no-sync python -m port.qa.scripts.run_figures
+
+      - run: uv run --no-sync python -m port.qa.scripts.run_audit --errors --realizations 8 --jobs 1
+
+      - name: Upload the figures
+        uses: actions/upload-artifact@v4
+        with:
+          name: figures
+          # NB upload-artifact v4.4 skips hidden paths unless asked, and
+          #    `.cache/` is one.
+          include-hidden-files: true
+          path: |
+            .cache/plots/*.png
+            .cache/plots/*.npz
+            .cache/plots/lattice/*.png
+
+      # NB the paper set (T- #624) is committed under `docs/plots/paper/`;
+      #    uploaded as its own artifact so a reviewer downloads it alone,
+      #    `solvers/solver_combined.png` (T- #660) with it: drawn from two
+      #    study records by `paper_figures --solvers`, not in this job.
+      #    Absent until T- #624 lands, so a missing set is not an error.
+      - name: Upload the paper figures
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper-figures
+          path: docs/plots/paper/**/*.png
+          if-no-files-found: ignore

@@ -1,18 +1,14 @@
-"""The compiled kernels, against scipy.
-
-**These exist because coverage cannot see them.** `numba` reports no line
-information, so every function below reads as uncovered however hard the
-rest of the suite exercises it — `forward_lattice` and the logpmf kernels
-run in almost every test in this repository and appear in no report.
-`CLAUDE.md` requires them tested anyway, and against an independent source
-rather than against each other.
-
-The referee is `scipy.stats`, which is a second implementation of the same
-densities and not a rearrangement of `cnaster`'s.
-"""
+"""`cnaster`'s compiled kernels against `scipy.stats`, since coverage cannot see `numba`."""
 
 import numpy as np
 import pytest
+from cnaster.hmm_nophasing import (
+    _dense_nb_logpmf,
+    _nb_logpmf_1d,
+    betabinom_logpmf_numba,
+    nbinom_logpmf_numba,
+    numba_logsumexp,
+)
 from scipy.special import logsumexp
 from scipy.stats import betabinom, nbinom
 
@@ -29,7 +25,6 @@ def test_negative_binomial_kernel_matches_scipy(
     count: int, dispersion: float, probability: float
 ) -> None:
     """`nbinom_logpmf_numba` is scipy's negative binomial."""
-    from cnaster.hmm_nophasing import nbinom_logpmf_numba
 
     assert nbinom_logpmf_numba(count, dispersion, probability) == pytest.approx(
         float(nbinom.logpmf(count, dispersion, probability)), abs=TOLERANCE
@@ -44,7 +39,6 @@ def test_beta_binomial_kernel_matches_scipy(
     successes: int, trials: int, alpha: float, beta: float
 ) -> None:
     """`betabinom_logpmf_numba` is scipy's beta-binomial."""
-    from cnaster.hmm_nophasing import betabinom_logpmf_numba
 
     assert betabinom_logpmf_numba(successes, trials, alpha, beta) == pytest.approx(
         float(betabinom.logpmf(successes, trials, alpha, beta)), abs=TOLERANCE
@@ -54,13 +48,7 @@ def test_beta_binomial_kernel_matches_scipy(
 @pytest.mark.oracle
 @pytest.mark.critical
 def test_numba_logsumexp_matches_scipy() -> None:
-    """`numba_logsumexp` is stable where a naive sum is not.
-
-    The `-inf` case is the one that separates the two: an implementation
-    subtracting its maximum without guarding an all-`-inf` input returns
-    `nan` where the answer is `-inf`.
-    """
-    from cnaster.hmm_nophasing import numba_logsumexp
+    """`numba_logsumexp` matches scipy, including the all-`-inf` case."""
 
     for values in (
         np.array([0.0, -1.0, -2.0]),
@@ -75,13 +63,7 @@ def test_numba_logsumexp_matches_scipy() -> None:
 
 @pytest.mark.backend
 def test_dense_and_single_observation_kernels_agree() -> None:
-    """The dense kernels compute what the one-dimensional ones compute.
-
-    Two compiled implementations of one density, which is `cnaster`'s own
-    pairing rather than an imported reference; the scipy comparisons above
-    are what makes either of them right.
-    """
-    from cnaster.hmm_nophasing import _dense_nb_logpmf, _nb_logpmf_1d
+    """Dense kernels match the one-dimensional ones (`cnaster`'s own pairing)."""
 
     rng = np.random.default_rng(4)
     n_obs, n_states = 12, 3
@@ -106,13 +88,7 @@ def test_dense_and_single_observation_kernels_agree() -> None:
 
 @pytest.mark.analytic
 def test_negative_binomial_kernel_is_normalised() -> None:
-    """The density sums to one over its support.
-
-    An invariant rather than a comparison: a kernel agreeing with scipy at
-    the points tried could still be wrong between them, and a normalisation
-    check covers the whole support at once.
-    """
-    from cnaster.hmm_nophasing import _nb_logpmf_1d
+    """The negative binomial density sums to one over its support."""
 
     support = np.arange(0, 400, dtype=np.float64)
     out = np.zeros(support.size)

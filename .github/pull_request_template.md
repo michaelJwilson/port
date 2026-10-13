@@ -1,9 +1,8 @@
 <!--
-Adapted from `snakes_and_ladders/.github/pull_request_template.md`. The rows
-upstream's map carries and `port` does not -- `DEV.md`, `ROADMAP.md`,
-`STATUS.md`, `TICKETS.md`, `docs/tex/` -- are dropped rather than left to be
-ticked "None applicable" every time; `CLAUDE.md`'s Repository Map says to add
-a document when the content exists, and this list grows with it.
+Adapted from `snakes_and_ladders/.github/pull_request_template.md`. Rows for
+documents `port` does not carry are dropped rather than left to be ticked
+"None applicable" every time; `CLAUDE.md`'s Repository Map says to add a
+document when the content exists, and this list grows with it.
 
 This template mirrors CLAUDE.md's "Definition of Done" and "Documentation
 Sync". Fill in every section; delete none of them.

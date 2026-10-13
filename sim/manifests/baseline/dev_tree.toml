@@ -1,0 +1,56 @@
+# Three tumour clones on a mutation tree, two slices (#445): the exponential-length
+# generation (3381575a) every dev_tree r0 measurement to #619 ran on, frozen.
+# `python -m port.sim.draw sim/manifests/baseline/dev_tree.toml`
+version = 3
+extends = "../calicost_grch38.toml"
+
+[sample]
+name = "dev_tree"
+# NB `tests.sim_stages.realization_hash` of r0 as drawn here: a change to this
+#    manifest or to the simulator that moves it states the new one, so the hash
+#    names the generation (`tests/test_sim_r0_hash.py`).
+r0_hash = "3381575a"
+seed = 0
+output = "../../generated"
+# NB count draws of the same clones, layout and phase, written as r0, r1, ...
+realizations = 1
+
+[array]
+# NB CalicoST's array, 60 rows of 50 (3,000 spots) per slice, so a dev
+#    realization is the size of the samples it is compared with (#467). At
+#    radius 0.4 it plants 2,011 / 1,131 / 541 and normal 2,317, 6,000 spots
+#    over both slices; every clone clears cnaster's fixed 200-spot ICM floor
+#    (#468, #81), which at 25 x 25 merged a 49-spot clone_2 away.
+kind = "hex"
+rows = 60
+columns = 50
+
+[layout]
+overlap = false
+radius = 0.4
+vertices = 6
+
+[cna]
+mode = "tree"
+# NB one event on the ancestor's edge, so the tree is not CalicoST's star.
+per_internal = 1
+
+[cna.length]
+law = "exponential"
+# NB CalicoST's easy sample, cnasize5e7: the mean event length.
+mean = 5e7
+minimum = 5e6
+
+[phasing]
+# NB switches at cnaster's assumed rate: Numbat's law in cM, nu = 1.
+switch_errors = true
+
+[[slice]]
+# NB slices sit in one frame, offset in fractions of the array: the second
+#    overlaps the first's right half, so clone_1, listed on both, sits there.
+offset = [0.0, 0.0]
+clones = ["clone_0", "clone_1"]
+
+[[slice]]
+offset = [0.5, 0.0]
+clones = ["clone_1", "clone_2"]

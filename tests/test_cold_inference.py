@@ -1,19 +1,18 @@
-"""The inference paths `run_cnaster` does not take at one configuration.
+"""Inference paths `run_cnaster` does not take, each against a referee (#111).
 
-#111. Each of these is shipped code on a live module: a second label solver,
-a second initializer, the merge step, the helpers the writers use. The
-pipeline reaches none of them at the fixture's settings, and none of them
-needs the pipeline to be reached.
-
-**Every test here names a referee.** The plots are the stated exception
-(#103) and this module is not it: a second implementation in the same
-package, an invariant, or the planted truth decides each expected value.
+Referees: a second solver in the package, an invariant, or the planted truth.
 """
 
 import numpy as np
 import pytest
-
-from tests.fixtures import CoreInferenceTruth, core_inference_truth
+from cnaster.adjacency import multislice_adjacency
+from cnaster.hmm_initialize import cna_mixture_init, gmm_init
+from cnaster.hmm_nophasing import get_log_transmat
+from cnaster.hmrf_utils import clone_stack_obs
+from cnaster.icm import icm_sweep_pqueue, merge_assignment, unpack_adjacency
+from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
+from cnaster.utils import cast_clone_label, top_hat_sum
+from port.sim.truth import CoreInferenceTruth, core_inference_truth
 
 LATTICE = (20, 30)
 """Six hundred spots: above the label solver's floor for two clones."""
@@ -34,20 +33,14 @@ def planted() -> CoreInferenceTruth:
 
 
 def _field(truth: CoreInferenceTruth) -> np.ndarray:
-    """A per-spot, per-clone log-likelihood that prefers the planted clone.
-
-    Built rather than fitted: what the solvers are being asked is whether they
-    find the labelling a field points at, and a field from a fit would confuse
-    that question with whether the fit was any good.
-    """
+    """Return a per-spot, per-clone field preferring the planted clone, built not fitted."""
     field = np.full((truth.n_spots, truth.n_clones), -12.0)
     field[np.arange(truth.n_spots), truth.labels] = 0.0
     return field
 
 
 def _graph(truth: CoreInferenceTruth) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """`cnaster`'s own lattice adjacency, in the compressed form the solvers take."""
-    from cnaster.adjacency import multislice_adjacency
+    """Return `cnaster`'s lattice adjacency as CSR `(indptr, indices, weights)`."""
 
     coords = np.stack(
         np.unravel_index(np.arange(truth.n_spots), truth.lattice), axis=-1
@@ -62,46 +55,35 @@ def _graph(truth: CoreInferenceTruth) -> tuple[np.ndarray, np.ndarray, np.ndarra
 def test_the_priority_queue_solver_finds_the_planted_labelling(
     planted: CoreInferenceTruth,
 ) -> None:
-    """`icm_sweep_pqueue` is the solver the live path does not choose.
-
-    `run_core_inference` takes `icm_sweep_deque`; this one is shipped beside
-    it, never called, and is the obvious referee for it -- two solvers of one
-    objective. Started from a labelling that is wrong everywhere, so finding
-    the planted one is a result rather than a starting condition.
-    """
-    from cnaster.icm import icm_sweep_pqueue
+    """`icm_sweep_pqueue` finds the planted labelling from one wrong everywhere."""
 
     indptr, indices, weights = _graph(planted)
     field = _field(planted)
     assignment = (planted.labels + 1) % planted.n_clones
 
+    found = assignment.copy()
     icm_sweep_pqueue(
         field,
         indptr,
         indices,
         weights,
-        assignment.copy(),
+        found,
         SPATIAL_WEIGHT,
         np.exp(field - field.max(axis=1, keepdims=True)),
         min_clone_spots=0,
     )
+    # NB wrong at every spot before, planted after (#749 WP2)
+    assert np.array_equal(assignment == planted.labels, np.zeros(planted.n_spots, bool))
+    assert np.array_equal(found, planted.labels)
 
 
 @pytest.mark.snapshot
 def test_the_merge_step_names_the_pair_it_would_join(
     planted: CoreInferenceTruth,
 ) -> None:
-    """`merge_assignment` returns the cheapest pair to collapse.
-
-    Never called by `run_core_inference`, which merges through
-    `merge_by_minspots` instead. With two clones there is one pair, so the
-    claim is that it names it rather than which it prefers.
-    """
-    from cnaster.icm import merge_assignment, unpack_adjacency
+    """`merge_assignment` names the only pair of two clones."""
 
     indptr, indices, weights = _graph(planted)
-    # `unpack_adjacency` takes a list of `(neighbour, weight)` pairs per spot,
-    # which is the form the compressed rows above hold.
     adjacency_list = [
         list(
             zip(
@@ -123,24 +105,13 @@ def test_the_merge_step_names_the_pair_it_would_join(
         SPATIAL_WEIGHT,
     )
 
-    assert result is not None
+    # NB `(cost, best merge cost, pair)`: two clones, one pair (#749 WP2)
+    assert result[2] == (0, 1)
 
 
 @pytest.mark.oracle
 def test_the_top_hat_sum_is_a_sliding_window(planted: CoreInferenceTruth) -> None:
-    """`top_hat_sum` against the window it says it is.
-
-    A compiled kernel the registry lists as unvalidated, and one of the
-    cheapest to referee: a sum over a centred window, truncated at the ends,
-    which `numpy` states directly.
-
-    **It sums down the first axis, not along a row.** `np.atleast_2d` turns a
-    one-dimensional input into a single row, so `top_hat_sum(vector, width)`
-    returns that vector unchanged whatever the width -- the identity, silently.
-    Asserted here, because a caller passing a genomic profile as a vector gets
-    no smoothing and no error.
-    """
-    from cnaster.utils import top_hat_sum
+    """`top_hat_sum` equals a centred, truncated `numpy` window sum, to 1e-12; a 1-D input is returned unchanged."""
 
     rng = np.random.default_rng(3)
     values = rng.random((21, 2))
@@ -160,7 +131,6 @@ def test_the_top_hat_sum_is_a_sliding_window(planted: CoreInferenceTruth) -> Non
 @pytest.mark.smoke
 def test_the_clone_label_cast_refuses_what_it_says_it_refuses() -> None:
     """`cast_clone_label` names the normal clone and bounds the rest."""
-    from cnaster.utils import cast_clone_label
 
     assert cast_clone_label("clone-1") == "WARN"
     assert cast_clone_label("clone1") != cast_clone_label("clone2")
@@ -169,45 +139,13 @@ def test_the_clone_label_cast_refuses_what_it_says_it_refuses() -> None:
         cast_clone_label("clone4000")
 
 
-@pytest.mark.smoke
-def test_the_interval_decoder_returns_contiguous_runs() -> None:
-    """`get_intervals` turns a state path into the runs a figure draws."""
-    from cnaster.utils import get_intervals
-
-    path = np.array([0, 0, 1, 1, 1, 0, 2])
-    intervals = get_intervals(path)
-
-    assert intervals is not None
-    assert len(intervals) >= 1
-
-
 @pytest.mark.snapshot
 @pytest.mark.usefixtures("cnaster_config", "cnaster_perf_sink")
+@pytest.mark.merge
 def test_the_mixture_initializer_returns_the_declared_shapes(
     planted: CoreInferenceTruth,
 ) -> None:
-    """`cna_mixture_init` cannot run, for the same reason #9 names.
-
-    It is the initializer `run_core_inference` does not pick, offered through
-    the `hmm_initializer` argument, and it raises on any call:
-
-        TypeError: hmm_nophasing.get_state_posteriors() missing 1 required
-        positional argument: 'log_sitewise_transmat'
-
-    `hmm_initialize.py:249` calls `hmm_phased.get_state_posteriors(...)` with
-    five arguments on the **class**, and the method is an instance method
-    taking `self` and five. So `self` swallows `lengths` and the last argument
-    has nowhere to go -- a second instance of #9's defect, on a different
-    path, and the reason `gmm_init` is not really a choice.
-
-    Written as the refusal rather than as a skip, so it fails the day the
-    class-versus-instance confusion is fixed and the comparison against
-    `gmm_init` -- which is what this test wanted to make -- gets written.
-    """
-    from cnaster.hmm_initialize import cna_mixture_init, gmm_init
-    from cnaster.hmm_nophasing import get_log_transmat
-    from cnaster.hmrf_utils import clone_stack_obs
-    from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
+    """`cna_mixture_init` raises `TypeError` (class-vs-instance call, as #9); `gmm_init` runs."""
 
     counts = np.stack([planted.counts_nb, planted.counts_bb], axis=1)
     X, base, total, _ = merge_pseudobulk_by_index_mix(

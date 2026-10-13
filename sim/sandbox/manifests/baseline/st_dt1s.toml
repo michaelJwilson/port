@@ -1,0 +1,7 @@
+# Study wrapper (baseline measurement): dev_tree_1s, the weak-field larger dev_tree, with 3 realizations.
+version = 3
+extends = "dev_tree_1s.toml"
+
+[sample]
+name = "st_dt1s"
+realizations = 3

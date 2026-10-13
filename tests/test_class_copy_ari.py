@@ -1,0 +1,165 @@
+"""`port.qa.scoring`'s copy-state ARI per planted class (#511).
+
+Referee: sklearn's `adjusted_rand_score` on bins selected by hand; a one-pair class is
+NaN.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+import pytest
+from port.qa.scoring import (
+    OTHER,
+    class_ari,
+    confusion_table,
+    copy_confusion,
+    copy_states,
+    phase_free,
+    planted_classes,
+    shared_ari,
+)
+from sklearn.metrics import adjusted_rand_score, confusion_matrix
+
+
+def _code(pairs: list[tuple[int, int]]) -> np.ndarray:
+    return np.array([a * 1_000 + b for a, b in pairs], dtype=np.int64)
+
+
+# NB index: 0-3 LOH, 4-7 balanced gain, 8-11 unbalanced gain, 12-15 neutral
+TRUTH = _code(
+    [(0, 1), (0, 1), (1, 0), (0, 2),
+     (2, 2), (2, 2), (3, 3), (3, 3),
+     (2, 1), (2, 1), (1, 3), (1, 3),
+     (1, 1), (1, 1), (1, 1), (1, 1)]
+)  # fmt: skip
+DECODE = _code(
+    [(0, 1), (1, 0), (1, 0), (0, 2),
+     (2, 2), (1, 1), (3, 3), (3, 3),
+     (1, 2), (1, 2), (1, 3), (2, 1),
+     (1, 1), (2, 1), (1, 1), (1, 1)]
+)  # fmt: skip
+BY_HAND = {
+    "loh": [0, 1, 2, 3],
+    "balanced_gain": [4, 5, 6, 7],
+    "unbalanced_gain": [8, 9, 10, 11],
+    "neutral": [12, 13, 14, 15],
+}
+
+
+@pytest.mark.oracle
+def test_each_class_ari_is_sklearns_on_that_class_bins_alone() -> None:
+    classes = planted_classes(TRUTH)
+    for name in ("loh", "balanced_gain", "unbalanced_gain"):
+        index = BY_HAND[name]
+        assert np.flatnonzero(classes[name]).tolist() == index
+        expected = adjusted_rand_score(TRUTH[index], DECODE[index])
+        assert class_ari(TRUTH, DECODE, classes[name]) == pytest.approx(
+            expected, abs=5e-5
+        )
+    # NB each decode error is priced against its class, not the neutral bins
+    whole = adjusted_rand_score(TRUTH, DECODE)
+    assert all(
+        abs(class_ari(TRUTH, DECODE, classes[n]) - whole) > 0.01
+        for n in ("loh", "balanced_gain", "unbalanced_gain")
+    )
+
+
+@pytest.mark.analytic
+def test_a_perfect_decode_scores_one_in_every_class_with_two_planted_pairs() -> None:
+    classes = planted_classes(TRUTH)
+    for name in ("loh", "balanced_gain", "unbalanced_gain"):
+        assert class_ari(TRUTH, TRUTH, classes[name]) == 1.0
+
+
+@pytest.mark.infra
+def test_a_class_planted_as_one_pair_or_not_at_all_is_nan() -> None:
+    classes = planted_classes(TRUTH)
+    # NB neutral is one pair: sklearn's 1 or 0 would not be a measurement
+    assert adjusted_rand_score(TRUTH[12:], DECODE[12:]) == 0.0
+    assert np.isnan(class_ari(TRUTH, DECODE, classes["neutral"]))
+
+    single = _code([(2, 2), (2, 2), (1, 1)])
+    decode = _code([(2, 2), (3, 3), (1, 1)])
+    assert np.isnan(class_ari(single, decode, planted_classes(single)["balanced_gain"]))
+    assert np.isnan(class_ari(single, decode, planted_classes(single)["loh"]))
+
+
+@pytest.mark.oracle
+def test_each_phase_free_class_ari_is_sklearns_on_hand_sorted_pairs() -> None:
+    """Phase-free class ARI against sklearn on pairs sorted by hand to `(min, max)`."""
+
+    def by_hand(codes: np.ndarray) -> np.ndarray:
+        return np.array(
+            [
+                min(c // 1_000, c % 1_000) * 1_000 + max(c // 1_000, c % 1_000)
+                for c in codes
+            ]
+        )
+
+    truth, decode = by_hand(TRUTH), by_hand(DECODE)
+    np.testing.assert_array_equal(phase_free(TRUTH), truth)
+    np.testing.assert_array_equal(phase_free(DECODE), decode)
+    classes = planted_classes(TRUTH)
+
+    for name in ("loh", "unbalanced_gain"):
+        index = BY_HAND[name]
+        expected = adjusted_rand_score(truth[index], decode[index])
+        assert class_ari(truth, decode, classes[name]) == pytest.approx(
+            expected, abs=5e-5
+        )
+
+
+@pytest.mark.oracle
+def test_the_confusion_is_sklearns_row_normalised_matrix_within_the_cap() -> None:
+    """Planted rows against `confusion_matrix(normalize="true")` at cap 3, to 5e-5."""
+
+    cap = 3
+    states = [a * 1_000 + b for a, b in copy_states(cap)]
+    inside = np.isin(TRUTH, states)
+    decoded = np.where(np.isin(DECODE, states), DECODE, -1)
+    labels = [*states, -1]
+    matrix = confusion_matrix(
+        TRUTH[inside], decoded[inside], labels=labels, normalize="true"
+    )
+    confusion = copy_confusion(TRUTH, DECODE, cap)
+
+    assert len(copy_states(cap)) == 10
+    assert set(confusion) == {"0,1", "1,0", "0,2", "1,1", "2,1"}
+    for i, planted in enumerate(states):
+        row = confusion.get(f"{planted // 1_000},{planted % 1_000}")
+        if row is None:
+            assert not matrix[i].any()
+            continue
+        assert sum(row.values()) == pytest.approx(1.0, abs=5e-4)
+        for j, code in enumerate(labels):
+            name = OTHER if code < 0 else f"{code // 1_000},{code % 1_000}"
+            assert row.get(name, 0.0) == pytest.approx(matrix[i, j], abs=5e-5)
+
+
+@pytest.mark.analytic
+def test_the_sampled_table_drops_unplanted_rows_and_undecoded_columns() -> None:
+    """At cap 3 the sampled table keeps the 5 planted rows and 6 decoded pairs, no `other`."""
+    confusion = copy_confusion(TRUTH, DECODE, 3)
+    full = confusion_table(confusion, 3).splitlines()
+    sampled = confusion_table(confusion, 3, sampled=True).splitlines()
+
+    assert len(full) == 2 + 10
+    assert full[0].count("|") == 1 + 1 + 11
+    assert [line.split(" | ")[0] for line in sampled[2:]] == [
+        "| 0,1", "| 1,0", "| 0,2", "| 1,1", "| 2,1"
+    ]  # fmt: skip
+    assert sampled[0] == "| planted \\ decoded | 0,1 | 1,0 | 0,2 | 1,1 | 1,2 | 2,1 |"
+
+
+@pytest.mark.analytic
+def test_shared_ari_reads_the_planted_labels_at_the_fits_barcodes() -> None:
+    """A relabelled, reordered fit missing one spot scores 1 over the 5 it kept, read by barcode."""
+    planted = pd.Series([0, 0, 1, 1, 2, 2], index=list("abcdef"))
+    fitted = pd.Series([5, 3, 3, 7, 7], index=list("edcba"))
+
+    ari, spots = shared_ari(planted, fitted)
+
+    assert spots == 5
+    assert ari == pytest.approx(1.0, abs=1e-12)
+    assert adjusted_rand_score(planted.iloc[:5], fitted) < 1.0

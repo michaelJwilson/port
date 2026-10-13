@@ -1,94 +1,180 @@
 {
- "_": "The values README.md's badges render. Regenerate with `python -m tests.badges`; tests/test_badges_agree.py refuses a drift.",
+ "_": "The values README.md's badges render. Measured and recorded locally by `python -m tests.ci --badges --record`, which regenerates the badges; tests/test_badges_agree.py refuses a drift. Notes are closed as of #403: why a figure moved goes in the commit that moves it, so two changes never append to one string.",
  "coverage": {
   "judged": {
    "label": "e2e",
-   "percent": 44.8,
+   "percent": 59.06,
    "floor": 41.7,
    "selection": "not release and end2end",
-   "denominator": "cnaster + python/port, 7031 statements",
-   "commit": "7b12d7c",
-   "note": "Guard 1. 3150 of 7031 statements, from the 58 tests that judge a scientific output against the truth that generated the data. **`oracle`-marked tests are excluded**, which is what makes the name honest -- the badge beside it already claims that word. Adding them reaches 45.69 per cent, so they are worth 62 statements and 0.88 points over an identical denominator. The floor is CI's, decided by #157 over `end2end or oracle`; this selection is a strict subset of that one and clears it by 3.11 points. Not subtractable from `all`: see #223."
+   "denominator": "cnaster + python/port, 9622 statements",
+   "commit": "",
+   "note": "Guard 1. 3,560 of 8,067 statements, from the 59 tests that judge a scientific output against the truth that generated the data. **`oracle`-marked tests are excluded**, which is what makes the name honest -- the badge beside it already claims that word. The floor is CI's, decided by #157, and is cleared by 2.43 points. Not subtractable from `all`: see #223. **Re-recorded on #279, and every point of the fall is attributed.** It read 44.36 at the base 02f59bd and reads 43.57 at 6968c45, -0.79 points; the record had carried 44.43 from 4241c08, so 0.07 of the gap predates this branch. The denominator grew 7,540 to 7,872: +329 from seven new modules (`plotting/genomic` 143, `plotting/loh_density` 67, `hmrf/reindex` 56, `hmm_phased/coded_emission` 33, `plotting/clone_paths` 24, two package `__init__` 6) and -4 from branches removed in existing files (`patch/emission` -3, `patch/hmrf/clone_assignment` -1). Covered rose 3,345 to 3,430, +85: 48 in the new modules, 33 in `cnaster` reached through them (`plot_genomic` +25, `icm` +5, `palette` +3), and 4 more with #280's canvas, which added 7 statements to `plotting/genomic.py`. **That last 0.01 was recorded only because `check_badges` refused it**: the figure was written down at 9290e18 and the canvas landed after, so the record described a commit that no longer existed. Re-measured on the head rather than adjusted. **The figure fell because the denominator grew faster than the numerator, which is this guard behaving as its own definition says**: a new port module is counted whether or not an `end2end` test reaches it, and the four drop-ins #279 adds are refereed by `patch`, `analytic` and `bug` tests that this selection deselects. The earlier fall from 44.80 to 44.14 on #239/#242/#249 was the same mechanism. #281 is the guard that would report this directly rather than as a fall -- coverage of the drop-in surface under its own correspondence tests, where these modules read as reached. **Re-recorded again on #276**, 43.57 to 43.44 over a denominator grown 7,872 to 7,961: `shifted_emission.py` is 80 statements and `logmu_shift.py` 8 more, and the `end2end` selection reaches 26 of the 88 because the shift is off by default and refereed by `patch` and `bug` tests this selection deselects. The same mechanism as every fall recorded above, and #281's guard 4 is where those modules read as reached -- 90.98 per cent there. **#287 moves it again, 43.44 to 42.87 over a denominator 7,961 to 8,067**: the `jax` objective and the parameter errors are 106 statements that no `end2end` test reaches, because nothing fits with them -- they are read at a fit the pipeline already made. They are also outside guard 4, whose denominator is `python/port/patch` alone, so this is the one guard that sees them at all and it sees them as denominator. **#287's decode test then raises it 42.87 to 44.13, denominator unchanged**: `test_a_fit_s_errors_decode_the_planted_integer_copies` fits the `jax` objective and decodes planted integer copies from its errors, reaching 102 more statements, which is the `end2end` test the figure was waiting on. **`main` was red on this figure for four merges before #271**, which is the failure that guard exists to prevent: the number moved, nothing surfaced it. **#291 re-records it 44.13 to 43.93, over a denominator of 8,067 to 8,103**: `extensions/realization_plot.py` is 36 statements that no `end2end` test reaches. The figure's own run is `release`, because each realization is a whole pipeline, and its per-PR tests are `analytic` and `smoke`. **#293 re-records it 43.93 to 43.42, over 8,103 to 8,236 statements**: the shift's drop-ins -- the `optimize` override, the pin, the shifted clone assignment -- are refereed by `patch` and `cnaster` tests, which this selection deselects. **#299: 43.42 to 42.72 over 8,236 to 8,383 statements**: `port.patch.plot_genomic` is refereed by `patch` and `cnaster` tests, which this selection deselects. **#298: 42.72 to 42.55**, denominator unchanged at 8,383: the normal clone plants no events in 30 per cent of the spots, so the fixtures reach 14 fewer statements. **#304: 42.55 to 42.37 over 8,383 to 8,418 statements**: the terminating `initialize_rectangular_clones` is refereed by `patch` and `cnaster` tests. **41.83 on #309**, 3,612 of 8,635: the denominator counts `python/port`, and the page composer, the spatial patch and `plot_clones_genomic`'s subfigure path are validated by `patch`, `infra` and `smoke` tests rather than `end2end`; and the spatial swap stops `cnaster.plotting.plot_clones_spatial` running in the judged whole runs. Both lower the figure without a validation being lost. The floor is cleared by 0.13 points. **41.84 on #315**, 3,613 of 8,636: the `energy` import moves to `sim.potts`, one statement more. **43.53 on #312's `--sal`**, 3,792 of 8,712: `extensions/sal.py` and the solvers in `extensions/label_solver.py` join the denominator, and `test_sal_recovers_the_critical_instance` reaches them per pull request, with the alpha expansion adapter and the `cnaster` ICM they call. Without that test the merge with #310 read 41.54, under the floor. **43.88 on #319 after merging `main` (#317)**, 3,842 of 8,756 statements: `--sal` and the Rust lattices together, the lattice patch joining the denominator. **43.99 on the #323 recovery**, 3,867 of 8,790: #323's copy-cap swap joins main's --sal and Rust lattices. **59.82 on #325 after merging main**, 5,500 of 9,194. **61.83 on #345 after merging main**, 5,755 of 9,308. **61.98 on #351 after merging main**, 5,746 of 9,270. **62.37 on #326 after merging main**, 5,846 of 9,373. **62.97 on #334 after merging main (#326)**, 6,002 of 9,531. **62.91 on #336 after merging main (#334)**, 6,014 of 9,559: `--genomic-colours`' branches are refereed by `analytic` and `infra` tests, which this selection deselects. **62.93 on #337 after merging main (#336)**, 6,017 of 9,562. **63.05 on #338 after merging main (#337)**, 6,067 of 9,622. **63.10 on #402**, 6,080 of 9,636: `extensions/vocabulary.py` joins the denominator, 13 of its 14 statements run when the guard that reads it is collected.",
+   "inputs": "3903598f8aa0f544"
   },
   "oracle": {
    "label": "oracle",
-   "percent": 43.76,
-   "floor": 43.7,
+   "percent": null,
+   "floor": 46.7,
    "selection": "not release and not preprocessing",
-   "denominator": "snakes_and_ladders, 2164 statements",
-   "commit": "7b12d7c",
-   "note": "Guard 2. Measured over its own denominator so the figure cannot rise by importing more of upstream, which validates nothing about cnaster. Sitting 0.06 points above its floor."
+   "denominator": "snakes_and_ladders, 2582 statements",
+   "commit": "88a019e",
+   "note": "Guard 2, **disabled** (#282). CI no longer runs the oracle tests or this measurement, so the badge renders `/` rather than a figure from a run nobody made -- `tests/badges.py` treats a guard with no percent as unmeasured and `tests/check_badges.py` skips it, which is the behaviour both were built with. The floor stays recorded at 46.70 so restoring the guard restores what it has to clear, and `last_measured` carries the figure it stood at. **What the disable costs, stated rather than implied**: 117 of the 766 tests in the per-pull-request tier carry `oracle`, and `CLAUDE.md` makes `end2end` and `oracle` the only two markers that count as validation. This removes one of the two. **The early `critical` gate keeps them**: deselecting there took it from 91 tests to 13, because most of what is `critical` is refereed against `snakes_and_ladders`, and a tripwire that cannot fail is not one. `.coveragerc-oracle` and `tests/test_coverage_scope.py` are kept, so the declared oracle surface is still checked against what is installed and restoring the guard is two CI steps, four `and not oracle` clauses, and a figure. What it read before: measured over its own denominator so the figure could not rise by importing more of upstream, which validates nothing about `cnaster`. 1,211 of 2,582 statements. `opt/emission_mixture`, `opt/mixture` and `CountPairEmission` joined the surface on #232: the denominator grew 2,164 to 2,582 and the covered count 947 to 1,209, so the figure rose 43.76 to 46.82 and the floor was raised with it. Merging `main` (#239, #242, #249) reached 2 further statements and it moved 46.82 to 46.90 over an unchanged denominator.",
+   "last_measured": {
+    "percent": 46.9,
+    "commit": "88a019e"
+   }
   },
   "reach": {
    "label": "all",
-   "percent": 71.52,
+   "percent": 72.56,
    "floor": null,
    "selection": "not release and not (end2end or oracle)",
-   "denominator": "cnaster + python/port, 7329 statements",
-   "commit": "7b12d7c",
-   "note": "Guard 3. Proposed by #159 and not wired into CI -- its 'Done when' asks for exactly that and is unmet. 5,242 of 7,329 statements, from a clean run: 524 passed, 1 skipped, 0 failed. An earlier reading of the same figure came from a run with 5 failures and was diagnosed here as test pollution; it was not, and the record said so wrongly until baae1a3. Those 5 were the badge module's own tests, failing because this file did not exist yet when that run collected them. The denominator is 299 statements larger than guard 1's on the same tree, so the two are not subtractable: #223."
+   "denominator": "cnaster + python/port, 7839 statements",
+   "commit": "4241c08",
+   "note": "Guard 3. Proposed by #159 and not wired into CI -- its 'Done when' asks for exactly that and is unmet, which is why this is the badge that went stale furthest. 5,185 of 7,865 statements, from a clean run: 568 passed, 8 skipped, 0 failed. It read 71.52 per cent over 7,329 statements at 7b12d7c; #238, #239, #242, #249 and #237 added 536 statements to the denominator and the figure fell 5.60 points without a test being removed. The denominator is 353 statements larger than guard 1's on the same tree, so the two are not subtractable: #223. An earlier reading was diagnosed here as test pollution and was not; the record said so wrongly until baae1a3. **Re-recorded on #271, from a record four merges stale.** It read 65.92 over 7,865 statements at 49ea116 and reads 72.56 over 7,839 here. CI does not check this guard -- #159 asks for that and is unmet -- so nothing refused the staleness, which is why it drifted further than guard 1 did before anyone looked. It is the badge that goes stale furthest, as this note has said since #159, now with a second measurement saying it."
+  },
+  "dropin": {
+   "label": "drop-in",
+   "percent": 90.37,
+   "floor": 90.0,
+   "selection": "not release and (patch or cnaster)",
+   "denominator": "python/port/patch, 2412 statements",
+   "commit": "",
+   "note": "Guard 4 (#281). 1,665 of 1,830 statements: every drop-in under `python/port/patch`, under the tests that compare it with the `cnaster` function it replaces. **High because the denominator is ours and small.** Guards 1-3 measure a dependency this repository does not own, so they are low by construction and rise only by validating more of it; a low figure here says something different -- that a replacement its own correspondence test does not reach is one nobody compared. **`NUMBA_DISABLE_JIT=1` is what makes it measurable, and it is a finding rather than a setting.** `CLAUDE.md` records that `numba` reports nothing, so an `@njit` kernel reads as uncovered however hard it is exercised; that is true of the default and not of the measurement. Running the kernels as Python made 111 statements across four modules visible without a test being added -- `patch/emission.py` 55.56 to 100, `hmrf/field.py` 23.53 to 97.06, `hmrf/fused_field.py` 33.33 to 96.30 -- and the step is faster for it, 38 s against 60, because nothing compiles. It read 74.74 per cent when first measured and 90.48 here, and the difference is four things, each recorded: the JIT (+5.6), a correspondence test for `plot_loh_density`'s renderer and one for `pipeline_clone_assignment` (+4.8, the latter's body having been compared only on the `release` tier), `plot_clones_genomic`'s `df_cnv` branch and `reindex_clones`' two `pred_cnv` layouts (+4.5), and and two modules leaving `patch/` for `extensions/`, where #274's four-job rule puts what replaces nothing. `integer_copy.py` (96 statements) implements, by its own docstring, what neither `cnaster` nor `snakes_and_ladders` does; `label_solver.py` (24) chooses between two solvers and says so -- \"the choice is a setting rather than an edit\". Neither was ever a drop-in, so neither was ever this denominator's, and `tests/test_dropin_correspondence.py` is what said so: both were found by the check that every drop-in has a correspondence test, not by reading. #276's `shifted_emission` added 75 statements and reaches 96.00 per cent of them, so the figure rose 90.75 to 90.98 -- the direction a guard over our own replacements should move when one arrives with its correspondence test. The floor is the measurement, as #157 set guard 1's, and it stays at 90.0 rather than chasing each figure up. What the remaining 161 are: `hmm_initialize/backends.py` 26, whose referee is the oracle rather than `cnaster`; `io.py` 15; `lattice.py` 13, licensed by a `smoke` test that compares `cnaster`'s two spot sums with *each other* -- the premise for the drop-in, not a correspondence claim, so it is deliberately not marked `cnaster` and the figure is left lower rather than the marker stretched; and refusal branches on port's own guards. **90.95 on #293**, 1,758 of 1,933: the shift's three drop-ins, each against the `cnaster` function it replaces (`tests/test_shift_dropins.py`). **90.72 on #299**, 1,887 of 2,080, with `plot_genomic` compared bitwise against `cnaster` on its three branches. **90.67 on #298**, fixtures with a normal clone. **90.73 on #304**, with `initialize_rectangular_clones` against `cnaster`'s, bitwise where it returns. **90.97 on #309**, 1,994 of 2,192, with `plotting/spatial.py` compared per spot against `cnaster`'s, single- and two-sample, at 96.77 per cent of its statements. **90.97 on #315**, unchanged over 2,193 statements after the `energy` import moved. **90.98 on #312's `--sal`**, 1,996 of 2,194: the alpha expansion adapter's `backend` argument, compared Rust against Python. **91.12 on #319 after merging `main` (#317)**, 2,032 of 2,230: `patch/lattice.py` joins the denominator. **91.18 on the #323 recovery**, 2,057 of 2,256: `patch/integer_copy.py` joins the denominator. **91.30 on #351 after merging main**, 2,025 of 2,218. **91.56 on #326 after merging main**, 2,125 of 2,321. **90.76 on #334 after merging main (#326)**, 2,141 of 2,359: `--copy-likelihood`'s refinement replaces no `cnaster` function, so the correspondence selection does not reach it. **90.34 on #336 after merging main (#334)**, 2,150 of 2,380: the same branches, outside the correspondence selection. **90.56 on #337 after merging main (#336)**, 2,158 of 2,383: `removal_indicator`'s closed ends, against `cnaster`'s `ppf` mask. **90.55 on #338 after merging main (#337)**, 2,184 of 2,412: `sample_layout`'s panels, against upstream's one axis spot by spot. Merged without that test the guard read 89.84, under the floor.",
+   "inputs": "3903598f8aa0f544"
   }
  },
  "whole_run": {
-  "instance": "4000x1980x5",
-  "tier": "stress",
-  "commit": "7b12d7c",
-  "shape": {
-   "n_obs": 4000,
-   "n_spots": 1980,
-   "n_states": 5,
-   "n_clones": 4
-  },
-  "arms": [
-   {
-    "arm": "cnaster",
-    "returncode": 0,
-    "seconds": 192.0573733909987,
-    "peak_rss_gb": 11.346702575683594,
-    "stderr_tail": [
-     "/home/user/port/.venv/lib/python3.12/site-packages/cnaster/plotting.py:263: ImplicitModificationWarning: Trying to modify attribute `.obsm` of view, initializing view as actual.",
-     "  shifted_coords[index, 0] = shifted_coords[index, 0] + x_offset",
-     "run_cnaster_port: 187.00s"
-    ]
+  "instance": "dev_tree r0: 60 x 50 spots per slice, 2 slices, 6,000 spots, 4 planted clones (tests.sim_stages.R0_HASH)",
+  "tier": "dev_tree",
+  "commit": "b4e60f0",
+  "arms": [],
+  "ratio": null,
+  "note": "Not measured on dev_tree: mem reads / until run_cnaster_port and --no-patch are measured there, each arm in its own process. The last ratio, 3.21X memory and 1.70X runtime at 3800x1980x5 (stress, 49ea116), is kept under superseded; it is not comparable, being read at another instance. Speed is against CalicoST, under speed.",
+  "superseded": {
+   "instance": "3800x1980x5",
+   "tier": "stress",
+   "commit": "49ea116",
+   "shape": {
+    "n_obs": 3800,
+    "n_spots": 1980,
+    "n_states": 5,
+    "n_clones": 4
    },
-   {
-    "arm": "patched",
-    "returncode": 0,
-    "seconds": 120.47995567199905,
-    "peak_rss_gb": 3.691883087158203,
-    "stderr_tail": [
-     "/home/user/port/.venv/lib/python3.12/site-packages/cnaster/plotting.py:263: ImplicitModificationWarning: Trying to modify attribute `.obsm` of view, initializing view as actual.",
-     "  shifted_coords[index, 0] = shifted_coords[index, 0] + x_offset",
-     "run_cnaster_port: 115.51s"
-    ]
+   "arms": [
+    {
+     "arm": "cnaster",
+     "returncode": 0,
+     "seconds": 205.88835674200072,
+     "peak_rss_gb": 12.338790893554688
+    },
+    {
+     "arm": "patched",
+     "returncode": 0,
+     "seconds": 121.2072700409999,
+     "peak_rss_gb": 3.8521652221679688
+    }
+   ],
+   "ratio": {
+    "runtime": 1.6986,
+    "memory": 3.2104
+   },
+   "repetitions": [
+    {
+     "runtime": 1.7619,
+     "memory": 3.2104,
+     "cnaster_seconds": 209.61,
+     "patched_seconds": 118.97
+    },
+    {
+     "runtime": 1.6879,
+     "memory": 3.2109,
+     "cnaster_seconds": 202.44,
+     "patched_seconds": 119.94
+    },
+    {
+     "runtime": 1.6986,
+     "memory": 3.2031,
+     "cnaster_seconds": 205.89,
+     "patched_seconds": 121.21
+    }
+   ],
+   "_intent": "run_cnaster patched against --no-patch, wall time and peak RSS, each arm in its own process. The instance is the largest whose **unpatched** arm completes on this host: 4000x1980x5 took SIGKILL four times out of four, the last with the host otherwise idle, while 3800x1980x5 completes at 12.34-12.36 GB of 16,095 MB. key_instance (10,000 x 5,000) does not fit unpatched either -- 8 GB of emission array (#90) -- so the comparison has always run at the largest instance both arms complete, and that size has now moved down once. This measurement is #91.",
+   "arms_are": "`--no-patch`, nothing rebound, against the entry point's default: SWAPS plus FIGURE_SWAPS. The figure swaps are in the default as of 1c0a496, so this is what a user gets rather than what the bitwise-reproducing subset gets.",
+   "note": "Median of 3 pairs, each arm in its own process, on an otherwise idle host. **Not comparable with the 1.5941x and 3.0734x this badge carried at 7b12d7c**: those were read at 4000x1980x5, and a ratio is a statement about two implementations only where everything else was equal. The instance is not, so the older figures are superseded rather than corrected. Nothing installed changed in between -- `SWAPS` and `FIGURE_SWAPS` are byte-identical to 7b12d7c, eight of the nine installed replacements are unchanged and the ninth moved 13 lines (#249's `label_solver` branch, defaulting to `icm`). **Most of both is the figure swap** (#195): peak RSS is 12.35 GB against 3.85, and the emission array is about 0.3 GB of that, so plotting is what caps the run and not the emission array (#90). Runtime is below `CLAUDE.md`'s 2x bar and reads as such; memory is above it.",
+   "_probe": {
+    "why": "The unpatched arm no longer completes at 4000x1980x5. Measured four times: three paired runs and one probe with the host otherwise idle, SIGKILL every time at 12.124-12.128 GB of the 16,095 MB available. The host has no cgroup cap, so this is the arm's requirement rather than contention -- #90's 'does not fit unpatched' arriving at the stress instance, not only at key_instance.",
+    "killed_at_4000x1980x5": {
+     "returncode": -9,
+     "seconds": 213.87,
+     "peak_rss_gb": 12.1276,
+     "host": "idle"
+    },
+    "fits_at_3600x1980x5": {
+     "returncode": 0,
+     "seconds": 190.97,
+     "peak_rss_gb": 10.3846
+    },
+    "pending": "Settled: three pairs at 3800x1980x5, all six arms returning 0, recorded above.",
+    "harness": "The first attempt at 3800 died too, at 12.059 GB, although the standalone probe of the same instance had completed at 12.167 GB. The driver built the fixture in the parent and still held every array while the arms ran, so the harness was competing with what it measured. It now releases the fixture and collects before either arm starts, and the unpatched arm reaches 12.34-12.36 GB and completes -- higher than any of the five kills. So the kill point was never a ceiling and never the arm's requirement; it was whatever else was resident."
    }
-  ],
-  "ratio": {
-   "runtime": 1.5941,
-   "memory": 3.0734
-  },
-  "repetitions": [
-   {
-    "runtime": 1.5941,
-    "memory": 3.0734,
-    "cnaster_seconds": 192.06,
-    "patched_seconds": 120.48
+  }
+ },
+ "patched": {
+  "label": "patched",
+  "percent": 17.48,
+  "patched_lines": 970,
+  "executed_lines": 5549,
+  "instance": "dev",
+  "commit": "cbee988",
+  "note": "Executed cnaster lines inside functions run_cnaster_port replaces by default (SWAPS, FIGURE_SWAPS, SHIFT_SWAPS; for a class, only overridden methods), over every cnaster line an unpatched run_cnaster executes on the dev instance with numba disabled. Measured by python -m tests.patched_share (#302); not checked per pull request, because it needs a whole run."
+ },
+ "recovery": {
+  "instance": "dev_tree r0: sim/manifests/dev_tree.toml, 60 x 50 spots per slice, 2 slices, 6,000 spots, 4 planted clones (tests.sim_stages.R0_HASH)",
+  "configuration": "the sample's own config.yaml, int_copy_num.merge_agreement 0.99",
+  "commit": "741fcfb",
+  "arms": {
+   "port": {
+    "flags": [
+     "--no-plots"
+    ],
+    "ari": 1.0,
+    "ari_integer": 1.0,
+    "state_ari": 0.147,
+    "copy_ari": 0.9828,
+    "exact_altered": 0.9197,
+    "clones": 4,
+    "integer_clones": 4,
+    "wall_s": 284.83,
+    "peak_gb": 6.1
    },
-   {
-    "runtime": 1.7786,
-    "memory": 3.0737,
-    "cnaster_seconds": 201.37,
-    "patched_seconds": 113.22
-   },
-   {
-    "runtime": 1.4713,
-    "memory": 3.0719,
-    "cnaster_seconds": 189.57,
-    "patched_seconds": 128.84
+   "sal": {
+    "flags": [
+     "--sal",
+     "--no-plots"
+    ],
+    "ari": 1.0,
+    "ari_integer": 1.0,
+    "state_ari": 0.0778,
+    "copy_ari": 0.9828,
+    "exact_altered": 0.9197,
+    "clones": 4,
+    "integer_clones": 4,
+    "wall_s": 185.29,
+    "peak_gb": 6.13
    }
-  ],
-  "_intent": "run_cnaster patched against --no-patch, wall time and peak RSS, each arm in its own process. key_instance (10,000 x 5,000) does not fit unpatched -- 8 GB of emission array against 15 GB available (#90) -- so the comparison runs at the largest instance both arms complete and the badge label carries it. This measurement is #91.",
-  "arms_are": "`--no-patch`, nothing rebound, against the entry point's default: SWAPS plus FIGURE_SWAPS. The figure swaps are in the default as of 1c0a496, so this is what a user gets rather than what the bitwise-reproducing subset gets.",
-  "note": "Median of 3 pairs, each arm in its own process, on an otherwise idle host. The median rather than the mean because runtime ratios span 1.4713 to 1.7786 while peak RSS barely moves between pairs -- the wall clock is the noisy axis here and the memory is not. **Most of both is the figure swap.** SWAPS alone measured 1.21x runtime and 1.00x memory over the same baseline; adding FIGURE_SWAPS is what takes peak RSS from 11.35 GB to 3.69 GB. That is also the answer to a premise: at this instance the emission array is about 0.3 GB against a peak of 11.35, so plotting is what caps the run and not the emission array (#90). Runtime is below CLAUDE.md's 2x bar and reads as such; memory is above it."
+  },
+  "note": "python -m tests.sim_audit --sample generated/dev_tree/r0 [-- --sal] --no-plots, one run each, each its own process, pinned to one core (taskset -c 0, NUMBA_NUM_THREADS=1). The badge shows ari, the run's clone_labels.tsv over 6,000 spots, which carries #518's merge of clones whose decoded (A, B) agree at 0.99 of bins, and copy_ari, each matched clone-bin's phased (A, B) against the planted state. Recorded beside them, not shown: state_ari, the fitted state Z per clone-bin, and exact_altered."
+ },
+ "speed": {
+  "sample": "dev_tree r0, as recovery.instance",
+  "commit": "741fcfb",
+  "calicost_seconds": 20243.0,
+  "calicost_run": "#532: CalicoST's shipped configuration_cna_multi, n_clones 5, uncapped, 3 cores, summed over two resumes from its checkpoints (docs/calicost-benchmark.md)",
+  "port_seconds": 185.29,
+  "port_cores": 1,
+  "port_arm": "run_cnaster_port --sal, the recovery sal arm's wall",
+  "assumption": "CalicoST's 3-core wall is taken as its 1-core time, which favours CalicoST",
+  "ratio": 109.25
  }
 }

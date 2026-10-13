@@ -1,0 +1,251 @@
+"""The copy-state HMM's NLL as a `sal` `Objective`, and `sal`'s samplers on it (#634).
+
+Referees: `cnaster`'s forward lattice, port's JAX NLL and `sal`'s `EmissionHmmObjective`
+(T- #707);
+central differences; sampler bookkeeping and budgets.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import numpy as np
+import port.sandbox.extensions.hmm_objective as module
+import pytest
+import torch
+from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d, hmm_nophasing
+from port.qa.jax_hmm import emission, marginal_negative_log_likelihood
+from port.qa.provenance import CONFIGS, calibration
+from port.sandbox.extensions.copy_starts import HMM_SAMPLERS
+from port.sandbox.extensions.hmm_objective import (
+    ALPHA,
+    BUDGETS,
+    DEFAULTS,
+    SAMPLERS,
+    TAU,
+    TUNED_KEYS,
+    T,
+    negative_log_likelihood,
+    objective_for,
+    sample,
+)
+from port.studies import copy_state_stream, potts_stream
+from sal.emissions import RateConcentrationCountPairEmission
+from sal.opt.hmm import EmissionHmmObjective
+from sal.opt.objective import (
+    Restricted,
+    autograd_value_and_gradient,
+    coordinates,
+    value_and_gradient,
+)
+from sal.ragged import Ragged
+from scipy.special import logsumexp
+
+
+def _rows() -> dict[str, Any]:
+    """3 states planted on 2 clones of 120 rows (#540's sampler test instance)."""
+    rng = np.random.default_rng(540)
+    n = 120
+    state = (np.arange(2 * n) // 40) % 3
+    exposure = rng.uniform(200.0, 400.0, 2 * n)
+    trials = rng.integers(20, 60, 2 * n).astype(np.float64)
+    total = rng.poisson(exposure * np.array([0.5, 1.0, 1.5])[state])
+    b = rng.binomial(trials.astype(int), np.array([0.1, 0.5, 0.33])[state])
+    return {
+        "total": total.astype(np.float64),
+        "b": b.astype(np.float64),
+        "exposure": exposure,
+        "trials": trials,
+        "lengths": np.array([n, n]),
+    }
+
+
+def _objective(rows: dict[str, Any], theta: np.ndarray) -> Any:
+    return objective_for(
+        rows["total"], rows["b"], rows["exposure"], rows["trials"],
+        rows["lengths"], 3, theta,
+    )  # fmt: skip
+
+
+@pytest.mark.oracle
+def test_the_adapter_is_cnasters_forward_and_ports_nll() -> None:
+    """At 5 random states: `cnaster`'s `forward_lattice` to 1e-9 relative, port's JAX NLL to 1e-12."""
+
+    rows = _rows()
+    n_obs, k = rows["total"].size, 3
+    rng = np.random.default_rng(634)
+    log_transmat = np.where(np.eye(k, dtype=bool), np.log(T), np.log((1 - T) / (k - 1)))
+    for _ in range(5):
+        log_mu = rng.uniform(-0.8, 0.5, k)
+        p = rng.uniform(0.05, 0.95, k)
+        theta = np.concatenate([log_mu, np.log(p / (1 - p))])
+        ours = float(_objective(rows, theta)(torch.from_numpy(theta)))
+
+        scores = emission(
+            log_mu, np.full(k, ALPHA), p, np.full(k, TAU), rows["total"],
+            rows["exposure"], rows["b"], rows["trials"],
+        )  # fmt: skip
+        port = float(
+            marginal_negative_log_likelihood(
+                scores, np.full(k, -np.log(k)), log_transmat, rows["lengths"]
+            )
+        )
+        np.testing.assert_allclose(ours, port, rtol=1e-12, atol=0.0)
+
+        dense = np.zeros((k, n_obs))
+        for s in range(k):
+            depth, allele = np.zeros(n_obs), np.zeros(n_obs)
+            _nb_logpmf_1d(
+                rows["total"], rows["exposure"], float(np.exp(log_mu[s])), ALPHA, depth
+            )
+            _bb_logpmf_1d(rows["b"], rows["trials"], float(p[s]), TAU, allele)
+            dense[s] = depth + allele
+        lattice = hmm_nophasing.forward_lattice(
+            rows["lengths"].astype(np.int64), log_transmat, np.full(k, -np.log(k)),
+            dense[:, :, None], np.zeros((n_obs, 2)),
+        )  # fmt: skip
+        ends = np.cumsum(rows["lengths"]) - 1
+        theirs = -float(np.sum(logsumexp(np.asarray(lattice)[:, ends], axis=0)))
+        np.testing.assert_allclose(ours, theirs, rtol=1e-9, atol=0.0)
+
+
+@pytest.mark.oracle
+def test_the_adapter_is_sals_count_pair_hmm_objective() -> None:
+    """At 5 random states: `sal`'s `EmissionHmmObjective` value to 1e-12 relative, gradient to 1e-10 of the norm (T- #707)."""
+
+    rows = _rows()
+    k = 3
+    family = RateConcentrationCountPairEmission(
+        np.full(k, 1.0 / ALPHA), np.ones(k), np.full(k, 0.5), np.full(k, TAU),
+        np.ones(k), joint=False,
+    )  # fmt: skip
+    full = EmissionHmmObjective(
+        Ragged(np.stack([rows["total"], rows["b"]], axis=1), tuple(rows["lengths"])),
+        family,
+        covariate=np.stack([rows["exposure"], rows["trials"]], axis=1),
+    )
+    chain = np.where(np.eye(k, dtype=bool), T, (1.0 - T) / (k - 1))
+    at = full.theta_from_truth(np.full(k, 1.0 / k), chain, **family.named_parameters())
+    sal = Restricted(full, at, coordinates(full, ["mean", "rate"]))
+    rng = np.random.default_rng(634)
+    for _ in range(5):
+        theta = np.concatenate([rng.uniform(-0.8, 0.5, k), rng.uniform(-2.0, 2.0, k)])
+        value, gradient = _objective(rows, theta).value_and_gradient(
+            torch.from_numpy(theta)
+        )
+        theirs, score = sal.value_and_gradient(torch.from_numpy(theta))
+
+        np.testing.assert_allclose(float(value), float(theirs), rtol=1e-12, atol=0.0)
+        np.testing.assert_allclose(
+            gradient.numpy(), score.numpy(), rtol=0.0,
+            atol=1e-10 * float(np.linalg.norm(score.numpy())),
+        )  # fmt: skip
+
+
+@pytest.mark.analytic
+def test_the_gradient_is_the_central_difference() -> None:
+    """Gradient against central differences (step 1e-5), to 1e-6 of its norm; `sal`'s autograd route bitwise."""
+
+    rows = _rows()
+    rng = np.random.default_rng(1)
+    h = 1e-5
+    for _ in range(3):
+        theta = np.concatenate([rng.uniform(-0.8, 0.5, 3), rng.uniform(-2.0, 2.0, 3)])
+        objective = _objective(rows, theta)
+        value, grad = value_and_gradient(objective, torch.from_numpy(theta))
+        grad_np = grad.numpy()
+        central = np.array([
+            (objective.energy(theta + h * e) - objective.energy(theta - h * e)) / (2 * h)
+            for e in np.eye(theta.size)
+        ])  # fmt: skip
+        np.testing.assert_allclose(
+            central, grad_np, rtol=0.0, atol=1e-6 * np.linalg.norm(grad_np)
+        )
+        carried_value, carried = autograd_value_and_gradient(
+            objective, torch.from_numpy(theta)
+        )
+        assert float(carried_value) == float(value)
+        assert torch.equal(carried, grad)
+
+
+@pytest.mark.analytic
+@pytest.mark.parametrize("name", ["hmc-hmm", "anneal-hmm", "tempering-hmm"])
+def test_the_starts_keep_their_best_within_budget(name: str) -> None:
+    """Seeds 0-2: the reported NLL is the re-evaluated one, within the deleted samplers' budget, reproducible."""
+
+    budget = {"anneal-hmm": 433, "tempering-hmm": 436, "hmc-hmm": 217}[name]
+    rows = _rows()
+    for seed in range(3):
+        found = sample(
+            name, rows["total"], rows["b"], rows["exposure"], rows["trials"],
+            rows["lengths"], 3, np.random.default_rng(seed),
+        )  # fmt: skip
+        if name != "hmc-hmm":
+            assert found.nll <= found.initial_nll
+        assert 0 < found.evaluations <= budget
+        again = negative_log_likelihood(
+            found.log_mu, found.p_binom, rows["total"], rows["b"], rows["exposure"],
+            rows["trials"], rows["lengths"],
+        )  # fmt: skip
+        assert again == pytest.approx(found.nll, rel=1e-9)
+        repeat = sample(
+            name, rows["total"], rows["b"], rows["exposure"], rows["trials"],
+            rows["lengths"], 3, np.random.default_rng(seed),
+        )  # fmt: skip
+        assert repeat.nll == found.nll
+        np.testing.assert_array_equal(repeat.log_mu, found.log_mu)
+
+
+@pytest.mark.infra
+def test_the_registry_names_the_samplers_the_module_runs() -> None:
+    """`HMM_SAMPLERS` is a literal that matches `SAMPLERS`."""
+
+    assert HMM_SAMPLERS == SAMPLERS
+
+
+@pytest.mark.infra
+def test_the_defaults_are_the_calibrated_settings() -> None:
+    """Each start's defaults are `configs/copy_sampler_settings.json`'s, its budget `BUDGETS`' (#749 WP1)."""
+
+    tuned = calibration("copy_sampler_settings")
+    for name, knobs in DEFAULTS.items():
+        assert {k: knobs[k] for k in TUNED_KEYS[name]} == {
+            k: tuned[name][k] for k in TUNED_KEYS[name]
+        }
+        assert {k: knobs[k] for k in BUDGETS[name]} == BUDGETS[name]
+    assert copy_state_stream.SETTINGS.parent == potts_stream.SETTINGS.parent == CONFIGS
+
+
+@pytest.mark.infra
+def test_a_start_is_sampled_at_the_runs_own_stickiness_and_dispersions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`held_by` reads the run's stickiness and dispersions, and `sample` builds its objective at them (T- #777)."""
+
+    assert module.held_by({"t": 0.999}) == {
+        "stay": 0.999,
+        "alpha": module.ALPHA,
+        "tau": module.TAU,
+    }
+    assert module.held_by({"t": 0.9, "init_alphas": np.full((3, 1), 0.2), "init_taus": [50.0] * 3}) == {
+        "stay": 0.9, "alpha": 0.2, "tau": 50.0}  # fmt: skip
+    with pytest.raises(ValueError, match="differ by state"):
+        module.held_by({"t": 0.9, "init_alphas": [0.1, 0.2]})
+
+    seen: dict[str, Any] = {}
+    built = module.objective_for
+
+    def spy(*arguments: Any) -> Any:
+        seen["held"] = arguments[-1]
+        return built(*arguments)
+
+    monkeypatch.setattr(module, "objective_for", spy)
+    rng = np.random.default_rng(0)
+    n, k = 60, 2
+    total = rng.poisson(50.0, n).astype(np.float64)
+    trials = rng.poisson(20.0, n).astype(np.float64)
+    held = {"stay": 0.99, "alpha": 0.3, "tau": 200.0}
+    module.sample("hmc-hmm", total, np.floor(trials / 2), np.full(n, 50.0), trials, [n], k, rng,
+                  {"draws": 1, "warmup": 1, "adapt": 0.0}, held)  # fmt: skip
+
+    assert seen["held"] == held

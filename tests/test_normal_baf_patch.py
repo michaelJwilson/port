@@ -1,133 +1,43 @@
 """The quantile inversion `normal_baf_bin_filter` does not need (#174).
 
-Three claims, and they are different claims:
-
-1. the substitution is an **identity** for a discrete law, checked over a grid
-   rather than on the instance it is used on;
-2. the patched filter returns what `cnaster`'s returns, **bitwise**, on the dev
-   fixture;
-3. what it returns is still right -- the planted imbalanced bins and no others,
-   which is the claim `tests/test_run_cnaster_stages.py` makes of `cnaster`'s
-   own filter and which a patch has to keep.
-
-The third is what makes this more than an agreement between two
-implementations: two functions computing the same wrong mask would satisfy the
-second.
+Referees: the identity over a grid; `cnaster`'s filter, bitwise; and the planted
+imbalanced bins.
 """
 
 from collections.abc import Iterator
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pytest
 import scipy.stats
-
-from tests.fixtures import CoreInferenceTruth, core_inference_truth
-from tests.run_config import write_run_cnaster_config
-from tests.tmp_inputs import WrittenInputs, write_tmp_inputs
-from tests.unsegment import unsegment
+from cnaster.normal_spot import normal_baf_bin_filter as upstream
+from port.patch.normal_spot import normal_baf_bin_filter as patched
+from port.patch.normal_spot import removal_indicator
+from port.sim.inputs import read_to_bins, written_config
+from port.sim.run_config import PlantedInstance
+from port.sim.truth import CoreInferenceTruth, balanced_clone
 
 pytestmark = pytest.mark.preprocessing
 
-LATTICE = (25, 40)
-N_OBS = 40
-"""The dev instance the stage tests use, so the figures compare."""
-
 SHIPPED_CONFIDENCE = (0.01, 0.99)
-"""`zenodo_sim_config.yaml`'s `quality.normal_allele_specific_confidence`.
-
-`tests/run_config.py` widens it to `(0.0, 1.0)`, under which the filter removes
-nothing and the comparison would be between two empty masks.
-"""
-
-
-def _balanced_clone(truth: CoreInferenceTruth) -> int:
-    """Which clone the fixture planted at the balanced state in most bins."""
-    return int(
-        np.argmax(
-            [np.mean(truth.states[clone] == 0) for clone in range(truth.n_clones)]
-        )
-    )
+"""`zenodo_sim_config.yaml`'s confidence; `run_config.py`'s `(0.0, 1.0)` would make both masks empty."""
 
 
 @pytest.fixture(scope="module")
 def binned_instance(
-    tmp_path_factory: pytest.TempPathFactory,
+    planted_instance: PlantedInstance,
 ) -> Iterator[tuple[CoreInferenceTruth, Any, Any, np.ndarray]]:
-    """The prep chain's table and counts, and the planted normal spots.
+    """The prep chain's table and counts, and the planted normal spots."""
+    truth, _, written, config_path = planted_instance
 
-    The filter takes what the binner produced, so the input is the pipeline's
-    rather than one this module built: a hand-made table would not exercise the
-    renumbering, which is most of what the function does after the test.
-    """
-    from cnaster.config import YAMLConfig, get_global_config, set_global_config
-    from cnaster.io import load_input_data
-    from cnaster.omics import (
-        assign_initial_blocks,
-        create_bin_ranges,
-        form_gene_snp_table,
-        summarize_counts_for_bins,
-        summarize_counts_for_blocks,
-    )
-
-    truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=LATTICE, n_obs=N_OBS, n_segments=3, seed=11
-    )
-    root: Path = tmp_path_factory.mktemp("normal_baf")
-    written: WrittenInputs = write_tmp_inputs(
-        truth, unsegment(truth, flip_every=0), root
-    )
-    config_path = write_run_cnaster_config(written, truth)
-
-    previous = get_global_config()
-    set_global_config(None)
-    set_global_config(YAMLConfig.from_file(config_path))
-    try:
-        loaded = load_input_data(get_global_config())
-        alleles = (loaded.cell_snp_Aallele, loaded.cell_snp_Ballele)
-
-        table = form_gene_snp_table(
-            loaded.unique_snp_ids, str(written.hgtable), loaded.adata
-        )
-        table = assign_initial_blocks(
-            table, loaded.adata, *alleles, loaded.unique_snp_ids, initial_min_umi=1
-        )
-        blocks = summarize_counts_for_blocks(
-            table, loaded.adata, *alleles, loaded.unique_snp_ids
-        )
-        table = create_bin_ranges(
-            table,
-            loaded.adata,
-            *alleles,
-            loaded.unique_snp_ids,
-            blocks.X,
-            blocks.total_bb_RD,
-            blocks.lengths,
-            secondary_min_umi=1,
-            secondary_min_snp_umi=1,
-            secondary_min_normal_umi=0,
-        )
-        binned = summarize_counts_for_bins(
-            table,
-            loaded.adata,
-            blocks.X,
-            blocks.total_bb_RD,
-            np.ones(int(table.block_id.dropna().nunique()), dtype=bool),
-            nu=1.0,
-            logphase_shift=0.0,
-            geneticmap_file=None,
-        )
-
+    with written_config(config_path):
+        chain = read_to_bins(written)
         yield (
             truth,
-            table,
-            binned,
-            np.flatnonzero(truth.labels == _balanced_clone(truth)),
+            chain.table,
+            chain.bins,
+            np.flatnonzero(truth.labels == balanced_clone(truth)),
         )
-    finally:
-        set_global_config(None)
-        set_global_config(previous)
 
 
 def _arguments(
@@ -151,20 +61,7 @@ def _arguments(
 def test_the_quantile_test_is_a_distribution_function_comparison(
     quantile: float,
 ) -> None:
-    """**`x < ppf(q)` is `cdf(x) < q`, and `x > ppf(q)` is `cdf(x-1) >= q`.**
-
-    The identity the patch rests on, and it is a property of any discrete law
-    rather than of this one: `ppf(q) = min{k : cdf(k) >= q}`, so `cdf(x) < q`
-    says exactly that `x` is below that minimum, and `cdf(x-1) < q` says
-    exactly that `x` is at most it.
-
-    Checked over the whole support at three trial counts rather than at the
-    values the filter happens to produce, because an identity that held only
-    where it is used would be a coincidence. Five quantiles, including the two
-    that ship and the median, where `ppf` lands on the mode and an off-by-one
-    would be invisible at the tails.
-    """
-    from port.patch.normal_baf import removal_indicator
+    """`x < ppf(q)` iff `cdf(x) < q` and `x > ppf(q)` iff `cdf(x-1) >= q`, over the whole support at three trial counts."""
 
     alpha, beta = 15.0, 15.0
 
@@ -183,22 +80,31 @@ def test_the_quantile_test_is_a_distribution_function_comparison(
 
 
 @pytest.mark.patch
+@pytest.mark.parametrize("interval", [(0.0, 1.0), (0.01, 1.0), (0.0, 0.99)])
+def test_a_closed_end_removes_nothing_on_its_side_as_cnaster(
+    interval: tuple[float, float],
+) -> None:
+    """`cnaster`'s `ppf` mask, bitwise, where a tail saturates (#332)."""
+
+    totals = np.array([3_000.0, 29_000.0, 29_000.0, 29_000.0, 29_000.0])
+    counts = np.array([2_950.0, 17_980.0, 11_020.0, 580.0, 14_500.0])
+
+    for alpha, beta in ((15.0, 15.0), (500.0, 500.0)):
+        lo, hi = interval
+        expected = (counts < scipy.stats.betabinom.ppf(lo, totals, alpha, beta)) | (
+            counts > scipy.stats.betabinom.ppf(hi, totals, alpha, beta)
+        )
+
+        np.testing.assert_array_equal(
+            removal_indicator(counts, totals, alpha, beta, interval), expected
+        )
+
+
+@pytest.mark.patch
 def test_the_patched_filter_returns_what_cnasters_returns(
     binned_instance: tuple[CoreInferenceTruth, Any, Any, np.ndarray],
 ) -> None:
-    """Every array and the renumbered column, bitwise.
-
-    The counts are integers and the mask is boolean, so there is no arithmetic
-    here for a tolerance to absorb: the two either drop the same bins and
-    relabel the survivors the same way, or they do not.
-
-    The `bin_id` column is compared as well as the arrays. It carries the
-    renumbering, which is where an off-by-one in the survivor map would land,
-    and the arrays alone would not see it -- they are sliced by the same
-    `index_remaining` either way.
-    """
-    from cnaster.normal_spot import normal_baf_bin_filter as upstream
-    from port.patch.normal_baf import normal_baf_bin_filter as patched
+    """The patched filter returns `cnaster`'s arrays and renumbered `bin_id`, bitwise."""
 
     _, table, binned, index_normal = binned_instance
 
@@ -226,18 +132,7 @@ def test_the_patched_filter_returns_what_cnasters_returns(
 def test_the_patched_filter_removes_the_planted_imbalanced_bins(
     binned_instance: tuple[CoreInferenceTruth, Any, Any, np.ndarray],
 ) -> None:
-    """**The patch keeps the claim, not just the output (#160).**
-
-    `tests/test_run_cnaster_stages.py` establishes that `cnaster`'s filter
-    removes exactly the bins the planted normal clone carries an event in. Two
-    implementations agreeing says nothing about whether either is right, so the
-    patch is put to the same referee: the planted states.
-
-    Realized: eight bins removed, eight planted, no bin either way -- and the
-    surviving segmentation is the planted `[10, 21, 9]` less the removals
-    charged to each chromosome.
-    """
-    from port.patch.normal_baf import normal_baf_bin_filter as patched
+    """The patched filter removes exactly the eight planted imbalanced bins (#160)."""
 
     truth, table, binned, index_normal = binned_instance
 
@@ -249,7 +144,7 @@ def test_the_patched_filter_removes_the_planted_imbalanced_bins(
     dropped = filtered.bin_id.isna() & table.bin_id.notna()
     removed = np.unique(table.loc[dropped, "bin_id"].to_numpy().astype(int))
 
-    planted_imbalanced = np.flatnonzero(truth.states[_balanced_clone(truth)] != 0)
+    planted_imbalanced = np.flatnonzero(truth.states[balanced_clone(truth)] != 0)
 
     np.testing.assert_array_equal(removed, planted_imbalanced)
 

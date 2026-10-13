@@ -1,0 +1,84 @@
+# `cnamaste`, its own project (Ticket#836 PR1): its own build, lock and
+# environment, sharing nothing with any other project. From this directory:
+#
+#   uv sync --locked && uv run run_cnamaste CONFIG
+#   uv build --wheel
+#
+# `python/cnamaste/` is the package, laid out so that `oxicnamaste` (K0)
+# binds beside it.
+#
+# The dependencies are `cnaster`'s at its locked pin `4adad4d`, so the copy
+# runs wherever `cnaster` does.
+[build-system]
+requires = ["setuptools>=77"]  # NB 77: an SPDX `license` string (PEP 639)
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cnamaste"
+version = "0.1.0"
+description = "cnaster's run path at its pin, renamed, fixed and patched (Ticket#836)"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "M. J. Wilson" }]
+requires-python = ">=3.12.2"
+dependencies = [
+    "anndata>=0.8.0",
+    "hmmlearn",
+    "matplotlib",
+    "numba>=0.61.0",
+    "numpy>=1.26.0",
+    "pandas>=2.0.0,<3",
+    "polars>=1.30.0",
+    "pybedtools",
+    "pyranges",
+    "pysam",
+    "pyyaml>=6.0",
+    "rich==14.0.0",
+    "scanpy>=1.9.0",
+    "scikit-learn",
+    "scipy",
+]
+
+[dependency-groups]
+# NB `cnamaste/tests/`' runner; uv
+#    installs the `dev` group by default, so `uv run --locked --project
+#    cnamaste pytest cnamaste/tests` needs no flag.
+dev = ["pytest>=9.0.3", "pytest-xdist>=3.6"]
+
+[project.scripts]
+# `cnaster`'s `run_cnaster = "cnaster.scripts.run_cnaster:main"`, renamed.
+run_cnamaste = "cnamaste.scripts.run_cnamaste:main"
+
+[tool.setuptools]
+package-dir = { "" = "python" }
+packages = ["cnamaste", "cnamaste.scripts", "cnamaste.audit"]
+
+[tool.uv]
+# NB the versions `cnaster` 4adad4d's reference rows were measured under, where
+#    an unpinned resolve moves them, so PR1's rows compare like with like
+#    (Ticket#836): unconstrained, polars resolves 2.0.0.
+constraint-dependencies = ["anndata==0.13.3.post0", "numba==0.67.0", "polars==1.44.2"]
+
+[tool.cnamaste.figures]
+# The face and size of every text on a page `cnamaste.layout` draws: port's
+# `[tool.port.figures]` face, and one size throughout (T- #836 F1-F3). STIX
+# ships with matplotlib, and its math fonts are the same face.
+family = "serif"
+font = "STIXGeneral"
+mathtext = "stix"
+font_size = 8.0
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# NB two markers: `end2end`, a test that reads the run's input files and its
+#    output files and accounts for one through the other; `snapshot`, a pin of
+#    what a function returns today, no verdict. Every test runs by default.
+markers = [
+    "end2end: the run's inputs against its outputs, through the captured intermediates",
+    "snapshot: pins current behaviour with no judgement attached, to be conserved",
+]
+# NB xdist by default: 141 s at -n 4 against 295 s serial (-n 0) on easy, and the same outcome under 1 or 4
+#    numba threads (the replays are bitwise in both). The replaying tests share one worker
+#    (`xdist_group`, conftest.py), so each stage replays once. `-n 0` runs serially.
+addopts = "--strict-markers -n auto --dist loadgroup"
+pythonpath = ["tests"]
