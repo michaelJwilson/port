@@ -133,6 +133,8 @@ SCHEDULE: dict[str, list[str]] = {
     "construct_df_clone_label": [
         "05_baf/construct_df_clone_label",
         "09_outputs/construct_df_clone_label",
+        # NB cnamaste's clone_labels_int.tsv: the clones merged by integer (A, B) profile (T- #882).
+        "09_outputs/construct_df_clone_label_int",
     ],
     "determine_normal_candidates": ["06_normal/determine_normal_candidates"],
     "normal_baf_bin_filter": ["06_normal/normal_baf_bin_filter"],
