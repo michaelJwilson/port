@@ -1,7 +1,7 @@
 """`run_benchmark`: one tool on one sample, or the patched share (#494, #302).
 
-    run_benchmark --final SAMPLE {port,calicost} [--repeats N] [--timeout S]
-                  [--n-clones K] [--root DIR]
+    run_benchmark --final SAMPLE {port,calicost,cnamaste} [--repeats N]
+                  [--timeout S] [--n-clones K] [--root DIR]
     run_benchmark --patched-share
 
 `--final` prints one `BENCH` JSON line; `--patched-share` records the share of
@@ -26,7 +26,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     mode.add_argument("--patched-share", action="store_true")
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--timeout", type=int, default=benchmark.TIMEOUT,
-                        help="CalicoST's cap [s]; 0 runs uncapped")  # fmt: skip
+                        help="the run's cap [s]; 0 runs uncapped")  # fmt: skip
     parser.add_argument("--n-clones", type=int, default=None,
                         help="CalicoST's n_clones (shipped: 3)")  # fmt: skip
     parser.add_argument("--root", type=Path, default=None,
@@ -41,15 +41,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     sample, tool = arguments.final
-    if tool not in ("port", "calicost"):
-        parser.error(f"--final's TOOL is port or calicost, not {tool!r}")
-    row = (
-        benchmark.port(sample, arguments.repeats)
-        if tool == "port"
-        else benchmark.calicost(
+    if tool not in ("port", "calicost", "cnamaste"):
+        parser.error(f"--final's TOOL is port, calicost or cnamaste, not {tool!r}")
+    if tool == "port":
+        row = benchmark.port(sample, arguments.repeats)
+    elif tool == "calicost":
+        row = benchmark.calicost(
             sample, arguments.timeout, arguments.n_clones, arguments.root
         )
-    )
+    else:
+        # NB cnamaste reads its clone count from its own shipped file, so
+        #    `--n-clones`, which edits CalicoST's, has nothing to edit here.
+        row = benchmark.cnamaste(sample, arguments.timeout, arguments.root)
     print("BENCH " + json.dumps({"sample": sample, **row}), flush=True)
     return 0
 
