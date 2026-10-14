@@ -35,9 +35,11 @@ file names the host's checkout. `/config` `capture_commit` is the checkout's
 commit (`-dirty` where `cnamaste/python` has uncommitted edits).
 
 Inside `run_core_inference` it also records, from its last outer iteration,
-what `hmrf` computes and discards: the ICM labels, each Potts merge
-`merge_assignment` applied, the labels before the empty-clone re-indexing,
-and that re-indexing. `/lineage` is built from the recorded frames.
+what `hmrf` computes and discards: the labelling's `(n_spots, n_clones)`
+field and its argmax (`cnamaste.potts.field_argmax`), the ICM labels, each
+Potts merge `merge_assignment` applied, the labels before the empty-clone
+re-indexing, and that re-indexing. `/lineage` is built from the recorded
+frames.
 
 `/config` records the run's `wall_seconds`, the wrappers' own share of it
 (`capture_seconds`: deep copies, encoding, writing) and their difference
@@ -67,17 +69,14 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+import cnamaste.hmrf as hmrf  # type: ignore[import-not-found]  # noqa: PLR0402
+import cnamaste.scripts.run_cnamaste as rc  # type: ignore[import-not-found]
 import h5py
 import numba
 import numpy as np
 import pandas as pd
 import scipy.optimize
 import yaml
-from numba import _helperlib
-from sklearn.metrics import adjusted_rand_score
-
-import cnamaste.hmrf as hmrf  # type: ignore[import-not-found]  # noqa: PLR0402
-import cnamaste.scripts.run_cnamaste as rc  # type: ignore[import-not-found]
 from cnamaste.audit.capture import (  # type: ignore[import-not-found]
     Capture,
     Writer,
@@ -90,6 +89,9 @@ from cnamaste.audit.capture import (  # type: ignore[import-not-found]
     stage_inputs,
     truth_files,
 )
+from cnamaste.potts import field_argmax  # type: ignore[import-not-found]
+from numba import _helperlib
+from sklearn.metrics import adjusted_rand_score
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 PROJECT = REPOSITORY / "cnamaste"
@@ -133,6 +135,8 @@ SCHEDULE: dict[str, list[str]] = {
     "construct_df_clone_label": [
         "05_baf/construct_df_clone_label",
         "09_outputs/construct_df_clone_label",
+        # NB cnamaste's clone_labels_int.tsv: the clones merged by integer (A, B) profile (T- #882).
+        "09_outputs/construct_df_clone_label_int",
     ],
     "determine_normal_candidates": ["06_normal/determine_normal_candidates"],
     "normal_baf_bin_filter": ["06_normal/normal_baf_bin_filter"],
@@ -144,9 +148,12 @@ SCHEDULE: dict[str, list[str]] = {
     "hill_climbing_integer_copynumber_fixdiploid_milp": [
         f"09_outputs/integer_copy_{c}" for c in range(16)
     ],
+    # NB cnamaste's int_copy_num.decoder lattice_hmm: one call over every clone (T- #882).
+    "lattice_hmm_copynumber": ["09_outputs/lattice_copy"],
     "write_tsv": [f"09_outputs/write_tsv_{k}" for k in range(16)],
 }
-"""Each wrapped function -> the stage each of its calls records, in call order."""
+"""Each wrapped function -> the stage each of its calls records, in call order; one the run's cnamaste does not
+import is not wrapped."""
 
 NOT_REPLAYED = {"run_core_inference"}
 """Stages whose outputs are stored whole: replaying one is 100 to 230 s, so the tests read them instead."""
@@ -348,9 +355,13 @@ class Recorder:
 
         def icm_wrapped(*args: Any, **kwargs: Any) -> Any:
             out = icm(*args, **kwargs)
-            self.internal[self.current]["icm"] = np.array(
-                kwargs["new_assignment"], copy=True
-            )
+            record = self.internal[self.current]
+            record["icm"] = np.array(kwargs["new_assignment"], copy=True)
+            # NB the field the labelling was posed with, which the fit discards: without it the file holds the
+            #    labelling's answer and not its question, and `cnamaste.examples` cannot pose the run's own
+            #    problem without replaying the fit (100 to 230 s). Both solvers reach `icm_sweep_deque`, so this
+            #    is the field whichever `hmrf.label_solver` ran.
+            record["field"] = np.array(kwargs["single_llf"], copy=True)
             return out
 
         def merge_wrapped(*args: Any, **kwargs: Any) -> Any:
@@ -561,6 +572,15 @@ def lineage(rec: Recorder, h5: h5py.File) -> None:
             g.create_dataset(
                 k, data=np.asarray(record[k]).astype(np.int16), compression="gzip"
             )
+        field = np.asarray(record["field"], dtype=np.float64)
+        g.create_dataset("field", data=field, compression="gzip", shuffle=True)
+        # NB stored beside the field, not left to the reader: it is the labelling the field alone gives, which a
+        #    solved one is read against, and `cnamaste.potts.field_argmax` is the one implementation of it.
+        g.create_dataset(
+            "field_argmax",
+            data=field_argmax(field).astype(np.int16),
+            compression="gzip",
+        )
         g.attrs["merges"] = json.dumps(record["merges"])
         g.attrs["iterations"] = json.dumps(record["iterations"])
         for key in ("ari", "total_llf", "optimizer"):
@@ -685,7 +705,8 @@ def main(argv: list[str] | None = None) -> int:
     h5 = h5py.File(partial, "w", libver="latest")
     rec = Recorder(h5)
     for name in SCHEDULE:
-        rec.wrap(rc, name)
+        if hasattr(rc, name):
+            rec.wrap(rc, name)
     rec.wrap_internal(hmrf)
     for name in PLOTS:
         setattr(rc, name, lambda *_, **__: None)

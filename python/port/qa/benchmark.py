@@ -326,6 +326,165 @@ def calicost(
     }
 
 
+CNAMASTE_PYTHON = "CNAMASTE_PYTHON"
+"""The interpreter `cnamaste` is installed in. `port`'s own vendored copy is a
+namespace shadow with no `cnamaste.audit`, and the benchmark measures the
+`cnamaste` repository's checkout rather than the vendored tree, so the arm is
+told where that checkout's environment is instead of importing it here."""
+
+
+def _cnamaste_python() -> str:
+    """`$CNAMASTE_PYTHON`, refused where it is unset or not a file."""
+    found = os.environ.get(CNAMASTE_PYTHON)
+
+    if not found or not Path(found).is_file():
+        msg = f"set ${CNAMASTE_PYTHON} to the interpreter cnamaste is installed in"
+        raise FileNotFoundError(msg)
+
+    return found
+
+
+def _cnamaste_staged(sample: Any, root: Path, interpreter: str) -> Path:
+    """`sample`'s inputs staged under `root` for `cnamaste`, on its shipped configuration.
+
+    `cnamaste.audit.capture.stage_inputs` is the same staging its own captures
+    use, so the run sees the inputs a `cnamaste` user's run sees, and
+    `zenodo_sim_config.yaml` is what it ships for a CalicoST sample. Neither is
+    importable here, so this stages in a child on `cnamaste`'s interpreter.
+    """
+    marker = root / STAGED
+
+    if marker.is_file():
+        return Path(json.loads(marker.read_text())["config"])
+
+    root.mkdir(parents=True, exist_ok=True)
+    done = subprocess.run(
+        [
+            interpreter, "-c",
+            "import sys, yaml, json\n"
+            "from pathlib import Path\n"
+            "from cnamaste.audit import PROJECT\n"
+            "from cnamaste.audit.capture import grch38, stage_inputs\n"
+            "sample, root = Path(sys.argv[1]), Path(sys.argv[2])\n"
+            "shipped = PROJECT / 'zenodo_sim_config.yaml'\n"
+            "config = stage_inputs(sample, root, yaml.safe_load(shipped.read_text()), grch38())\n"
+            "print(json.dumps({'config': str(config), 'shipped': str(shipped)}))\n",
+            str(sample.path), str(root),
+        ],
+        capture_output=True, text=True, check=True,
+    )  # fmt: skip
+    record = json.loads(done.stdout.splitlines()[-1])
+    marker.write_text(json.dumps(record))
+    return Path(record["config"])
+
+
+def _cnamaste_version(interpreter: str) -> str:
+    """The checkout's version and commit, so a row names the code it measured."""
+    done = subprocess.run(
+        [
+            interpreter, "-c",
+            "import subprocess, cnamaste\n"
+            "from pathlib import Path\n"
+            "root = Path(cnamaste.__file__).resolve().parents[2]\n"
+            "out = subprocess.run(['git', '-C', str(root), 'rev-parse', '--short', 'HEAD'],\n"
+            "                     capture_output=True, text=True, check=False)\n"
+            "dirty = subprocess.run(['git', '-C', str(root), 'status', '--porcelain'],\n"
+            "                       capture_output=True, text=True, check=False)\n"
+            "print(out.stdout.strip() + ('-dirty' if dirty.stdout.strip() else ''))\n",
+        ],
+        capture_output=True, text=True, check=False,
+    )  # fmt: skip
+    return done.stdout.strip() or "unknown"
+
+
+def cnamaste(
+    name: str,
+    timeout: int = TIMEOUT,
+    root: Path | None = None,
+) -> dict[str, Any]:
+    """`cnamaste` on its shipped configuration, under `timeout`, scored as CalicoST is.
+
+    The conditions `calicost` sets, so the two rows compare: one run, no
+    repeats, `timeout` 0 uncapped, the wall and the children's peak RSS, and
+    `score_sample` on the output directory. `cnamaste` writes CalicoST's output
+    layout, so the same scorer reads it with no special case.
+
+    Unlike `calicost` it has no checkpoints to resume from: a killed run is
+    rerun from the start, and `baf_stage` scores whatever clone assignment it
+    had written.
+    """
+    from port.qa.audit import score_sample
+
+    sample = _sample(name)
+    interpreter = _cnamaste_python()
+    root = Path(tempfile.mkdtemp()) if root is None else root
+    config = _cnamaste_staged(sample, root, interpreter)
+    revision = _cnamaste_version(interpreter)
+    tool = f"cnamaste {revision} (shipped"
+    tool += ", uncapped)" if timeout == 0 else f", cap {timeout} s)"
+    capped = [] if timeout == 0 else ["timeout", str(timeout)]
+    failed: subprocess.CalledProcessError | None = None
+
+    with measured() as cost:
+        try:
+            subprocess.run(
+                [
+                    *capped, interpreter, "-c",
+                    "from cnamaste.scripts.run_cnamaste import main; raise SystemExit(main())",
+                    str(config),
+                ],
+                capture_output=True, text=True, check=True,
+            )  # fmt: skip
+        except subprocess.CalledProcessError as error:
+            failed = error
+
+    wall = cost.wall_s
+    output = root / "output"
+
+    if failed is not None:
+        reached = [x for x in failed.stderr.splitlines() if " - " in x][-1:]
+        return {
+            "tool": tool,
+            "finished": False,
+            "returncode": failed.returncode,
+            "wall": round(wall, 1),
+            "peak_gb": round(peak_gb(children=True), 2),
+            "reached": reached[0][:200] if reached else failed.stderr[-400:],
+            "output": str(output),
+            **baf_stage(sample, output),
+        }
+
+    print(f"cnamaste output: {output}", file=sys.stderr, flush=True)
+
+    try:
+        recovery = score_sample(sample, output, "cnamaste", wall)
+    except Exception as error:  # noqa: BLE001 -- the run is kept; the scoring is reported
+        return {
+            "tool": tool,
+            "finished": True,
+            "scored": f"{type(error).__name__}: {error}",
+            "wall": round(wall, 1),
+            "peak_gb": round(peak_gb(children=True), 2),
+            "output": str(output),
+        }
+
+    return {
+        "tool": tool,
+        "finished": True,
+        "ari": recovery.ari,
+        "clones": recovery.n_clones,
+        "ari_integer": recovery.ari_integer,
+        "integer_clones": recovery.n_integer_clones,
+        "copy_ari": recovery.copy_ari,
+        "copy_ari_pf": recovery.copy_ari_pf,
+        "exact_altered": recovery.exact_altered,
+        "exact_altered_minor": recovery.exact_altered_minor,
+        "wall": round(wall, 1),
+        "peak_gb": round(peak_gb(children=True), 2),
+        "output": str(output),
+    }
+
+
 # --- --patched-share --------------------------------------------------------
 
 

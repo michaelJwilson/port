@@ -1,12 +1,14 @@
 # CalicoST benchmark (#494, #532)
 
-**TL;DR:** CalicoST on its shipped configuration finishes none of CalicoST
-easy, hard and `dev_tree` 60 × 50 r0 in 30 minutes. The last clone assignment
-it wrote, its BAF stage, scores 0.6686 (3 clones), 0.4675 (2) and 0.8601 (3).
-Uncapped, with `n_clones 5`, it takes 20,243 s on `dev_tree` r0 and scores
-clone ARI 0.8538 (6 clones), copy ARI 0.9075, and decodes losses as copy-neutral
-LOH and balanced gains as neutral, as port does. port's numbers on the same
-fixtures are in `docs/baseline-release.md`.
+**TL;DR:** given 6 hours instead of 30 minutes, CalicoST finishes easy in
+6,497 s and hard in 4,474 s, and **both score worse than the BAF stage the
+30-minute cap had stopped them at**: clone ARI 0.5303 (4 clones) against
+0.6686, and 0.0690 (2 clones) against 0.4675. On hard it fits 2 clones for
+the 4 planted and decodes no altered bin in phase. Uncapped on `dev_tree`
+60 × 50 r0 it takes 20,243 s and scores clone ARI 0.8538 (6 clones), copy ARI
+0.9075. It decodes losses as copy-neutral LOH and balanced gains as neutral
+on every fixture, as port does. port's numbers on the same fixtures are in
+`docs/baseline-release.md`.
 
 ## Conditions
 
@@ -59,6 +61,85 @@ Run it alone on the host; `LOCK=<file>` holds a flock.
 - **Its BAF stage asks for 3 clones**, as shipped, against 4 planted, so
   0.6686 and 0.8601 measure that setting as much as the fit. On hard the
   merge joined two of the three (0.4685 before it, 0.4675 after).
+
+## Results, capped at 21,600 s (#494)
+
+Six hours apiece, on the host and conditions above; `--timeout 21600`. Both
+finish well inside the cap, so these are completed runs rather than a cap's
+reading of one.
+
+| sample | clone ARI | copy ARI (`_pf`) | exact altered (`_pf`) | bins | wall | peak |
+| --- | --- | --- | --- | --- | --- | --- |
+| CalicoST easy (`2d4ce9a9`) | 0.5303 (4) | 0.6098 (0.6094) | 0.2326 (0.4651) | 1476 | 6,497 s | 2.79 GB |
+| CalicoST hard (`8797710b`) | 0.0690 (2) | 0.6285 (0.6285) | 0.0000 (0.5500) | 1467 | 4,474 s | 2.78 GB |
+
+- **Finishing costs clone ARI rather than earning it.** The 30-minute cap
+  scored the BAF stage at 0.6686 on easy and 0.4675 on hard; the finished
+  runs score 0.5303 and 0.0690. The read-depth stage, which the cap never
+  reached on either, is what the difference is made in. The two numbers are
+  not otherwise comparable -- a BAF-stage reading is not a final ARI -- but
+  they are the same quantity on the same fit, and it falls.
+- **Hard fits 2 clones for 4 planted,** so two planted clones have no fitted
+  counterpart and its copy metrics are over the two that do. Easy fits 4.
+- **Neither decodes an aberration well.** `exact_neutral` is 0.9924 on easy
+  and 0.9973 on hard, so the neutral genome is right and the aberrations are
+  what is missed; `exact_altered` is 0.2326 and 0.0000.
+- Read depth is 87.5 of easy's 108.3 minutes (81%) and 56 of hard's 74.6
+  (75%), against 66% on `dev_tree` r0.
+
+### Time per stage
+
+| stage | easy, min | hard, min |
+| --- | --- | --- |
+| parse | 4.0 | 6 |
+| BAF HMRF and merge | 16.4 | 18.1 |
+| read depth, clone 0 | 55.2 | 33.3 |
+| read depth, clone 1 | 68.5 | 69.9 |
+| read depth, clone 2 | 104.2 | — |
+| combine, refit, decode, outputs | 108.1 | 74.4 |
+
+Cumulative minutes from the start, as each stage's file was last written.
+Hard refines two clones where easy refines three, because its BAF stage left
+fewer.
+
+### Planted against decoded
+
+Each planted `(A, B)` against the decoded, as a fraction of that pair's
+matched clone-bins (`--confusion-sampled`); a row sums to 1.
+
+**easy:**
+
+| planted \ decoded | 0,2 | 1,1 | 1,2 | 1,3 | 3,3 |
+| --- | --- | --- | --- | --- | --- |
+| 1,0 | 0.9474 | 0.0526 | | | |
+| 1,1 | | 0.9924 | | 0.0055 | 0.0021 |
+| 1,2 | | | 1.0000 | | |
+| 2,1 | | 1.0000 | | | |
+| 2,2 | | 1.0000 | | | |
+| 3,1 | | 0.0323 | | 0.9677 | |
+
+**hard:**
+
+| planted \ decoded | 1,1 | 1,2 |
+| --- | --- | --- |
+| 0,1 | 0.5000 | 0.5000 |
+| 1,1 | 0.9973 | 0.0027 |
+| 2,1 | 0.3125 | 0.6875 |
+
+- **Losses decode as copy-neutral LOH, or as neutral.** On easy 94.74% of
+  planted (1, 0) comes back (0, 2); on hard half of planted (0, 1) comes back
+  (1, 1) and half (1, 2). Total copy 1 is never decoded on either.
+- **Balanced gain decodes as neutral:** every planted (2, 2) bin on easy comes
+  back (1, 1). Hard plants none among its matched clones.
+- These are #532's two failures on `dev_tree` r0, now on finished runs of the
+  samples CalicoST's own paper ships, and they are the failures port's lattice
+  decode shows on easy (T- #471, T- #573). They are not port's alone.
+
+### Outputs
+
+`tests/data/benchmarks/easy/` and `tests/data/benchmarks/hard/` hold each
+run's `calicost.tar.xz` and a README with its row, so a metric can be taken
+from them without a rerun.
 
 ## Uncapped on `dev_tree` r0 (#532)
 
@@ -129,7 +210,7 @@ Read-depth fitting is 13,269 s, 66% of the wall.
 ## Reproduce
 
 ```
-run_benchmark --final numcnas1.2_cnasize5e7_ploidy2_random0 calicost
+run_benchmark --final numcnas1.2_cnasize5e7_ploidy2_random0 calicost --timeout 21600
 ```
 
 and the same for `numcnas6.3_cnasize1e7_ploidy2_random0` and `dev_tree` r0
