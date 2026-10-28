@@ -2,12 +2,14 @@
 
     run_cnamaste_he <config> [-o key=value ...] [--he_weight W] [--he_temperature T]
         [--he_prior_num_features F] [--he_seed S] [--he_in_merge]
+        [--he_stain whiten|standardize]
 
 `cnamaste.scripts.run_cnamaste.load_input_data` is wrapped to read the run's own spots, in the run's order: their
 coordinates and samples. Each sample's slide is `<spaceranger_dir>/spatial/tissue_hires_image.png`, at
 `tissue_hires_scalef`, and a spot at (x, y) sits at hires pixel (row y s, column x s), as `cnamaste.he.get_he_image`
 places it. The label-step patch is installed before the run; it writes its per-step log to
-`<output_dir>/he_unary.json` and the last network's output to `<output_dir>/he_prior.npz`. Needs `cnamaste` importable
+`<output_dir>/he_unary.json` and the last network's output (log pi per spot, argmax and entropy per pixel) to
+`<output_dir>/he_prior.npz`. Needs `cnamaste` importable
 and, for its default solver, `$CNAMASTE_OPENGM_HOME`.
 
 Ticket: PR- #943.
@@ -31,8 +33,23 @@ from port.sandbox.joint_he import study as S
 from port.sandbox.joint_he.cnamaste_he_unary import HEUnary, install
 
 
+def whiten(od: Any) -> Any:
+    """ZCA-whiten a slide's standardized optical density: its channel covariance to the identity.
+
+    A global linear map per slide, so local contrast (nuclear density and grade) is kept. Between slides it removes
+    the colour signature of stain balance (channel correlations 0.885 / 0.828 / 0.990 against 0.932 / 0.892 / 0.992 on
+    the two slides of dev_tree_easy r0 + H&E, ec454aa7). On one slide, ec4b49a0, it moved clone ARI from 0.591 to
+    0.883 at 4 features, w = 1, one run each (PR- #943).
+    """
+    flat = np.asarray(od, dtype=np.float64).reshape(-1, 3)
+    flat = flat - flat.mean(axis=0)
+    lam, U = np.linalg.eigh(np.cov(flat.T))
+    zca = U @ np.diag(1.0 / np.sqrt(lam + 1e-6)) @ U.T
+    return jnp.asarray((flat @ zca).reshape(np.shape(od)).astype(np.float32))
+
+
 def he_inputs(
-    coords: Any, samples: Any, spaceranger_dirs: dict[str, Path]
+    coords: Any, samples: Any, spaceranger_dirs: dict[str, Path], stain: str = "whiten"
 ) -> tuple[list[Any], list[Any], Any]:
     """The slides and each spot's pixel, sample by sample, and the run-to-network order.
 
@@ -47,6 +64,7 @@ def he_inputs(
             "tissue_hires_scalef"
         ]
         od = S.he_tensor(mpimg.imread(spatial / "tissue_hires_image.png"))
+        od = whiten(od) if stain == "whiten" else od
 
         idx = np.flatnonzero(samples == sid)
         xy = coords[idx] * scale / S.DOWNSAMPLE
@@ -82,6 +100,8 @@ def main() -> None:
     ap.add_argument("--he_seed", type=int, default=0)
     # NB with it, the merge within each label step sees the unary too; without (default), cnamaste's field alone.
     ap.add_argument("--he_in_merge", action="store_true")
+    # NB `whiten` (default): each slide's optical density ZCA-whitened; `standardize`: per channel only.
+    ap.add_argument("--he_stain", choices=["whiten", "standardize"], default="whiten")
     a = ap.parse_args()
 
     from cnamaste.io import get_sample_sheet
@@ -99,7 +119,7 @@ def main() -> None:
             for s, d in zip(sheet["sample_id"], sheet["spaceranger_dir"], strict=True)
         }
         samples = adata.obs["sample"].to_numpy()
-        images, pixels, order = he_inputs(coords, samples, dirs)
+        images, pixels, order = he_inputs(coords, samples, dirs, a.he_stain)
         unary = HEUnary(
             images, pixels, order,
             weight=a.he_weight, temperature=a.he_temperature,
@@ -125,6 +145,7 @@ def main() -> None:
         "num_features": a.he_prior_num_features,
         "seed": a.he_seed,
         "in_merge": a.he_in_merge,
+        "stain": a.he_stain,
         "steps": unary.log,
     }
     (run["output_dir"] / "he_unary.json").write_text(json.dumps(log, indent=1))
@@ -140,8 +161,12 @@ def main() -> None:
             ],
         }
         names = list(dict.fromkeys(run["samples"]))
-        for sid, arr in zip(names, H.pixel_argmax(psi, unary.images), strict=True):
-            arrays[f"pixel_{sid}"] = arr
+        argmax, entropy = (
+            H.pixel_argmax(psi, unary.images),
+            H.pixel_entropy(psi, unary.images),
+        )
+        for sid, arr, ent in zip(names, argmax, entropy, strict=True):
+            arrays[f"pixel_{sid}"], arrays[f"entropy_{sid}"] = arr, ent
         np.savez(run["output_dir"] / "he_prior.npz", **arrays)
 
 

@@ -93,3 +93,12 @@ def predict(psi: Psi, images: list[jax.Array], pixels: list[jax.Array]) -> jax.A
 def pixel_argmax(psi: Psi, images: list[jax.Array]) -> list[NDArray[np.int64]]:
     """Per slice, the prior's most probable clone at every pixel of the network's output (input at stride `STRIDE`)."""
     return [np.asarray(jnp.argmax(J.cnn(psi["cnn"], img), axis=-1)) for img in images]
+
+
+def pixel_entropy(psi: Psi, images: list[jax.Array]) -> list[NDArray[np.float64]]:
+    """Per slice, the prior's entropy in nats at every pixel of the network's output: low where the slide decides."""
+    out = []
+    for img in images:
+        lp = jax.nn.log_softmax(J.cnn(psi["cnn"], img).astype(jnp.float64), axis=-1)
+        out.append(np.asarray(-jnp.sum(jnp.exp(lp) * lp, axis=-1)))
+    return out
