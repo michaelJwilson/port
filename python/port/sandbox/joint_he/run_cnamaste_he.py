@@ -2,6 +2,7 @@
 
     run_cnamaste_he <config> [-o key=value ...] [--he_weight W] [--he_temperature T]
         [--he_prior_num_features F] [--he_seed S] [--he_in_merge]
+        [--he_stain whiten|standardize]
 
 `cnamaste.scripts.run_cnamaste.load_input_data` is wrapped to read the run's own spots, in the run's order: their
 coordinates and samples. Each sample's slide is `<spaceranger_dir>/spatial/tissue_hires_image.png`, at
@@ -29,8 +30,22 @@ from port.sandbox.joint_he import study as S
 from port.sandbox.joint_he.cnamaste_he_unary import HEUnary, install
 
 
+def whiten(od: Any) -> Any:
+    """ZCA-whiten a slide's standardized optical density: its channel covariance to the identity.
+
+    A global linear map per slide, so local contrast (nuclear density and grade) is kept; the slide's channel
+    correlations, which differ with its stain balance (0.885 / 0.828 / 0.990 against 0.932 / 0.892 / 0.992 on the two
+    slides of dev_tree_easy r0 + H&E, ec454aa7), are not, so the network cannot tell one slide from another by colour.
+    """
+    flat = np.asarray(od, dtype=np.float64).reshape(-1, 3)
+    flat = flat - flat.mean(axis=0)
+    lam, U = np.linalg.eigh(np.cov(flat.T))
+    zca = U @ np.diag(1.0 / np.sqrt(lam + 1e-6)) @ U.T
+    return jnp.asarray((flat @ zca).reshape(np.shape(od)).astype(np.float32))
+
+
 def he_inputs(
-    coords: Any, samples: Any, spaceranger_dirs: dict[str, Path]
+    coords: Any, samples: Any, spaceranger_dirs: dict[str, Path], stain: str = "whiten"
 ) -> tuple[list[Any], list[Any], Any]:
     """The slides and each spot's pixel, sample by sample, and the run-to-network order.
 
@@ -45,6 +60,8 @@ def he_inputs(
             "tissue_hires_scalef"
         ]
         od = S.he_tensor(mpimg.imread(spatial / "tissue_hires_image.png"))
+        od = whiten(od) if stain == "whiten" else od
+
         idx = np.flatnonzero(samples == sid)
         xy = coords[idx] * scale / S.DOWNSAMPLE
         H, W = od.shape[:2]
@@ -79,6 +96,8 @@ def main() -> None:
     ap.add_argument("--he_seed", type=int, default=0)
     # NB with it, the merge within each label step sees the unary too; without (default), cnamaste's field alone.
     ap.add_argument("--he_in_merge", action="store_true")
+    # NB `whiten` (default): each slide's optical density ZCA-whitened; `standardize`: per channel only.
+    ap.add_argument("--he_stain", choices=["whiten", "standardize"], default="whiten")
     a = ap.parse_args()
 
     from cnamaste.io import get_sample_sheet
@@ -95,7 +114,9 @@ def main() -> None:
             str(s): Path(d)
             for s, d in zip(sheet["sample_id"], sheet["spaceranger_dir"], strict=True)
         }
-        images, pixels, order = he_inputs(coords, adata.obs["sample"].to_numpy(), dirs)
+        images, pixels, order = he_inputs(
+            coords, adata.obs["sample"].to_numpy(), dirs, a.he_stain
+        )
         unary = HEUnary(
             images, pixels, order,
             weight=a.he_weight, temperature=a.he_temperature,
@@ -116,6 +137,7 @@ def main() -> None:
         "num_features": a.he_prior_num_features,
         "seed": a.he_seed,
         "in_merge": a.he_in_merge,
+        "stain": a.he_stain,
         "steps": unary.log,
     }
     (run["output_dir"] / "he_unary.json").write_text(json.dumps(log, indent=1))
