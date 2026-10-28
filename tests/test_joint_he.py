@@ -1,15 +1,19 @@
-"""`port.sandbox.joint_he`'s chains and emissions against enumeration and their direct forms."""
+"""`port.sandbox.joint_he`'s chains and emissions against enumeration and their direct forms, and its slide reading
+against Space Ranger's scale factors."""
 
 from __future__ import annotations
 
 import itertools
+import json
+from pathlib import Path
 
 import jax
 import jax.numpy as jnp
+import matplotlib.image as mpimg
 import numpy as np
 import pytest
 from numpy.typing import NDArray
-from port.sandbox.joint_he import joint, joint_int
+from port.sandbox.joint_he import he_cnn, joint, joint_int
 from scipy.special import logsumexp
 
 STARTS = np.array([True, False, False, True, False, False])
@@ -233,3 +237,78 @@ def test_chunked_theta_gradient_matches_autodiff() -> None:
     assert abs(float(value - expected)) <= 1e-8 * abs(float(expected))
     for key, reference in expected_grad.items():
         assert _relative(grad[key], reference) <= 1e-8, key
+
+
+def _space_ranger(spatial: Path, scalefactors: dict[str, float], side: int) -> None:
+    """A `spatial/` directory: `scalefactors` and a `side`-pixel square hires and lowres image of uniform grey."""
+    spatial.mkdir(parents=True)
+    (spatial / "scalefactors_json.json").write_text(json.dumps(scalefactors))
+    for res in he_cnn.RESOLUTIONS:
+        mpimg.imsave(spatial / f"tissue_{res}_image.png", np.full((side, side, 3), 0.5))
+
+
+@pytest.mark.oracle
+def test_slide_resolution_against_space_ranger_scalefactors(tmp_path: Path) -> None:
+    """`he_cnn.downsample` against 10x's Visium HD scale factors, worked by hand.
+
+    microns_per_pixel 0.2737061758251425 over tissue_hires_scalef 0.071874365 is
+    3.80812 um per hires pixel, so 4-fold (15.23 um) is nearest 16 um; over the
+    lowres 0.0071874363, 38.0812 um, already coarser, so 1-fold. The simulated
+    slides (100 um per position unit, 24 hires pixels per unit): 4.167 um and
+    4-fold, the 16.7 um the PR- #943 runs read. Fails if the image's um per
+    pixel is not microns_per_pixel over its scale factor, or if the factor is
+    not the nearest integer, at least 1.
+    """
+    hd = {
+        "microns_per_pixel": 0.2737061758251425,
+        "tissue_hires_scalef": 0.071874365,
+        "tissue_lowres_scalef": 0.0071874363,
+    }
+    sim = {
+        "microns_per_pixel": 100.0,
+        "tissue_hires_scalef": 24.0,
+        "tissue_lowres_scalef": 2.4,
+    }
+    _space_ranger(tmp_path / "hd", hd, 8)
+    _space_ranger(tmp_path / "sim", sim, 8)
+
+    for name, res, microns, k in (
+        ("hd", "hires", 3.80812, 4),
+        ("hd", "lowres", 38.0812, 1),
+        ("sim", "hires", 4.16667, 4),
+        ("sim", "lowres", 41.6667, 1),
+    ):
+        found, factor = he_cnn.downsample(tmp_path / name, res)
+        assert abs(found - microns) <= 1e-5 * microns, (name, res)
+        assert factor == k, (name, res)
+
+
+@pytest.mark.oracle
+def test_he_inputs_places_a_bin_at_its_image_pixel(tmp_path: Path) -> None:
+    """`he_cnn.he_inputs` against pixels worked by hand, two samples in interleaved run order.
+
+    A 64-pixel hires image at 0.25 image pixels per full-resolution pixel and
+    1 um per full-resolution pixel: 4 um per pixel, read 4-fold, so 1/16 input
+    pixel per full-resolution pixel. A bin at (x, y) = (320, 160) full-resolution
+    pixels is at input row 160 / 16 = 10, column 320 / 16 = 20. Fails if x is
+    read as the row, if the downsample is not divided out, or if the run-to-
+    network order does not invert the grouping by sample.
+    """
+    scalefactors = {
+        "microns_per_pixel": 1.0,
+        "tissue_hires_scalef": 0.25,
+        "tissue_lowres_scalef": 0.025,
+    }
+    for sid in ("a", "b"):
+        _space_ranger(tmp_path / sid / "spatial", scalefactors, 64)
+    coords = np.array([[320.0, 160.0], [16.0, 32.0], [48.0, 0.0]])
+    samples = np.array(["a", "b", "a"])
+
+    images, pixels, order = he_cnn.he_inputs(
+        coords, samples, {s: tmp_path / s for s in ("a", "b")}, "hires"
+    )
+
+    assert [img.shape for img in images] == [(16, 16, 3), (16, 16, 3)]
+    np.testing.assert_array_equal(np.asarray(pixels[0]), [[10, 15], [0, 3]])
+    np.testing.assert_array_equal(np.asarray(pixels[1]), [[2, 1]])
+    np.testing.assert_array_equal(order, [0, 2, 1])

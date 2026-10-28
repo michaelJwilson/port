@@ -28,7 +28,7 @@ from numpy.typing import NDArray
 from scipy.optimize import linear_sum_assignment
 from sklearn.metrics import adjusted_rand_score
 
-from port.sandbox.joint_he import he_prior as H
+from port.sandbox.joint_he import he_cnn as H
 from port.sandbox.joint_he import joint as J
 from port.sandbox.joint_he import joint_int as JI
 from port.sandbox.joint_he import study as S
@@ -175,7 +175,7 @@ def main() -> None:
         "log_alpha": jnp.log(1.0),
         "log_tau": jnp.log(200.0),
     }
-    st_t = J.adam_init(theta)
+    st_t = H.adam_init(theta)
 
     qs = jnp.full(
         (G, 2), 0.5
@@ -210,7 +210,7 @@ def main() -> None:
                 if a.free_omega
                 else jnp.zeros_like(g["omega"])
             )
-            theta, st_t = J.adam_step(theta, g, st_t, 0.05)
+            theta, st_t = H.adam_step(theta, g, st_t, 0.05)
         return theta, st_t, float(v), gamma, qs
 
     theta, st_t, v, gamma, qs = theta_steps(theta, st_t, r, qs, a.theta_warmup)

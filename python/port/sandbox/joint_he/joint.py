@@ -25,15 +25,13 @@ from jax.typing import ArrayLike
 from numpy.typing import NDArray
 
 from port.qa import jax_setup  # noqa: F401  (float64, before any array)
+from port.sandbox.joint_he.he_cnn import STRIDE, cnn
 
 Theta = dict[str, jax.Array]
 """Named parameters, each a `jax` array."""
 
-Layer = dict[str, jax.Array]
-"""One convolution's weights `w` (HWIO) and bias `b`."""
-
 Psi = dict[str, Any]
-"""The assignment's parameters: `cnn` (a list of `Layer`) and optionally `delta` (N, M)."""
+"""The assignment's parameters: `cnn` (a list of `he_cnn.Layer`) and optionally `delta` (N, M)."""
 
 
 # --- emissions ---------------------------------------------------------------------------------------------------------
@@ -165,61 +163,6 @@ def viterbi(e: ArrayLike, log_t: ArrayLike, starts: ArrayLike) -> NDArray[np.int
 
 
 # --- the H&E network ---------------------------------------------------------------------------------------------------
-
-
-STRIDE = 2
-"""The first layer's stride: the network runs at half the input's resolution (3 pixels per spot after it)."""
-
-
-def init_cnn(key: jax.Array, M: int, num_features: int = 12) -> list[Layer]:
-    """float32 weights: the network is the run's cost, and its logits need no float64."""
-    shapes = [
-        (4, 4, 3, num_features),
-        (3, 3, num_features, num_features),
-        (3, 3, num_features, num_features),
-        (1, 1, num_features, M),
-    ]
-    keys = jax.random.split(key, len(shapes))
-    params = []
-    for k, s in zip(keys, shapes, strict=True):
-        fan_in = s[0] * s[1] * s[2]
-        params.append(
-            {
-                "w": jax.random.normal(k, s, jnp.float32) * jnp.sqrt(2.0 / fan_in),
-                "b": jnp.zeros(s[-1], jnp.float32),
-            }
-        )
-    params[-1]["w"] = params[-1]["w"] * 0.1
-    return params
-
-
-DILATIONS = (1, 2, 4, 1)
-"""Each layer's dilation in `cnn`: a receptive field of 28 input pixels, ~4.7 spots at `study.DOWNSAMPLE`. (1, 1, 1, 1)
-gives 12 pixels, ~2 spots: narrow enough that a refit cannot learn a normal island inside tumour away (PR- #943)."""
-
-
-def cnn(
-    params: list[Layer], image: jax.Array, dilations: tuple[int, ...] = DILATIONS
-) -> jax.Array:
-    """(H, W, 3) -> (H / STRIDE, W / STRIDE, M) logits: a stride-2 4x4 layer, two 3x3 layers and a 1x1 head, each at
-    its `dilations` entry."""
-    x = image[None].astype(params[0]["w"].dtype)
-    for i, (layer, d) in enumerate(zip(params, dilations, strict=True)):
-        stride = (STRIDE, STRIDE) if i == 0 else (1, 1)
-        x = (
-            jax.lax.conv_general_dilated(
-                x,
-                layer["w"],
-                stride,
-                "SAME",
-                rhs_dilation=(d, d),
-                dimension_numbers=("NHWC", "HWIO", "NHWC"),
-            )
-            + layer["b"]
-        )
-        if i < len(params) - 1:
-            x = jax.nn.relu(x)
-    return x[0]
 
 
 def assignment(
@@ -367,36 +310,3 @@ def theta_value_and_grad(
         )
     grads["logit_t"] = g_t
     return value, grads
-
-
-# --- Adam --------------------------------------------------------------------------------------------------------------
-
-
-def adam_init(params: Any) -> dict[str, Any]:
-    """Adam's state for a pytree of parameters: zero moments, step 0."""
-    zeros = jax.tree_util.tree_map(jnp.zeros_like, params)
-    return {"m": zeros, "v": zeros, "i": 0}
-
-
-def adam_step(
-    params: Any,
-    grads: Any,
-    state: dict[str, Any],
-    lr: float,
-    b1: float = 0.9,
-    b2: float = 0.999,
-) -> tuple[Any, dict[str, Any]]:
-    """One ascent step (grads of the objective to maximize)."""
-    i = state["i"] + 1
-    m = jax.tree_util.tree_map(lambda m, g: b1 * m + (1 - b1) * g, state["m"], grads)
-    v = jax.tree_util.tree_map(
-        lambda v, g: b2 * v + (1 - b2) * g * g, state["v"], grads
-    )
-    upd = jax.tree_util.tree_map(
-        lambda m, v: lr * (m / (1 - b1**i)) / (jnp.sqrt(v / (1 - b2**i)) + 1e-8), m, v
-    )
-    return jax.tree_util.tree_map(lambda p, d: p + d, params, upd), {
-        "m": m,
-        "v": v,
-        "i": i,
-    }

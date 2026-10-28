@@ -33,6 +33,7 @@ from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.metrics import adjusted_rand_score
 
+from port.sandbox.joint_he import he_cnn
 from port.sandbox.joint_he import joint as J
 from port.sandbox.joint_he.joint import Psi, Theta
 
@@ -78,20 +79,6 @@ def dense(x: Any) -> NDArray[np.float64]:
     return np.asarray(a, dtype=np.float64)
 
 
-def he_tensor(image: NDArray[Any]) -> jax.Array:
-    """A hires H&E (H, W, 3 or 4) as the network reads it: averaged down `DOWNSAMPLE`-fold, in optical density,
-    standardized per channel (the stain's own linear space)."""
-    img = image[..., :3]
-    H, W = img.shape[0] // DOWNSAMPLE, img.shape[1] // DOWNSAMPLE
-    img = (
-        img[: H * DOWNSAMPLE, : W * DOWNSAMPLE]
-        .reshape(H, DOWNSAMPLE, W, DOWNSAMPLE, 3)
-        .mean(axis=(1, 3))
-    )
-    od = -np.log(np.clip(img, 1e-3, 1.0))
-    return jnp.asarray((od - od.mean(axis=(0, 1))) / (od.std(axis=(0, 1)) + 1e-6))
-
-
 def load(draw: Path, run_dir: Path) -> dict[str, Any]:
     """The run's counts, reordered to the network's spot order, with the H&E, spot graph and planted labels."""
     data = np.load(run_dir / "binned_data.npz", allow_pickle=True)
@@ -122,7 +109,9 @@ def load(draw: Path, run_dir: Path) -> dict[str, Any]:
             names=["barcode", "in_tissue", "row", "col", "px", "py"],
         )
         p = p[p["barcode"].isin(index)]
-        od = he_tensor(mpimg.imread(draw / sid / "spatial" / "tissue_hires_image.png"))
+        od = he_cnn.he_tensor(
+            mpimg.imread(draw / sid / "spatial" / "tissue_hires_image.png"), DOWNSAMPLE
+        )
         H, W = od.shape[:2]
         scale = 24 / DOWNSAMPLE
         px = np.stack(
@@ -295,7 +284,7 @@ def main() -> None:
     if a.arm == "constant":
         d["images"] = [jnp.zeros_like(img) for img in d["images"]]
     key = jax.random.PRNGKey(a.seed)
-    psi: Psi = {"cnn": J.init_cnn(key, M), "delta": jnp.zeros((N, M))}
+    psi: Psi = {"cnn": he_cnn.init_cnn(key, M), "delta": jnp.zeros((N, M))}
     use_delta = a.arm in ("cnn_delta", "free")
     if a.arm == "free":
         psi["cnn"] = jax.tree_util.tree_map(jnp.zeros_like, psi["cnn"])
@@ -312,12 +301,12 @@ def main() -> None:
         )
 
     warm_grad = jax.jit(jax.value_and_grad(warm_loss))
-    st = J.adam_init(psi)
+    st = he_cnn.adam_init(psi)
     for _ in range(300 if a.arm != "meanfield" else 0):
         v, g = warm_grad(psi)
         if a.arm == "free":
             g["cnn"] = jax.tree_util.tree_map(jnp.zeros_like, g["cnn"])
-        psi, st = J.adam_step(psi, g, st, 0.05 if a.arm == "free" else 0.01)
+        psi, st = he_cnn.adam_step(psi, g, st, 0.05 if a.arm == "free" else 0.01)
     tick("warm start")
     q0 = J.assignment(
         psi, d["images"], d["pixels"], 1.0, psi["delta"] if use_delta else None
@@ -335,10 +324,10 @@ def main() -> None:
         for _ in range(steps):
             vt, gt = J.theta_value_and_grad(theta, q, u, base, b, n, starts)
             gt["logit_t"] = jnp.zeros_like(gt["logit_t"])  # NB t is fixed (T_STAY)
-            theta, st_t = J.adam_step(theta, gt, st_t, a.theta_lr)
+            theta, st_t = he_cnn.adam_step(theta, gt, st_t, a.theta_lr)
         return theta, st_t, vt
 
-    st_t = J.adam_init(theta)
+    st_t = he_cnn.adam_init(theta)
     if a.arm == "meanfield":
         # NB no H&E in this arm: theta warms up on the data-only partition
         q0 = jax.nn.one_hot(jnp.asarray(init), M)
@@ -374,7 +363,7 @@ def main() -> None:
     q = q0 if a.arm != "meanfield" else jax.nn.one_hot(jnp.asarray(init), M)
     lab_grad = jax.jit(jax.value_and_grad(J.objective_labels), static_argnums=(11,))
     L_fn = J.spot_loglik
-    st_q = J.adam_init(psi)
+    st_q = he_cnn.adam_init(psi)
     for r in range(a.rounds):
         frac = r / max(a.rounds - 1, 1)
         # NB annealed: towards a one-hot assignment
@@ -404,7 +393,9 @@ def main() -> None:
             )
             if a.arm == "free":
                 g["cnn"] = jax.tree_util.tree_map(jnp.zeros_like, g["cnn"])
-            psi, st_q = J.adam_step(psi, g, st_q, 0.05 if a.arm == "free" else 0.01)
+            psi, st_q = he_cnn.adam_step(
+                psi, g, st_q, 0.05 if a.arm == "free" else 0.01
+            )
         if a.arm != "meanfield":
             tick("labels")
             q = J.assignment(
