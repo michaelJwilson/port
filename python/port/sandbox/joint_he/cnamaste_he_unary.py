@@ -2,12 +2,14 @@
 
 `install` rebinds `cnamaste.hmrf.pipeline_clone_assignment`, the label step `run_core_inference` calls each
 iteration. Before each call the CNN (`he_prior`) is fit by cross-entropy to the labels entering the step, and for that
-call only `hmrf.clone_field` returns cnamaste's field plus w log pi, so the alpha expansion, the merge and the
-step's log-likelihood all see the same energy:
+call only `hmrf.clone_field` returns cnamaste's field plus w log pi, so the alpha expansion and the step's
+log-likelihood see the energy
 
     E(l) = -sum_n [field_{n, l_n} + w log pi_{n, l_n}] - beta sum_{n~n'} 1[l_n = l_n']
 
-Everything else is cnamaste's: the pseudobulk fit, the solver, the merges, the integer decoding.
+Everything else is cnamaste's: the pseudobulk fit, the solver, the merges, the integer decoding. The merge within the
+step sees cnamaste's field alone (unless `in_merge`): merging is a decision about genotype, and with the unary in it
+clones of one genotype on slides of different stain were kept apart (PR- #943).
 
 pi is one network fit to every spot's current labels and read at every spot; what keeps it from echoing them back is
 its capacity, set by `num_features` (`joint.init_cnn`). log pi is tempered, log_softmax(log pi / T).
@@ -46,12 +48,13 @@ class HEUnary:
         steps_first: int = 300,
         steps_next: int = 60,
         seed: int = 0,
+        in_merge: bool = False,
     ) -> None:
         """`images` and `pixels` per slice, spots in the network's order; `order[i]` is run spot i's index there."""
         self.images, self.pixels, self.order = images, pixels, order
         self.weight, self.temperature = weight, temperature
         self.steps_first, self.steps_next, self.seed = steps_first, steps_next, seed
-        self.num_features = num_features
+        self.num_features, self.in_merge = num_features, in_merge
         self.state: tuple[int, Psi, dict[str, Any]] | None = None
         self.log: list[dict[str, Any]] = []
 
@@ -92,6 +95,7 @@ def install(unary: HEUnary) -> Callable[[], None]:
     import cnamaste.hmrf as hmrf  # noqa: PLR0402  (as scripts/capture_cnamaste.py; `from` misreads the vendored tree)
 
     original_step, original_field = hmrf.pipeline_clone_assignment, hmrf.clone_field
+    original_merge = hmrf.merge_clones
 
     def step(*args: Any, **kwargs: Any) -> Any:
         single_X, pred, prev = args[0], args[4], args[6]
@@ -102,11 +106,19 @@ def install(unary: HEUnary) -> Callable[[], None]:
         def field(*f_args: Any, **f_kwargs: Any) -> Any:
             return original_field(*f_args, **f_kwargs) + unary.weight * log_pi
 
+        def merge(single_llf: Any, *m_args: Any, **m_kwargs: Any) -> Any:
+            # NB a merge is a decision about genotype, which the slide cannot make: it sees cnamaste's field alone.
+            return original_merge(
+                single_llf - unary.weight * log_pi, *m_args, **m_kwargs
+            )
+
         hmrf.clone_field = field
+        if not unary.in_merge:
+            hmrf.merge_clones = merge
         try:
             return original_step(*args, **kwargs)
         finally:
-            hmrf.clone_field = original_field
+            hmrf.clone_field, hmrf.merge_clones = original_field, original_merge
 
     hmrf.pipeline_clone_assignment = step
 

@@ -1,7 +1,7 @@
 """`run_cnamaste` with the H&E unary in its label step (`cnamaste_he_unary`): the same arguments, plus the unary's.
 
     run_cnamaste_he <config> [-o key=value ...] [--he_weight W] [--he_temperature T]
-        [--he_prior_num_features F] [--he_seed S]
+        [--he_prior_num_features F] [--he_seed S] [--he_in_merge]
 
 `cnamaste.scripts.run_cnamaste.load_input_data` is wrapped to read the run's own spots, in the run's order: their
 coordinates and samples. Each sample's slide is `<spaceranger_dir>/spatial/tissue_hires_image.png`, at
@@ -77,6 +77,8 @@ def main() -> None:
     #    which fit the planted labels exactly on its training spots and reached ARI 0.762 on an unseen slice (PR- #943).
     ap.add_argument("--he_prior_num_features", type=int, default=4)
     ap.add_argument("--he_seed", type=int, default=0)
+    # NB with it, the merge within each label step sees the unary too; without (default), cnamaste's field alone.
+    ap.add_argument("--he_in_merge", action="store_true")
     a = ap.parse_args()
 
     from cnamaste.io import get_sample_sheet
@@ -99,6 +101,7 @@ def main() -> None:
             weight=a.he_weight, temperature=a.he_temperature,
             num_features=a.he_prior_num_features,
             seed=a.he_seed,
+            in_merge=a.he_in_merge,
         )  # fmt: skip
         install(unary)
         run.update(unary=unary, output_dir=Path(config.paths.output_dir))
@@ -112,6 +115,7 @@ def main() -> None:
         "temperature": a.he_temperature,
         "num_features": a.he_prior_num_features,
         "seed": a.he_seed,
+        "in_merge": a.he_in_merge,
         "steps": unary.log,
     }
     (run["output_dir"] / "he_unary.json").write_text(json.dumps(log, indent=1))
