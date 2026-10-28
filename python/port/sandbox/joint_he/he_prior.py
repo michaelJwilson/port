@@ -16,7 +16,7 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 import numpy as np
-from numpy.typing import ArrayLike
+from numpy.typing import ArrayLike, NDArray
 
 from port.sandbox.joint_he import joint as J
 from port.sandbox.joint_he.joint import Psi
@@ -86,3 +86,8 @@ def fit(
 def predict(psi: Psi, images: list[jax.Array], pixels: list[jax.Array]) -> jax.Array:
     """(N, M) pi: the prior's clone probabilities per spot."""
     return jnp.exp(log_prior(psi, images, pixels))
+
+
+def pixel_argmax(psi: Psi, images: list[jax.Array]) -> list[NDArray[np.int64]]:
+    """Per slice, the prior's most probable clone at every pixel of the network's output (input at stride `STRIDE`)."""
+    return [np.asarray(jnp.argmax(J.cnn(psi["cnn"], img), axis=-1)) for img in images]

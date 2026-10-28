@@ -317,6 +317,12 @@ def main() -> None:
     np.save(a.out.with_suffix(".labels.npy"), merged)
     np.save(a.out.with_suffix(".barcodes.npy"), d["barcodes"])
     np.save(a.out.with_suffix(".paths.npy"), paths)
+    if a.labels == "em":
+        # NB the H&E prior as trained: log pi per spot, and its argmax at every pixel of each slice.
+        arrays: dict[str, Any] = {"log_prior": np.asarray(lp)}
+        for k, arr in enumerate(H.pixel_argmax(psi, d["images"])):
+            arrays[f"pixel_{k}"] = arr
+        np.savez(a.out.with_suffix(".prior.npz"), **arrays)
     np.save(a.out.with_suffix(".phase.npy"), np.asarray(qs))
     a.out.write_text(json.dumps(log, indent=1, default=float))
     print(json.dumps(log["final"], default=float))
