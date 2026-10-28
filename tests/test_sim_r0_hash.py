@@ -24,7 +24,7 @@ def _stated(path: Path) -> object:
 @pytest.mark.infra
 def test_every_dev_tree_manifest_states_its_own_r0_hash() -> None:
     """Each manifest states its own 8-hex `r0_hash`; `R0_HASH` is the frozen baseline's (#619)."""
-    assert len(HASHED) == 11
+    assert len(HASHED) == 12
     for path in HASHED:
         stated = _stated(path)
         assert isinstance(stated, str), path
