@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
 
-from port.sandbox.joint_he.realistic_he import PIXELS_PER_SPOT, realistic_he
+from port.sandbox.joint_he.realistic_he import GRADE_STEP, PIXELS_PER_SPOT, realistic_he
 
 
 def main() -> None:
@@ -30,6 +30,9 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("draw", type=Path)
     ap.add_argument("out", type=Path)
+    # NB tumour subclones differ by nuclear grade per step; 0 draws every tumour clone at one grade, so the H&E
+    #    separates tumour from normal and nothing more.
+    ap.add_argument("--grade_step", type=float, default=GRADE_STEP)
     args = ap.parse_args()
     draw, out = args.draw, args.out
     if out.exists():
@@ -59,7 +62,9 @@ def main() -> None:
         lattice = (int(coords[:, 0].max()) + 1, int(coords[:, 1].max()) + 1)
         _, nearest = cKDTree(coords).query(np.indices(lattice).reshape(2, -1).T)
         t0 = time.perf_counter()
-        image, clone = realistic_he(labels[nearest], lattice, seed=k)
+        image, clone = realistic_he(
+            labels[nearest], lattice, seed=k, grade_step=args.grade_step
+        )
         mpimg.imsave(spatial / "tissue_hires_image.png", image)
         np.save(spatial / "planted_clone_per_pixel.npy", clone.astype(np.int8))
         scalefactors = {
