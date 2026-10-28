@@ -261,6 +261,13 @@ module = "cnaster.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+# `cnamaste/` is its own project, built separately and not installed in this
+# environment (T- #836); `port.sandbox.joint_he.combined_int` imports it only
+# to draw its page.
+module = "cnamaste.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = "numba.*"
 ignore_missing_imports = true
 
