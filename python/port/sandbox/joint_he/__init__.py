@@ -20,6 +20,8 @@ own emissions, never through a pseudobulk of their counts.
 - `study_int`: EM on that bound, scored by clone ARI and integer copies;
   `--labels truth` holds the clones at the planted partition.
 - `combined_int`: its result on `cnamaste`'s combined page.
+- `cnamaste_he_unary`, `run_cnamaste_he`: `cnamaste` itself with the H&E CNN as a
+  further unary in its label step, refit to its labels each iteration.
 
 Departure from `cnamaste`: per-spot rather than pseudobulk emission, so a
 deviation a clone's spots share at a segment is counted once per spot; global
