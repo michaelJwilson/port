@@ -4,8 +4,8 @@ Inputs are the baseline run's own preprocessing (binned_data.npz: per-spot count
 phased B counts, the contig lengths), so the two differ only in inference. Scored by clone ARI against the planted
 clones, and by agreement with the baseline's labels.
 
-Ticket: pending -- opened with the pull request that adds `port.sandbox.joint_he`.
-Measurement: none yet; measured in that pull request.
+Ticket: PR- #943.
+Measurement: PR- #943.
 Exit: with the package (`port.sandbox.joint_he`).
 
 Usage: python -m port.sandbox.joint_he.study <draw> <baseline run dir> <out json>

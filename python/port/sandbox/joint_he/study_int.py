@@ -4,8 +4,8 @@ EM on L(r, theta, psi): per round, theta by Adam (gradient by the Fisher identit
 responsibilities r by damped mean-field sweeps (prior log pi + expected log-likelihood + Potts), then the CNN psi by
 cross-entropy towards r. Scored by clone ARI and by integer copies against the planted profile.
 
-Ticket: pending -- opened with the pull request that adds `port.sandbox.joint_he`.
-Measurement: none yet; measured in that pull request.
+Ticket: PR- #943.
+Measurement: PR- #943.
 Exit: with the package (`port.sandbox.joint_he`).
 
 Usage: python -m port.sandbox.joint_he.study_int <draw> <baseline run dir> <out json>

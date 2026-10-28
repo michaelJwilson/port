@@ -24,5 +24,5 @@ rather than per-clone shift and purity; no clone held at (1, 1).
 
 Exit: promoted if, across seeds and at stress sizes, it matches `cnamaste`'s
 clone ARI and integer copies on planted truth; removed otherwise. Measured in
-the pull request that adds it.
+PR- #943.
 """

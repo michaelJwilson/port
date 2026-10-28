@@ -2,8 +2,8 @@
 copy path c_mg over (A, B) states, and one phase path s_g, global to every clone, says which haplotype carries A.
 Every spot's counts enter individually; the emission given (c, s) is one distribution for all spots and clones.
 
-Ticket: pending -- opened with the pull request that adds `port.sandbox.joint_he`.
-Measurement: none yet; measured in that pull request.
+Ticket: PR- #943.
+Measurement: PR- #943.
 Exit: with the package (`port.sandbox.joint_he`).
 
     p(x_ng | c, s) = NB(u_ng | base_ng mu(c; rho) e^{omega}, alpha) BB(b_ng | n_ng, p(c, s; rho), tau)

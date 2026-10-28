@@ -12,8 +12,8 @@ What it adds over mock_he, whose texture is a function of the clone alone:
 
 The stain is Beer--Lambert with Macenko's reference optical densities, as in mock_he.
 
-Ticket: pending -- opened with the pull request that adds `port.sandbox.joint_he`.
-Measurement: none yet; measured in that pull request.
+Ticket: PR- #943.
+Measurement: PR- #943.
 Exit: with the package (`port.sandbox.joint_he`).
 """
 

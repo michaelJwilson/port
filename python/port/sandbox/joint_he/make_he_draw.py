@@ -1,8 +1,8 @@
 """Copy a port draw and write a simulated H&E (realistic_he) into each slice, as Space Ranger lays it out:
 spatial/tissue_hires_image.png and spatial/scalefactors_json.json (tissue_hires_scalef = pixels per position unit).
 
-Ticket: pending -- opened with the pull request that adds `port.sandbox.joint_he`.
-Measurement: none yet; measured in that pull request.
+Ticket: PR- #943.
+Measurement: PR- #943.
 Exit: with the package (`port.sandbox.joint_he`).
 
 Usage: python -m port.sandbox.joint_he.make_he_draw <draw r0> <out dir>

@@ -1,8 +1,8 @@
 """Joint differentiable inference (he_joint_inference.tex): copy-state chains per clone, per-spot emissions, an
 H&E-conditioned clone assignment from a small CNN, and the Potts prior in expectation. No Baum--Welch, no pseudobulk.
 
-Ticket: pending -- opened with the pull request that adds `port.sandbox.joint_he`.
-Measurement: none yet; measured in that pull request.
+Ticket: PR- #943.
+Measurement: PR- #943.
 Exit: with the package (`port.sandbox.joint_he`).
 
     J(theta, t, psi) = sum_m log F_m(e_m(q, theta); t)  -  beta sum_{n~n'} (1 - q_n . q_n')  +  eta sum_n H(q_n)  -  omega |psi|^2

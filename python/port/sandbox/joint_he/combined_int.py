@@ -3,8 +3,8 @@
 The copy pairs are the model's own: each clone's Viterbi path over (A, B), no rounding. A state's line on the tracks
 is its emission mean at the fitted global (omega, rho): mu(a, b) e^omega and p(a, b, 0).
 
-Ticket: pending -- opened with the pull request that adds `port.sandbox.joint_he`.
-Measurement: none yet; measured in that pull request.
+Ticket: PR- #943.
+Measurement: PR- #943.
 Exit: with the package (`port.sandbox.joint_he`).
 
 Usage: python -m port.sandbox.joint_he.combined_int <draw> <baseline run dir> <arm json> <out.png>
