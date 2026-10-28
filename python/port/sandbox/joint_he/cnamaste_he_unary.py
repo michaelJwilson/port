@@ -12,7 +12,8 @@ step sees cnamaste's field alone (unless `in_merge`): merging is a decision abou
 clones of one genotype on slides of different stain were kept apart (PR- #943).
 
 pi is one network fit to every spot's current labels and read at every spot; what keeps it from echoing them back is
-its capacity, set by `num_features` (`joint.init_cnn`). log pi is tempered, log_softmax(log pi / T).
+its capacity, set by `num_features` (`joint.init_cnn`), and
+its receptive field, set by `dilations` (`joint.DILATIONS`). log pi is tempered, log_softmax(log pi / T).
 
 Ticket: PR- #943.
 Measurement: PR- #943.
@@ -30,6 +31,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from port.sandbox.joint_he import he_prior as H
+from port.sandbox.joint_he import joint as J
 from port.sandbox.joint_he.joint import Psi
 
 
@@ -45,6 +47,7 @@ class HEUnary:
         weight: float,
         temperature: float = 1.0,
         num_features: int = 12,
+        dilations: tuple[int, ...] = J.DILATIONS,
         steps_first: int = 300,
         steps_next: int = 60,
         seed: int = 0,
@@ -55,6 +58,7 @@ class HEUnary:
         self.weight, self.temperature = weight, temperature
         self.steps_first, self.steps_next, self.seed = steps_first, steps_next, seed
         self.num_features, self.in_merge = num_features, in_merge
+        self.dilations = dilations
         self.state: tuple[int, Psi, dict[str, Any]] | None = None
         self.log: list[dict[str, Any]] = []
 
@@ -69,10 +73,10 @@ class HEUnary:
         steps = self.steps_next if psi is not None else self.steps_first
         psi, st, _ = H.fit(
             self.images, self.pixels, labels, M,
-            steps=steps, seed=self.seed, psi=psi, state=st, num_features=self.num_features,
+            steps=steps, seed=self.seed, psi=psi, state=st, num_features=self.num_features, dilations=self.dilations,
         )  # fmt: skip
         self.state = (M, psi, st)
-        lp = np.asarray(H.log_prior(psi, self.images, self.pixels))
+        lp = np.asarray(H.log_prior(psi, self.images, self.pixels, self.dilations))
         tempered = np.asarray(
             jax.nn.log_softmax(jnp.asarray(lp) / self.temperature, axis=1)
         )

@@ -1,7 +1,7 @@
 """`run_cnamaste` with the H&E unary in its label step (`cnamaste_he_unary`): the same arguments, plus the unary's.
 
     run_cnamaste_he <config> [-o key=value ...] [--he_weight W] [--he_temperature T]
-        [--he_prior_num_features F] [--he_seed S] [--he_in_merge]
+        [--he_prior_num_features F] [--he_prior_dilations D,D,D,D] [--he_seed S] [--he_in_merge]
         [--he_stain whiten|standardize]
 
 `cnamaste.scripts.run_cnamaste.load_input_data` is wrapped to read the run's own spots, in the run's order: their
@@ -29,6 +29,7 @@ import matplotlib.image as mpimg
 import numpy as np
 
 from port.sandbox.joint_he import he_prior as H
+from port.sandbox.joint_he import joint as J
 from port.sandbox.joint_he import study as S
 from port.sandbox.joint_he.cnamaste_he_unary import HEUnary, install
 
@@ -97,6 +98,14 @@ def main() -> None:
     # NB the H&E CNN's hidden channels per layer, its capacity: 4 is 512 parameters for 4 clones, against 3,256 at 12,
     #    which fit the planted labels exactly on its training spots and reached ARI 0.762 on an unseen slice (PR- #943).
     ap.add_argument("--he_prior_num_features", type=int, default=4)
+    # NB each layer's dilation, the receptive field (`joint.DILATIONS`). At 1,1,1,1 (~2 spots) a network refit to labels
+    #    with normal islands of ~7 spots relabelled tumour still put P(normal) 0.76-0.81 on them, against 0.01 at the
+    #    default (~4.7 spots); its ARI against the planted labels fell from 0.959 to 0.784-0.804 (PR- #943).
+    ap.add_argument(
+        "--he_prior_dilations",
+        type=lambda v: tuple(int(x) for x in v.split(",")),
+        default=J.DILATIONS,
+    )
     ap.add_argument("--he_seed", type=int, default=0)
     # NB with it, the merge within each label step sees the unary too; without (default), cnamaste's field alone.
     ap.add_argument("--he_in_merge", action="store_true")
@@ -124,6 +133,7 @@ def main() -> None:
             images, pixels, order,
             weight=a.he_weight, temperature=a.he_temperature,
             num_features=a.he_prior_num_features,
+            dilations=a.he_prior_dilations,
             seed=a.he_seed,
             in_merge=a.he_in_merge,
         )  # fmt: skip
@@ -143,6 +153,7 @@ def main() -> None:
         "weight": a.he_weight,
         "temperature": a.he_temperature,
         "num_features": a.he_prior_num_features,
+        "dilations": list(a.he_prior_dilations),
         "seed": a.he_seed,
         "in_merge": a.he_in_merge,
         "stain": a.he_stain,
@@ -156,14 +167,14 @@ def main() -> None:
         arrays: dict[str, Any] = {
             "barcodes": run["barcodes"],
             "samples": run["samples"],
-            "log_prior": np.asarray(H.log_prior(psi, unary.images, unary.pixels))[
-                unary.order
-            ],
+            "log_prior": np.asarray(
+                H.log_prior(psi, unary.images, unary.pixels, unary.dilations)
+            )[unary.order],
         }
         names = list(dict.fromkeys(run["samples"]))
         argmax, entropy = (
-            H.pixel_argmax(psi, unary.images),
-            H.pixel_entropy(psi, unary.images),
+            H.pixel_argmax(psi, unary.images, unary.dilations),
+            H.pixel_entropy(psi, unary.images, unary.dilations),
         )
         for sid, arr, ent in zip(names, argmax, entropy, strict=True):
             arrays[f"pixel_{sid}"], arrays[f"entropy_{sid}"] = arr, ent

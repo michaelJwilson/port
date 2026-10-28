@@ -193,11 +193,18 @@ def init_cnn(key: jax.Array, M: int, num_features: int = 12) -> list[Layer]:
     return params
 
 
-def cnn(params: list[Layer], image: jax.Array) -> jax.Array:
-    """(H, W, 3) -> (H / STRIDE, W / STRIDE, M) logits; a stride-2 4x4 layer, then dilations 2, 4 at 3x3 and a 1x1 head
-    give a receptive field of ~2 spots."""
+DILATIONS = (1, 2, 4, 1)
+"""Each layer's dilation in `cnn`: a receptive field of 28 input pixels, ~4.7 spots at `study.DOWNSAMPLE`. (1, 1, 1, 1)
+gives 12 pixels, ~2 spots: narrow enough that a refit cannot learn a normal island inside tumour away (PR- #943)."""
+
+
+def cnn(
+    params: list[Layer], image: jax.Array, dilations: tuple[int, ...] = DILATIONS
+) -> jax.Array:
+    """(H, W, 3) -> (H / STRIDE, W / STRIDE, M) logits: a stride-2 4x4 layer, two 3x3 layers and a 1x1 head, each at
+    its `dilations` entry."""
     x = image[None].astype(params[0]["w"].dtype)
-    for i, (layer, d) in enumerate(zip(params, (1, 2, 4, 1), strict=True)):
+    for i, (layer, d) in enumerate(zip(params, dilations, strict=True)):
         stride = (STRIDE, STRIDE) if i == 0 else (1, 1)
         x = (
             jax.lax.conv_general_dilated(
