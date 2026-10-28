@@ -249,38 +249,56 @@ def _space_ranger(spatial: Path, scalefactors: dict[str, float], side: int) -> N
 
 @pytest.mark.oracle
 def test_slide_resolution_against_space_ranger_scalefactors(tmp_path: Path) -> None:
-    """`he_cnn.downsample` against 10x's Visium HD scale factors, worked by hand.
+    """`he_cnn.rescale` against 10x's Visium HD scale factors, worked by hand.
 
     microns_per_pixel 0.2737061758251425 over tissue_hires_scalef 0.071874365 is
-    3.80812 um per hires pixel, so 4-fold (15.23 um) is nearest 16 um; over the
-    lowres 0.0071874363, 38.0812 um, already coarser, so 1-fold. The simulated
-    slides (100 um per position unit, 24 hires pixels per unit): 4.167 um and
-    4-fold, the 16.7 um the PR- #943 runs read. Fails if the image's um per
-    pixel is not microns_per_pixel over its scale factor, or if the factor is
-    not the nearest integer, at least 1.
+    3.80812 um per hires pixel; over the lowres 0.0071874363, 38.0812 um. With
+    bin_size_um 16 the input pixel is 8 um, half a bin: hires averaged 2-fold
+    (7.62 um), lowres upsampled 5-fold (7.62 um). Without it, Visium's 16 um:
+    hires 4-fold. The simulated Visium slides (100 um per position unit, 24 hires
+    pixels per unit): 4.16667 um, 4-fold, the 16.7 um the PR- #943 runs read; the
+    simulated 16 um bins (4 hires pixels per bin): 4 um, 2-fold, and the lowres
+    40 um, 5-fold up. Fails if the image's um per pixel is not microns_per_pixel
+    over its scale factor, if the input pixel ignores bin_size_um, or if the
+    factor is not the nearest integer either way.
     """
     hd = {
         "microns_per_pixel": 0.2737061758251425,
         "tissue_hires_scalef": 0.071874365,
         "tissue_lowres_scalef": 0.0071874363,
+        "bin_size_um": 16.0,
     }
+    visium = {key: value for key, value in hd.items() if key != "bin_size_um"}
     sim = {
         "microns_per_pixel": 100.0,
         "tissue_hires_scalef": 24.0,
         "tissue_lowres_scalef": 2.4,
     }
-    _space_ranger(tmp_path / "hd", hd, 8)
-    _space_ranger(tmp_path / "sim", sim, 8)
-
-    for name, res, microns, k in (
-        ("hd", "hires", 3.80812, 4),
-        ("hd", "lowres", 38.0812, 1),
-        ("sim", "hires", 4.16667, 4),
-        ("sim", "lowres", 41.6667, 1),
+    sim_hd = {
+        "microns_per_pixel": 16.0,
+        "tissue_hires_scalef": 4.0,
+        "tissue_lowres_scalef": 0.4,
+        "bin_size_um": 16.0,
+    }
+    for name, scalefactors in (
+        ("hd", hd),
+        ("visium", visium),
+        ("sim", sim),
+        ("sim_hd", sim_hd),
     ):
-        found, factor = he_cnn.downsample(tmp_path / name, res)
+        _space_ranger(tmp_path / name, scalefactors, 8)
+
+    for name, res, microns, factor in (
+        ("hd", "hires", 3.80812, 1 / 2),
+        ("hd", "lowres", 38.0812, 5),
+        ("visium", "hires", 3.80812, 1 / 4),
+        ("sim", "hires", 4.16667, 1 / 4),
+        ("sim_hd", "hires", 4.0, 1 / 2),
+        ("sim_hd", "lowres", 40.0, 5),
+    ):
+        found, scale = he_cnn.rescale(tmp_path / name, res)
         assert abs(found - microns) <= 1e-5 * microns, (name, res)
-        assert factor == k, (name, res)
+        assert scale == factor, (name, res)
 
 
 @pytest.mark.oracle
@@ -312,3 +330,32 @@ def test_he_inputs_places_a_bin_at_its_image_pixel(tmp_path: Path) -> None:
     np.testing.assert_array_equal(np.asarray(pixels[0]), [[10, 15], [0, 3]])
     np.testing.assert_array_equal(np.asarray(pixels[1]), [[2, 1]])
     np.testing.assert_array_equal(order, [0, 2, 1])
+
+
+@pytest.mark.oracle
+def test_visium_hd_bins_take_one_network_output_each(tmp_path: Path) -> None:
+    """On 16 um bins the network's output grid is the bin array, from the lowres image upsampled.
+
+    Simulated layout: a bin per position unit, 16 um, a lowres image at 0.4
+    pixels per bin (40 um), 8 pixels a side, so 20 bins. Upsampled 5-fold to
+    the 8 um input, the image is 40 pixels a side; bin (x, y) sits at input
+    pixel (row 2y, column 2x), which the stride-2 output reads as (y, x). Fails
+    if the upsampled image is not 40 pixels, or if any two of the 20 x 20 bins
+    share an output pixel.
+    """
+    scalefactors = {
+        "microns_per_pixel": 16.0,
+        "tissue_hires_scalef": 4.0,
+        "tissue_lowres_scalef": 0.4,
+        "bin_size_um": 16.0,
+    }
+    _space_ranger(tmp_path / "a" / "spatial", scalefactors, 8)
+    xy = np.stack(np.meshgrid(np.arange(20.0), np.arange(20.0)), -1).reshape(-1, 2)
+
+    images, pixels, _ = he_cnn.he_inputs(
+        xy, np.full(len(xy), "a"), {"a": tmp_path / "a"}, "lowres"
+    )
+
+    assert images[0].shape == (40, 40, 3)
+    out = np.asarray(pixels[0]) // he_cnn.STRIDE
+    np.testing.assert_array_equal(out, xy[:, ::-1].astype(int))

@@ -5,8 +5,9 @@ soft responsibilities. The network sees only the image: what it can express is w
 what makes it a prior rather than a classifier of the counts.
 
 A slide is read as Space Ranger lays it out (`slide`): `spatial/tissue_<resolution>_image.png`, its
-`tissue_<resolution>_scalef` and `microns_per_pixel`, averaged down to ~`INPUT_MICRONS` per pixel, in optical density,
-ZCA-whitened. A spot at (x, y), Space Ranger's full-resolution pixels (Visium HD's `tissue_positions.parquet`, as
+`tissue_<resolution>_scalef` and `microns_per_pixel`, resampled by an integer factor to the input pixel `input_microns`
+states, in optical density, ZCA-whitened. On Visium HD (`bin_size_um` stated) that pixel is half a bin, so the
+network's output, at `STRIDE`, is one pixel per bin: a labelling of the bin array. A spot at (x, y), Space Ranger's full-resolution pixels (Visium HD's `tissue_positions.parquet`, as
 `cnamaste.io.get_spatial_positions` reads it) or the simulator's position units, sits at image row y s, column x s.
 
 Ticket: PR- #943.
@@ -24,6 +25,7 @@ import jax
 import jax.numpy as jnp
 import matplotlib.image as mpimg
 import numpy as np
+import scipy.ndimage as ndi
 from numpy.typing import ArrayLike, NDArray
 
 from port.qa import jax_setup  # noqa: F401  (float64, before any array)
@@ -38,7 +40,7 @@ STRIDE = 2
 """The first layer's stride: the network's output is at half the input's resolution."""
 
 DILATIONS = (1, 2, 4, 1)
-"""Each layer's dilation: a receptive field of 28 input pixels, ~450 um at `INPUT_MICRONS`."""
+"""Each layer's dilation: a receptive field of 28 input pixels, ~450 um at `INPUT_MICRONS`, ~220 um on 16 um bins."""
 
 WEIGHT_DECAY = 1e-3
 """nu: the network's weight decay, as the studies have used it."""
@@ -47,8 +49,8 @@ LEARNING_RATE = 0.01
 """Adam's step on the network, as the studies have used it."""
 
 INPUT_MICRONS = 16.0
-"""The network's input pixel, in um: a slide is averaged down by the integer factor that comes closest. The simulated
-slides' hires image (4.17 um per pixel) read 4-fold, 16.7 um, gave clone ARI 0.883 on one slide (PR- #943)."""
+"""The network's input pixel, in um, on a Visium (spot) slide. The simulated slides' hires image (4.17 um per pixel)
+read 4-fold, 16.7 um, gave clone ARI 0.883 on one slide (PR- #943)."""
 
 RESOLUTIONS = ("hires", "lowres")
 """Space Ranger's two downsampled images; a run names one in its configuration (`he.resolution`)."""
@@ -234,9 +236,19 @@ def whiten(od: Any) -> jax.Array:
     return jnp.asarray((flat @ zca).reshape(np.shape(od)).astype(np.float32))
 
 
-def downsample(spatial: Path, resolution: str) -> tuple[float, int]:
-    """The slide image's um per pixel at `resolution`, and the integer factor that brings it closest to
-    `INPUT_MICRONS`, from `spatial/scalefactors_json.json`."""
+def input_microns(scalefactors: dict[str, float]) -> float:
+    """The network's input pixel in um: half a Visium HD bin (`bin_size_um`), so its output is one pixel per bin;
+    else `INPUT_MICRONS`."""
+    return (
+        scalefactors["bin_size_um"] / STRIDE
+        if "bin_size_um" in scalefactors
+        else INPUT_MICRONS
+    )
+
+
+def rescale(spatial: Path, resolution: str) -> tuple[float, float]:
+    """The slide image's um per pixel at `resolution`, and the network's input pixels per image pixel: 1 / k for the
+    integer k that brings it closest to `input_microns`, or the integer u that does where the image is coarser."""
     if resolution not in RESOLUTIONS:
         msg = f"he.resolution {resolution!r}: one of {RESOLUTIONS}"
         raise ValueError(msg)
@@ -247,15 +259,22 @@ def downsample(spatial: Path, resolution: str) -> tuple[float, int]:
     microns = (
         scalefactors["microns_per_pixel"] / scalefactors[f"tissue_{resolution}_scalef"]
     )
-    return float(microns), max(1, round(INPUT_MICRONS / microns))
+    target = input_microns(scalefactors)
+    if microns > target:
+        return float(microns), float(round(microns / target))
+    return float(microns), 1.0 / max(1, round(target / microns))
 
 
 def slide(spatial: Path, resolution: str) -> tuple[jax.Array, float]:
-    """The network's input from `spatial`, whitened, and its pixels per full-resolution pixel."""
+    """The network's input from `spatial`, whitened, and its pixels per full-resolution pixel. An image coarser than
+    the input pixel is upsampled bilinearly: one output per bin, with no detail the image does not carry."""
     scalefactors = json.loads((spatial / "scalefactors_json.json").read_text())
-    _, k = downsample(spatial, resolution)
-    image = mpimg.imread(spatial / f"tissue_{resolution}_image.png")
-    return whiten(he_tensor(image, k)), scalefactors[f"tissue_{resolution}_scalef"] / k
+    _, factor = rescale(spatial, resolution)
+    image = mpimg.imread(spatial / f"tissue_{resolution}_image.png")[..., :3]
+    if factor > 1:
+        image = ndi.zoom(image, (factor, factor, 1), order=1)
+    od = he_tensor(image, max(1, round(1 / factor)))
+    return whiten(od), scalefactors[f"tissue_{resolution}_scalef"] * factor
 
 
 def he_inputs(

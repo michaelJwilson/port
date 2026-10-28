@@ -1,8 +1,8 @@
 """Copy a port draw and write a simulated H&E (realistic_he) into each slice, as Space Ranger lays it out:
 spatial/tissue_hires_image.png, spatial/tissue_lowres_image.png (the hires averaged `LOWRES`-fold) and
 spatial/scalefactors_json.json, whose full-resolution pixel is the draw's position unit: tissue_<res>_scalef is image
-pixels per unit, and microns_per_pixel is `--microns_per_unit`, 100 for Visium's spot pitch, 16 for Visium HD's 16 um
-bins. Nuclei keep their size in um: the hires image is drawn at the integer pixels per unit nearest
+pixels per unit, and microns_per_pixel is 100, Visium's spot pitch, or `--bin_size_um` for Visium HD's square bins, which is
+then written as bin_size_um too. Nuclei keep their size in um: the hires image is drawn at the integer pixels per unit nearest
 `HIRES_MICRONS` um per pixel.
 
 Ticket: PR- #943.
@@ -43,10 +43,12 @@ def main() -> None:
     # NB tumour subclones differ by nuclear grade per step; 0 draws every tumour clone at one grade, so the H&E
     #    separates tumour from normal and nothing more.
     ap.add_argument("--grade_step", type=float, default=GRADE_STEP)
-    ap.add_argument("--microns_per_unit", type=float, default=100.0)
+    # NB a Visium HD draw (a square array): its position unit is a bin of this many um.
+    ap.add_argument("--bin_size_um", type=float, default=None)
     args = ap.parse_args()
     draw, out = args.draw, args.out
-    s = max(1, round(args.microns_per_unit / HIRES_MICRONS))
+    microns_per_unit = 100.0 if args.bin_size_um is None else args.bin_size_um
+    s = max(1, round(microns_per_unit / HIRES_MICRONS))
     if out.exists():
         shutil.rmtree(out)
     shutil.copytree(draw, out)
@@ -89,8 +91,10 @@ def main() -> None:
         scalefactors = {
             "tissue_hires_scalef": float(s),
             "tissue_lowres_scalef": s / LOWRES,
-            "microns_per_pixel": args.microns_per_unit,
+            "microns_per_pixel": microns_per_unit,
         }
+        if args.bin_size_um is not None:
+            scalefactors["bin_size_um"] = args.bin_size_um
         (spatial / "scalefactors_json.json").write_text(json.dumps(scalefactors))
         at = clone[
             np.clip(pos["col"].to_numpy() * s, 0, clone.shape[0] - 1),
@@ -99,7 +103,7 @@ def main() -> None:
         report[sid] = {
             "spots": len(pos),
             "image": list(image.shape),
-            "hires_microns_per_pixel": args.microns_per_unit / s,
+            "hires_microns_per_pixel": microns_per_unit / s,
             "seconds": round(time.perf_counter() - t0, 1),
             "spot_pixel_is_planted_clone": round(float(np.mean(at == labels)), 4),
         }

@@ -171,7 +171,7 @@ def main() -> None:
             weight=a.he_weight, num_features=a.he_prior_num_features, seed=a.he_seed,
         )  # fmt: skip
         install(unary)
-        microns, k = H.downsample(dirs[str(samples[0])] / "spatial", resolution)
+        microns, factor = H.rescale(dirs[str(samples[0])] / "spatial", resolution)
         run.update(
             unary=unary,
             output_dir=Path(config.paths.output_dir),
@@ -180,7 +180,7 @@ def main() -> None:
             slide={
                 "resolution": resolution,
                 "microns_per_image_pixel": microns,
-                "downsample": k,
+                "input_per_image_pixel": factor,
             },
         )
         return out
