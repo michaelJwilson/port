@@ -171,13 +171,13 @@ STRIDE = 2
 """The first layer's stride: the network runs at half the input's resolution (3 pixels per spot after it)."""
 
 
-def init_cnn(key: jax.Array, M: int, width: int = 12) -> list[Layer]:
+def init_cnn(key: jax.Array, M: int, num_features: int = 12) -> list[Layer]:
     """float32 weights: the network is the run's cost, and its logits need no float64."""
     shapes = [
-        (4, 4, 3, width),
-        (3, 3, width, width),
-        (3, 3, width, width),
-        (1, 1, width, M),
+        (4, 4, 3, num_features),
+        (3, 3, num_features, num_features),
+        (3, 3, num_features, num_features),
+        (1, 1, num_features, M),
     ]
     keys = jax.random.split(key, len(shapes))
     params = []

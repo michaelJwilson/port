@@ -66,13 +66,15 @@ def fit(
     seed: int = 0,
     psi: Psi | None = None,
     state: dict[str, Any] | None = None,
+    num_features: int = 12,
 ) -> tuple[Psi, dict[str, Any], float]:
     """Fit the network to `labels` by cross-entropy: `steps` Adam steps from `psi` (a fresh network at `seed` if None).
 
-    Returns the network, Adam's state (to continue from) and the final objective, sum t log pi - nu |psi|^2.
+    `num_features` is a fresh network's hidden channels per layer: its capacity (`joint.init_cnn`). Returns the
+    network, Adam's state (to continue from) and the final objective, sum t log pi - nu |psi|^2.
     """
     if psi is None:
-        psi = {"cnn": J.init_cnn(jax.random.PRNGKey(seed), M)}
+        psi = {"cnn": J.init_cnn(jax.random.PRNGKey(seed), M, num_features)}
     if state is None:
         state = J.adam_init(psi)
     target = targets(labels, M)

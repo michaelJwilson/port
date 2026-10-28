@@ -1,6 +1,7 @@
 """`run_cnamaste` with the H&E unary in its label step (`cnamaste_he_unary`): the same arguments, plus the unary's.
 
-    run_cnamaste_he <config> [-o key=value ...] [--he_weight W] [--he_temperature T] [--he_block B]
+    run_cnamaste_he <config> [-o key=value ...] [--he_weight W] [--he_temperature T]
+        [--he_prior_num_features F]
 
 `cnamaste.scripts.run_cnamaste.load_input_data` is wrapped to read the run's own spots, in the run's order: their
 coordinates and samples. Each sample's slide is `<spaceranger_dir>/spatial/tissue_hires_image.png`, at
@@ -23,7 +24,6 @@ from typing import Any
 import jax.numpy as jnp
 import matplotlib.image as mpimg
 import numpy as np
-from scipy.spatial import cKDTree
 
 from port.sandbox.joint_he import study as S
 from port.sandbox.joint_he.cnamaste_he_unary import HEUnary, install
@@ -31,11 +31,11 @@ from port.sandbox.joint_he.cnamaste_he_unary import HEUnary, install
 
 def he_inputs(
     coords: Any, samples: Any, spaceranger_dirs: dict[str, Path]
-) -> tuple[list[Any], list[Any], Any, Any]:
-    """The slides and each spot's pixel, sample by sample; `coords` in lattice-block units; the run-to-network order.
+) -> tuple[list[Any], list[Any], Any]:
+    """The slides and each spot's pixel, sample by sample, and the run-to-network order.
 
-    Returns (images, pixels, block coordinates, order), with `order[i]` run spot i's index in the network's order
-    (spots grouped by sample, in run order within a sample).
+    Returns (images, pixels, order), with `order[i]` run spot i's index in the network's order (spots grouped by
+    sample, in run order within a sample).
     """
     coords, samples = np.asarray(coords, dtype=float), np.asarray(samples).astype(str)
     images, pixels, by_sample = [], [], []
@@ -61,9 +61,7 @@ def he_inputs(
     network = np.concatenate(by_sample)
     order = np.empty(len(network), dtype=np.int64)
     order[network] = np.arange(len(network))
-    # NB blocks in units of the spot pitch, the median nearest-neighbour distance, so `--he_block` counts spots.
-    pitch = float(np.median(cKDTree(coords).query(coords, k=2)[0][:, 1]))
-    return images, pixels, coords[network] / pitch, order
+    return images, pixels, order
 
 
 def main() -> None:
@@ -75,7 +73,9 @@ def main() -> None:
     ap.add_argument("--over_rides", "-o", action="append", default=[])
     ap.add_argument("--he_weight", type=float, default=1.0)
     ap.add_argument("--he_temperature", type=float, default=1.0)
-    ap.add_argument("--he_block", type=int, default=10)
+    # NB the H&E CNN's hidden channels per layer, its capacity: 4 is 512 parameters for 4 clones, against 3,256 at 12,
+    #    which fit the planted labels exactly on its training spots and reached ARI 0.762 on an unseen slice (PR- #943).
+    ap.add_argument("--he_prior_num_features", type=int, default=4)
     a = ap.parse_args()
 
     from cnamaste.io import get_sample_sheet
@@ -92,12 +92,11 @@ def main() -> None:
             str(s): Path(d)
             for s, d in zip(sheet["sample_id"], sheet["spaceranger_dir"], strict=True)
         }
-        images, pixels, blocks, order = he_inputs(
-            coords, adata.obs["sample"].to_numpy(), dirs
-        )
+        images, pixels, order = he_inputs(coords, adata.obs["sample"].to_numpy(), dirs)
         unary = HEUnary(
-            images, pixels, blocks, order,
-            weight=a.he_weight, temperature=a.he_temperature, block=a.he_block,
+            images, pixels, order,
+            weight=a.he_weight, temperature=a.he_temperature,
+            num_features=a.he_prior_num_features,
         )  # fmt: skip
         install(unary)
         run.update(unary=unary, output_dir=Path(config.paths.output_dir))
@@ -109,7 +108,7 @@ def main() -> None:
     log = {
         "weight": a.he_weight,
         "temperature": a.he_temperature,
-        "block": a.he_block,
+        "num_features": a.he_prior_num_features,
         "steps": unary.log,
     }
     (run["output_dir"] / "he_unary.json").write_text(json.dumps(log, indent=1))

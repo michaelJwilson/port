@@ -9,10 +9,8 @@ step's log-likelihood all see the same energy:
 
 Everything else is cnamaste's: the pseudobulk fit, the solver, the merges, the integer decoding.
 
-pi is cross-fit: the spots are split into a checkerboard of `block` x `block` lattice blocks, and each fold's pi comes
-from a network trained on the other fold's labels, so the unary carries what the slide says rather than the labels it
-was fit to. Folds are spatial rather than per slice, since a clone on one slice only would be vetoed on that slice by
-a network trained on the other. log pi is tempered, log_softmax(log pi / T).
+pi is one network fit to every spot's current labels and read at every spot; what keeps it from echoing them back is
+its capacity, set by `num_features` (`joint.init_cnn`). log pi is tempered, log_softmax(log pi / T).
 
 Ticket: PR- #943.
 Measurement: PR- #943.
@@ -34,67 +32,53 @@ from port.sandbox.joint_he.joint import Psi
 
 
 class HEUnary:
-    """The H&E unary for one run: the slides, each run spot's pixel, the folds, and a warm network per fold."""
+    """The H&E unary for one run: the slides, each run spot's pixel, and one warm network."""
 
     def __init__(
         self,
         images: list[jax.Array],
         pixels: list[jax.Array],
-        coords: NDArray[Any],
         order: NDArray[np.int64],
         *,
         weight: float,
         temperature: float = 1.0,
-        block: int = 10,
+        num_features: int = 12,
         steps_first: int = 300,
         steps_next: int = 60,
         seed: int = 0,
     ) -> None:
-        """`images`, `pixels` and `coords` are per spot in `study.load`'s order; `order[i]` is run spot i's index there."""
+        """`images` and `pixels` per slice, spots in the network's order; `order[i]` is run spot i's index there."""
         self.images, self.pixels, self.order = images, pixels, order
         self.weight, self.temperature = weight, temperature
         self.steps_first, self.steps_next, self.seed = steps_first, steps_next, seed
-        sizes = np.cumsum([0] + [len(px) for px in pixels])
-        self.slice_of = np.searchsorted(sizes, np.arange(sizes[-1]), side="right") - 1
-        self.fold = ((coords[:, 0] // block + coords[:, 1] // block) % 2).astype(int)
-        self.state: dict[int, tuple[int, Psi, dict[str, Any]]] = {}
+        self.num_features = num_features
+        self.state: tuple[int, Psi, dict[str, Any]] | None = None
         self.log: list[dict[str, Any]] = []
 
-    def _subset(self, mask: NDArray[np.bool_]) -> list[jax.Array]:
-        return [px[mask[self.slice_of == k]] for k, px in enumerate(self.pixels)]
-
     def log_prior(self, labels_run: NDArray[np.int64], M: int) -> NDArray[np.float64]:
-        """(N, M) tempered, cross-fit log pi in the run's spot order, after refitting each fold's network."""
+        """(N, M) tempered log pi in the run's spot order, after refitting the network to `labels_run`."""
         labels = np.empty(len(self.order), dtype=np.int64)
         labels[self.order] = labels_run
-        out = np.zeros((len(labels), M))
-        accuracy = []
-        for f in (0, 1):
-            train = self.fold != f
-            warm = self.state.get(f)
-            psi, st = (
-                (warm[1], warm[2])
-                if warm is not None and warm[0] == M
-                else (None, None)
-            )
-            steps = self.steps_next if psi is not None else self.steps_first
-            psi, st, _ = H.fit(
-                self.images, self._subset(train), labels[train], M,
-                steps=steps, seed=self.seed + f, psi=psi, state=st,
-            )  # fmt: skip
-            self.state[f] = (M, psi, st)
-            lp = np.asarray(H.log_prior(psi, self.images, self.pixels))
-            held = ~train
-            out[held] = lp[held]
-            accuracy.append(float(np.mean(lp[held].argmax(1) == labels[held])))
+        warm = self.state
+        psi, st = (
+            (warm[1], warm[2]) if warm is not None and warm[0] == M else (None, None)
+        )
+        steps = self.steps_next if psi is not None else self.steps_first
+        psi, st, _ = H.fit(
+            self.images, self.pixels, labels, M,
+            steps=steps, seed=self.seed, psi=psi, state=st, num_features=self.num_features,
+        )  # fmt: skip
+        self.state = (M, psi, st)
+        lp = np.asarray(H.log_prior(psi, self.images, self.pixels))
         tempered = np.asarray(
-            jax.nn.log_softmax(jnp.asarray(out) / self.temperature, axis=1)
+            jax.nn.log_softmax(jnp.asarray(lp) / self.temperature, axis=1)
         )
         top = np.sort(tempered, axis=1)
         self.log.append(
             {
                 "clones": M,
-                "held_out_accuracy": accuracy,
+                "steps": steps,
+                "agreement": float(np.mean(lp.argmax(1) == labels)),
                 "median_margin": float(np.median(top[:, -1] - top[:, -2]))
                 if M > 1
                 else 0.0,
