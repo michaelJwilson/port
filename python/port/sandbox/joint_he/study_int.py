@@ -28,10 +28,11 @@ from numpy.typing import NDArray
 from scipy.optimize import linear_sum_assignment
 from sklearn.metrics import adjusted_rand_score
 
+from port.sandbox.joint_he import he_prior as H
 from port.sandbox.joint_he import joint as J
 from port.sandbox.joint_he import joint_int as JI
 from port.sandbox.joint_he import study as S
-from port.sandbox.joint_he.joint import Psi, Theta
+from port.sandbox.joint_he.joint import Theta
 
 T_PHASE = 0.99999
 """The phase's stay probability, the baseline config's hmm.t_phaseing."""
@@ -117,6 +118,8 @@ def main() -> None:
     ap.add_argument("--free_omega", action="store_true")
     # NB 1 - hmm.t, the copy chain's switch probability
     ap.add_argument("--switch", type=float, default=1.0 - S.T_STAY)
+    # NB `truth` holds r at the planted clones: no prior, no label updates, only theta and the chains are fit.
+    ap.add_argument("--labels", choices=["em", "truth"], default="em")
     a = ap.parse_args()
     t0 = time.perf_counter()
 
@@ -125,8 +128,11 @@ def main() -> None:
 
     d = S.load(a.draw, a.run_dir)
     N, G = d["u"].shape
-    M = a.clones
     known = pd.notna(d["truth"])
+    truth_codes, truth_int = np.unique(
+        np.asarray(pd.Series(d["truth"]).fillna("na")), return_inverse=True
+    )
+    M = len(truth_codes) if a.labels == "truth" else a.clones
     D = JI.Data(d["u"], d["base"], d["b"], d["n"])
     starts = jnp.asarray(d["starts"])
     log_Tc, log_Tp = JI.copy_transitions(a.switch), JI.phase_transitions(T_PHASE)
@@ -140,42 +146,27 @@ def main() -> None:
         "M": M,
         "beta": a.beta,
         "seed": a.seed,
+        "labels": a.labels,
         "rounds": [],
     }
 
-    # NB the CNN warm-started to the data-only partition, as study.py; r starts at its prior.
-    init = S.init_labels(d, M, a.seed)
-    psi: Psi = {"cnn": J.init_cnn(jax.random.PRNGKey(a.seed), M)}
-    onehot = jax.nn.one_hot(jnp.asarray(init), M)
-
-    def log_prior(p: Psi) -> jax.Array:
-        logits = jnp.concatenate(
-            [
-                J.cnn(p["cnn"], img)[px[:, 0] // J.STRIDE, px[:, 1] // J.STRIDE]
-                for img, px in zip(d["images"], d["pixels"], strict=True)
-            ]
+    if a.labels == "truth":
+        r = jax.nn.one_hot(jnp.asarray(truth_int), M)
+        lp = jnp.zeros((N, M))
+        tick(f"labels held at truth: {list(truth_codes)}")
+    else:
+        # NB the CNN warm-started to the data-only partition, as study.py; r starts at its prior.
+        init = S.init_labels(d, M, a.seed)
+        psi, st, _ = H.fit(d["images"], d["pixels"], init, M, steps=300, seed=a.seed)
+        lp = H.log_prior(psi, d["images"], d["pixels"])
+        r = jnp.exp(lp)
+        log["init_ari_vs_truth"] = float(
+            adjusted_rand_score(d["truth"][known], init[known])
         )
-        return jax.nn.log_softmax(logits.astype(jnp.float64), axis=1)
-
-    def cross_entropy(p: Psi, target: jax.Array) -> jax.Array:
-        return jnp.sum(target * log_prior(p)) - 1e-3 * sum(
-            jnp.sum(layer["w"] ** 2) for layer in p["cnn"]
+        log["prior_ari_vs_truth"] = float(
+            adjusted_rand_score(d["truth"][known], np.asarray(r.argmax(1))[known])
         )
-
-    ce = jax.jit(jax.value_and_grad(cross_entropy))
-    st = J.adam_init(psi)
-    for _ in range(300):
-        _, g = ce(psi, onehot)
-        psi, st = J.adam_step(psi, g, st, 0.01)
-    lp = log_prior(psi)
-    r = jnp.exp(lp)
-    log["init_ari_vs_truth"] = float(
-        adjusted_rand_score(d["truth"][known], init[known])
-    )
-    log["prior_ari_vs_truth"] = float(
-        adjusted_rand_score(d["truth"][known], np.asarray(r.argmax(1))[known])
-    )
-    tick(f"warm start; prior ARI {log['prior_ari_vs_truth']:.3f}")
+        tick(f"warm start; prior ARI {log['prior_ari_vs_truth']:.3f}")
 
     # NB purity starts at 0.9 (logit over [RHO_MIN, 1]); the dispersions at the earlier per-spot fits.
     theta: Theta = {
@@ -227,17 +218,18 @@ def main() -> None:
 
     for rnd in range(a.rounds):
         theta, st_t, v, gamma, qs = theta_steps(theta, st_t, r, qs, a.theta_steps)
-        for _ in range(a.sweeps):
-            _, gamma, qs = posteriors(theta, r, qs, passes=1)
-            s = D.scores(theta, gamma, qs)
-            nb = J.neighbour_sum(r, i_e, j_e)
-            r = a.damping * r + (1 - a.damping) * jax.nn.softmax(
-                lp + s + a.beta * nb, axis=1
+        if a.labels == "em":
+            for _ in range(a.sweeps):
+                _, gamma, qs = posteriors(theta, r, qs, passes=1)
+                s = D.scores(theta, gamma, qs)
+                nb = J.neighbour_sum(r, i_e, j_e)
+                r = a.damping * r + (1 - a.damping) * jax.nn.softmax(
+                    lp + s + a.beta * nb, axis=1
+                )
+            psi, st, _ = H.fit(
+                d["images"], d["pixels"], r, M, steps=a.cnn_steps, psi=psi, state=st
             )
-        for _ in range(a.cnn_steps):
-            _, g = ce(psi, r)
-            psi, st = J.adam_step(psi, g, st, 0.01)
-        lp = log_prior(psi)
+            lp = H.log_prior(psi, d["images"], d["pixels"])
         lab = np.asarray(r.argmax(1))
         log["rounds"].append(
             {
@@ -252,7 +244,9 @@ def main() -> None:
                     adjusted_rand_score(
                         d["truth"][known], np.asarray(lp.argmax(1))[known]
                     )
-                ),
+                )
+                if a.labels == "em"
+                else None,
                 "omega": float(theta["omega"]),
                 "alpha": float(jnp.exp(theta["log_alpha"])),
                 "tau": float(jnp.exp(theta["log_tau"])),
@@ -271,8 +265,13 @@ def main() -> None:
     ebar = jnp.einsum("mgcs,gs->mgc", D.e(theta, hard), qs) + JI.parsimony()
     paths = JI.viterbi(ebar, log_Tc, d["starts"], log_entry)
     copies = JI.COPY[paths]  # (M, G, 2) major, minor
-    merged = S.merge_by_paths(
-        lab, {m: copies[m, :, 0] * 10 + copies[m, :, 1] for m in range(M)}, 0.99
+    # NB clones held at truth are not merged: the merge is part of the inference they skip.
+    merged = (
+        lab
+        if a.labels == "truth"
+        else S.merge_by_paths(
+            lab, {m: copies[m, :, 0] * 10 + copies[m, :, 1] for m in range(M)}, 0.99
+        )
     )
     seg = pd.read_csv(a.run_dir / "cnv_diploid_seglevel.tsv", sep="\t")[
         ["CHR", "START", "END"]

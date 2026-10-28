@@ -171,6 +171,7 @@ ROLES: dict[str, Role] = {
     "port.sandbox.integer_decoding.rdr_summary": "set aside",
     "port.sandbox.integer_decoding.schemes": "set aside",
     "port.sandbox.joint_he.combined_int": "set aside",
+    "port.sandbox.joint_he.he_prior": "set aside",
     "port.sandbox.joint_he.joint": "set aside",
     "port.sandbox.joint_he.joint_int": "set aside",
     "port.sandbox.joint_he.make_he_draw": "set aside",

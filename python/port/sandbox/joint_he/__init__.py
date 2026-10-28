@@ -15,7 +15,10 @@ own emissions, never through a pseudobulk of their counts.
 - `joint_int`: the states tied to integer pairs (A, B), cnamaste's pair
   parameters at one purity, a phase path global to every clone, structured
   mean field over the chains; the emission cached by distinct (b, n) and u.
-- `study_int`: EM on that bound, scored by clone ARI and integer copies.
+- `he_prior`: the H&E prior alone, the CNN fit to a label set (hard or soft) by
+  cross-entropy.
+- `study_int`: EM on that bound, scored by clone ARI and integer copies;
+  `--labels truth` holds the clones at the planted partition.
 - `combined_int`: its result on `cnamaste`'s combined page.
 
 Departure from `cnamaste`: per-spot rather than pseudobulk emission, so a
