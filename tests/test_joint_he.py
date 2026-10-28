@@ -359,3 +359,28 @@ def test_visium_hd_bins_take_one_network_output_each(tmp_path: Path) -> None:
     assert images[0].shape == (40, 40, 3)
     out = np.asarray(pixels[0]) // he_cnn.STRIDE
     np.testing.assert_array_equal(out, xy[:, ::-1].astype(int))
+
+
+@pytest.mark.analytic
+def test_whitening_over_tissue_ignores_the_background() -> None:
+    """`he_cnn.whiten` with a tissue mask: zero mean and identity covariance over the tissue, whatever lies outside.
+
+    A 40 x 40 optical density with correlated channels inside a 20 x 20 tissue
+    block and a constant bright background outside. Over the tissue the output
+    has mean 0 and covariance I to 1e-4 (np.cov's n - 1 against the 400 pixels);
+    unmasked, the background sets the map and the tissue is not white. Fails if
+    the statistics are taken over the whole slide.
+    """
+    rng = np.random.default_rng(0)
+    od = np.full((40, 40, 3), 3.0)
+    mix = np.array([[1.0, 0.8, 0.2], [0.0, 0.6, 0.5], [0.0, 0.0, 0.3]])
+    od[10:30, 10:30] = rng.normal(size=(20, 20, 3)) @ mix
+    tissue = np.zeros((40, 40), bool)
+    tissue[10:30, 10:30] = True
+
+    inside = np.asarray(he_cnn.whiten(od, tissue), dtype=np.float64)[tissue]
+    everywhere = np.asarray(he_cnn.whiten(od), dtype=np.float64)[tissue]
+
+    assert np.abs(inside.mean(axis=0)).max() <= 1e-4
+    assert np.abs(np.cov(inside.T) - np.eye(3)).max() <= 1e-4
+    assert np.abs(np.cov(everywhere.T) - np.eye(3)).max() > 0.1

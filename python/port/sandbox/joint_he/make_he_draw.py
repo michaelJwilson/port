@@ -2,8 +2,8 @@
 spatial/tissue_hires_image.png, spatial/tissue_lowres_image.png (the hires averaged `LOWRES`-fold) and
 spatial/scalefactors_json.json, whose full-resolution pixel is the draw's position unit: tissue_<res>_scalef is image
 pixels per unit, and microns_per_pixel is 100, Visium's spot pitch, or `--bin_size_um` for Visium HD's square bins, which is
-then written as bin_size_um too. Nuclei keep their size in um: the hires image is drawn at the integer pixels per unit nearest
-`HIRES_MICRONS` um per pixel.
+then written as bin_size_um too. The hires image is drawn at `--hires_microns` um per pixel (realistic_he's own
+scale by default; 10x's Visium HD hires is 3.80812), every length in um.
 
 Ticket: PR- #943.
 Measurement: PR- #943.
@@ -26,10 +26,11 @@ import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
 
-from port.sandbox.joint_he.realistic_he import GRADE_STEP, PIXELS_PER_SPOT, realistic_he
-
-HIRES_MICRONS = 100.0 / PIXELS_PER_SPOT
-"""The hires image's um per pixel: realistic_he's scale, a Visium pitch of 100 um at `PIXELS_PER_SPOT` pixels."""
+from port.sandbox.joint_he.realistic_he import (
+    GRADE_STEP,
+    MICRONS_PER_PIXEL,
+    realistic_he,
+)
 
 LOWRES = 10
 """The lowres image is the hires averaged this many fold, as Space Ranger's are (2,000 and 600 px a side, ~3.3)."""
@@ -45,10 +46,11 @@ def main() -> None:
     ap.add_argument("--grade_step", type=float, default=GRADE_STEP)
     # NB a Visium HD draw (a square array): its position unit is a bin of this many um.
     ap.add_argument("--bin_size_um", type=float, default=None)
+    ap.add_argument("--hires_microns", type=float, default=MICRONS_PER_PIXEL)
     args = ap.parse_args()
     draw, out = args.draw, args.out
     microns_per_unit = 100.0 if args.bin_size_um is None else args.bin_size_um
-    s = max(1, round(microns_per_unit / HIRES_MICRONS))
+    s = microns_per_unit / args.hires_microns
     if out.exists():
         shutil.rmtree(out)
     shutil.copytree(draw, out)
@@ -80,7 +82,8 @@ def main() -> None:
             labels[nearest],
             lattice,
             seed=k,
-            pixels_per_spot=s,
+            microns_per_unit=microns_per_unit,
+            microns_per_pixel=args.hires_microns,
             grade_step=args.grade_step,
         )
         mpimg.imsave(spatial / "tissue_hires_image.png", image)
@@ -89,7 +92,7 @@ def main() -> None:
         mpimg.imsave(spatial / "tissue_lowres_image.png", lowres.mean(axis=(1, 3)))
         np.save(spatial / "planted_clone_per_pixel.npy", clone.astype(np.int8))
         scalefactors = {
-            "tissue_hires_scalef": float(s),
+            "tissue_hires_scalef": s,
             "tissue_lowres_scalef": s / LOWRES,
             "microns_per_pixel": microns_per_unit,
         }
@@ -97,13 +100,13 @@ def main() -> None:
             scalefactors["bin_size_um"] = args.bin_size_um
         (spatial / "scalefactors_json.json").write_text(json.dumps(scalefactors))
         at = clone[
-            np.clip(pos["col"].to_numpy() * s, 0, clone.shape[0] - 1),
-            np.clip(pos["row"].to_numpy() * s, 0, clone.shape[1] - 1),
+            np.clip((pos["col"].to_numpy() * s).astype(int), 0, clone.shape[0] - 1),
+            np.clip((pos["row"].to_numpy() * s).astype(int), 0, clone.shape[1] - 1),
         ]
         report[sid] = {
             "spots": len(pos),
             "image": list(image.shape),
-            "hires_microns_per_pixel": microns_per_unit / s,
+            "hires_microns_per_pixel": args.hires_microns,
             "seconds": round(time.perf_counter() - t0, 1),
             "spot_pixel_is_planted_clone": round(float(np.mean(at == labels)), 4),
         }

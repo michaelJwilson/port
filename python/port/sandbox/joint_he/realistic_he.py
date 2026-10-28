@@ -31,6 +31,9 @@ OD_RBC = np.array([0.10, 0.90, 0.75])
 PIXELS_PER_SPOT = 24
 """Pixels per unit of lattice position, as mock_he: a Visium pitch of 100 um is ~4 um per pixel."""
 
+MICRONS_PER_PIXEL = 100.0 / PIXELS_PER_SPOT
+"""The image's um per pixel at which every length below was set; at another, each is held in um."""
+
 GRADE_STEP = 0.08
 """Nuclear grade per tumour clone, relative: clone c (1-based tumour index) at 1 + GRADE_STEP (c - 1)."""
 
@@ -72,31 +75,44 @@ def realistic_he(
     lattice: tuple[int, int],
     *,
     seed: int = 0,
-    pixels_per_spot: int = PIXELS_PER_SPOT,
+    microns_per_unit: float = 100.0,
+    microns_per_pixel: float = MICRONS_PER_PIXEL,
     grade_step: float = GRADE_STEP,
     supersample: int = 2,
 ) -> tuple[NDArray[np.float64], NDArray[np.int64]]:
     """An H&E image over a lattice clone map (`labels` row-major over `lattice`, clone 0 normal), in mock_he's layout:
-    spot (r, c) at image row c * scale, column r * scale. Returns (image (H, W, 3) in [0, 1], clone per pixel)."""
+    spot (r, c) at image row c * scale, column r * scale, scale = `microns_per_unit` / `microns_per_pixel`. Returns
+    (image (H, W, 3) in [0, 1], clone per pixel).
+
+    Every length is in um: cells and nuclei as at `MICRONS_PER_PIXEL`, tissue structures (boundaries, glands,
+    vessels, septa, fibres) as at a 100 um Visium pitch, so a 16 um bin array paints the same tissue at its scale."""
     rng = np.random.default_rng(seed)
     n_rows, n_cols = lattice
     grid = labels.reshape(lattice)
     # NB drawn at `supersample` times the output resolution and averaged down, so nuclei of 1-3 output pixels are
-    #    round rather than square; every length below is in output pixels times `ss`.
+    #    round rather than square; every length below is in supersampled pixels: `cell` per MICRONS_PER_PIXEL, `s` per 100 um.
     ss = supersample
-    s = pixels_per_spot * ss
-    h, w = n_cols * s, n_rows * s
+    q = MICRONS_PER_PIXEL / microns_per_pixel
+    cell = ss * q  # NB supersampled pixels per MICRONS_PER_PIXEL: cell-scale lengths
+    s = (
+        PIXELS_PER_SPOT * cell
+    )  # NB supersampled pixels per 100 um: tissue-scale lengths
+    p = s * microns_per_unit / 100.0  # NB supersampled pixels per lattice unit
+    h, w = round(n_cols * p / ss) * ss, round(n_rows * p / ss) * ss
     iy, ix = np.indices((h, w)).astype(float)
 
     # NB organic boundaries: each clone's lattice indicator smoothed over ~0.7 spot and read through a smooth
     #    displacement of ~half a spot; the clone is the argmax, so boundaries are rounded, not lattice steps.
     dy = 0.5 * s * _smooth_noise(rng, (h, w), 3 * s)
     dx = 0.5 * s * _smooth_noise(rng, (h, w), 3 * s)
-    lat_r = np.clip((ix + dx) / s, 0, n_rows - 1)
-    lat_c = np.clip((iy + dy) / s, 0, n_cols - 1)
+    lat_r = np.clip((ix + dx) / p, 0, n_rows - 1)
+    lat_c = np.clip((iy + dy) / p, 0, n_cols - 1)
     n_clones = int(labels.max()) + 1
     soft = np.stack(
-        [ndi.gaussian_filter((grid == k).astype(float), 0.7) for k in range(n_clones)]
+        [
+            ndi.gaussian_filter((grid == k).astype(float), 70.0 / microns_per_unit)
+            for k in range(n_clones)
+        ]
     )
     clone = np.argmax(
         np.stack(
@@ -110,20 +126,20 @@ def realistic_he(
     tumour = clone > 0
     # NB fibrovascular septa: thin stromal strands through the tumour nests, where a smooth field crosses zero.
     septa = tumour & (np.abs(_smooth_noise(rng, (h, w), 1.6 * s)) < 0.06)
-    septa = ndi.binary_dilation(septa, iterations=ss)
+    septa = ndi.binary_dilation(septa, iterations=max(1, round(cell)))
     tumour = tumour & ~septa
 
     # NB gland lumens inside tumour nests, and small vessels in stroma.
     lumen = np.zeros((h, w), bool)
     gy, gx = _jittered_points(
-        rng, ndi.binary_erosion(tumour, iterations=6 * ss), 2.2 * s, 0.4
+        rng, ndi.binary_erosion(tumour, iterations=round(6 * cell)), 2.2 * s, 0.4
     )
-    gr = rng.uniform(2.0, 5.0, gy.size) * ss
+    gr = rng.uniform(2.0, 5.0, gy.size) * cell
     vy, vx = _jittered_points(
-        rng, ndi.binary_erosion(~tumour, iterations=4 * ss), 3.5 * s, 0.45
+        rng, ndi.binary_erosion(~tumour, iterations=round(4 * cell)), 3.5 * s, 0.45
     )
     keep = rng.random(vy.size) < 0.35
-    vy, vx, vr = vy[keep], vx[keep], rng.uniform(2.0, 4.0, keep.sum()) * ss
+    vy, vx, vr = vy[keep], vx[keep], rng.uniform(2.0, 4.0, keep.sum()) * cell
     vessel = np.zeros((h, w), bool)
     discs = [(a, b, c, lumen) for a, b, c in zip(gy, gx, gr, strict=True)]
     discs += [(a, b, c, vessel) for a, b, c in zip(vy, vx, vr, strict=True)]
@@ -139,18 +155,18 @@ def realistic_he(
 
     # NB stromal fibre orientation: a smooth angle field; fibres are noise smoothed along it.
     angle = np.pi * _smooth_noise(rng, (h, w), 6 * s)
-    along = ndi.gaussian_filter(rng.standard_normal((h, w)), (0.8 * ss, 5.0 * ss))
-    across = ndi.gaussian_filter(rng.standard_normal((h, w)), (5.0 * ss, 0.8 * ss))
+    along = ndi.gaussian_filter(rng.standard_normal((h, w)), (0.8 * cell, 5.0 * cell))
+    across = ndi.gaussian_filter(rng.standard_normal((h, w)), (5.0 * cell, 0.8 * cell))
     fibres = (
         np.cos(angle) ** 2 * along / along.std()
         + np.sin(angle) ** 2 * across / across.std()
     )
 
     # NB cells: packed in tumour nests (not in lumens), sparse fibroblasts in stroma, lymphocyte aggregates.
-    ty, tx = _jittered_points(rng, tumour & ~lumen, 4.2 * ss)
-    fy, fx = _jittered_points(rng, ~tumour & ~vessel, 9.0 * ss)
+    ty, tx = _jittered_points(rng, tumour & ~lumen, 4.2 * cell)
+    fy, fx = _jittered_points(rng, ~tumour & ~vessel, 9.0 * cell)
     agg = _smooth_noise(rng, (h, w), 2.5 * s) > 1.6
-    ly, lx = _jittered_points(rng, ~tumour & ~vessel & agg, 3.2 * ss)
+    ly, lx = _jittered_points(rng, ~tumour & ~vessel & agg, 3.2 * cell)
     cy = np.concatenate([ty, fy, ly])
     cx = np.concatenate([tx, fx, lx])
     kind = np.concatenate(
@@ -161,7 +177,10 @@ def realistic_he(
     grade = np.where(kind == 0, 1.0 + grade_step * np.maximum(cell_clone - 1, 0), 1.0)
 
     # NB nuclear geometry per cell: semi-axes (a >= b) and orientation.
-    a = np.select([kind == 0, kind == 1, kind == 2], [1.55 * grade, 2.3, 1.1], 1.0) * ss
+    a = (
+        np.select([kind == 0, kind == 1, kind == 2], [1.55 * grade, 2.3, 1.1], 1.0)
+        * cell
+    )
     a = a * (1.0 + np.where(kind == 0, 0.12 * grade, 0.08) * rng.standard_normal(n))
     ratio = np.select(
         [kind == 0, kind == 1, kind == 2],
@@ -187,7 +206,7 @@ def realistic_he(
     ry, rx = iy - cy[owner], ix - cx[owner]
     ct, st = np.cos(theta[owner]), np.sin(theta[owner])
     u, v = rx * ct + ry * st, -rx * st + ry * ct
-    rho = np.sqrt((u / a[owner]) ** 2 + (v / np.maximum(b[owner], 0.5 * ss)) ** 2)
+    rho = np.sqrt((u / a[owner]) ** 2 + (v / np.maximum(b[owner], 0.5 * cell)) ** 2)
     nucleus = np.clip((1.0 - rho) * 2.5 + 0.5, 0.0, 1.0)
     rim = np.clip(1.0 - np.abs(rho - 0.85) * 6.0, 0.0, 1.0) * 0.35
     texture = 1.0 + 0.25 * rng.standard_normal((h, w))
@@ -198,7 +217,7 @@ def realistic_he(
 
     # NB eosin: tumour cytoplasm per cell with lighter borders (Voronoi edges); stroma fibres; lumens empty.
     cyto = rng.uniform(0.32, 0.48, n)[owner]
-    border = ndi.morphological_gradient(owner, size=1 + ss) > 0
+    border = ndi.morphological_gradient(owner, size=1 + round(cell)) > 0
     eosin_tumour = cyto * (1.0 - 0.45 * border)
     eosin_stroma = np.clip(0.42 * (1.0 + 0.45 * fibres), 0.08, None)
     eosin = np.where(tumour, eosin_tumour, eosin_stroma) * (1.0 - 0.55 * nucleus)
@@ -206,7 +225,7 @@ def realistic_he(
     haem = np.where(lumen | vessel, 0.0, haem)
     # NB red cells in vessels.
     rbc = vessel & (rng.random((h, w)) < 0.35)
-    rbc_od = ndi.gaussian_filter(rbc.astype(float), 0.8 * ss) * 2.0
+    rbc_od = ndi.gaussian_filter(rbc.astype(float), 0.8 * cell) * 2.0
 
     # NB slide effects: stain strength, illumination gradient, blur, noise.
     h_scale, e_scale = rng.uniform(0.9, 1.1), rng.uniform(0.9, 1.1)
@@ -221,6 +240,6 @@ def realistic_he(
     # NB down to the output resolution by area averaging; the clone map by the block's centre pixel.
     image = image.reshape(h // ss, ss, w // ss, ss, 3).mean(axis=(1, 3))
     clone = clone[ss // 2 :: ss, ss // 2 :: ss]
-    image = ndi.gaussian_filter(image, (0.5, 0.5, 0.0))
+    image = ndi.gaussian_filter(image, (0.5 * q, 0.5 * q, 0.0))
     image += 0.012 * rng.standard_normal(image.shape)
     return np.clip(image, 0.0, 1.0), clone

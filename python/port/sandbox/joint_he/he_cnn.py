@@ -6,7 +6,7 @@ what makes it a prior rather than a classifier of the counts.
 
 A slide is read as Space Ranger lays it out (`slide`): `spatial/tissue_<resolution>_image.png`, its
 `tissue_<resolution>_scalef` and `microns_per_pixel`, resampled by an integer factor to the input pixel `input_microns`
-states, in optical density, ZCA-whitened. On Visium HD (`bin_size_um` stated) that pixel is half a bin, so the
+states, in optical density, ZCA-whitened over the tissue its spots cover. On Visium HD (`bin_size_um` stated) that pixel is half a bin, so the
 network's output, at `STRIDE`, is one pixel per bin: a labelling of the bin array. A spot at (x, y), Space Ranger's full-resolution pixels (Visium HD's `tissue_positions.parquet`, as
 `cnamaste.io.get_spatial_positions` reads it) or the simulator's position units, sits at image row y s, column x s.
 
@@ -27,6 +27,7 @@ import matplotlib.image as mpimg
 import numpy as np
 import scipy.ndimage as ndi
 from numpy.typing import ArrayLike, NDArray
+from scipy.spatial import cKDTree
 
 from port.qa import jax_setup  # noqa: F401  (float64, before any array)
 
@@ -221,8 +222,9 @@ def he_tensor(image: NDArray[Any], k: int) -> jax.Array:
     return jnp.asarray((od - od.mean(axis=(0, 1))) / (od.std(axis=(0, 1)) + 1e-6))
 
 
-def whiten(od: Any) -> jax.Array:
-    """The optical density ZCA-whitened over the slide: decorrelated channels at unit variance.
+def whiten(od: Any, tissue: NDArray[np.bool_] | None = None) -> jax.Array:
+    """The optical density ZCA-whitened over the slide's `tissue` pixels (all, if None): decorrelated channels at unit
+    variance there. On a real slide glass and debris outside the tissue would otherwise set the map.
 
     A global linear map per slide, so local contrast (nuclear density and grade) is kept. Between slides it removes
     the colour signature of stain balance (channel correlations 0.885 / 0.828 / 0.990 against 0.932 / 0.892 / 0.992 on
@@ -230,8 +232,9 @@ def whiten(od: Any) -> jax.Array:
     0.883 at 4 features, w = 1, one run each (PR- #943).
     """
     flat = np.asarray(od, dtype=np.float64).reshape(-1, 3)
-    flat = flat - flat.mean(axis=0)
-    lam, U = np.linalg.eigh(np.cov(flat.T))
+    inside = flat if tissue is None else flat[tissue.ravel()]
+    flat = flat - inside.mean(axis=0)
+    lam, U = np.linalg.eigh(np.cov(inside.T))
     zca = U @ np.diag(1.0 / np.sqrt(lam + 1e-6)) @ U.T
     return jnp.asarray((flat @ zca).reshape(np.shape(od)).astype(np.float32))
 
@@ -266,21 +269,35 @@ def rescale(spatial: Path, resolution: str) -> tuple[float, float]:
 
 
 def slide(spatial: Path, resolution: str) -> tuple[jax.Array, float]:
-    """The network's input from `spatial`, whitened, and its pixels per full-resolution pixel. An image coarser than
-    the input pixel is upsampled bilinearly: one output per bin, with no detail the image does not carry."""
+    """The network's input from `spatial`, in optical density, and its pixels per full-resolution pixel. An image
+    coarser than the input pixel is upsampled bilinearly: one output per bin, with no detail the image does not carry."""
     scalefactors = json.loads((spatial / "scalefactors_json.json").read_text())
     _, factor = rescale(spatial, resolution)
     image = mpimg.imread(spatial / f"tissue_{resolution}_image.png")[..., :3]
     if factor > 1:
         image = ndi.zoom(image, (factor, factor, 1), order=1)
     od = he_tensor(image, max(1, round(1 / factor)))
-    return whiten(od), scalefactors[f"tissue_{resolution}_scalef"] * factor
+    return od, scalefactors[f"tissue_{resolution}_scalef"] * factor
+
+
+def tissue_mask(shape: tuple[int, ...], px: NDArray[np.int64]) -> NDArray[np.bool_]:
+    """The input pixels within half a spot spacing (the median nearest-neighbour distance) of a spot at `px`."""
+    mask = np.zeros(shape[:2], bool)
+    mask[px[:, 0], px[:, 1]] = True
+    spacing = (
+        float(np.median(cKDTree(px).query(px, k=2)[0][:, 1])) if len(px) > 1 else 1.0
+    )
+    out: NDArray[np.bool_] = ndi.binary_dilation(
+        mask, iterations=max(1, int(np.ceil(spacing / 2)))
+    )
+    return out
 
 
 def he_inputs(
     coords: Any, samples: Any, spaceranger_dirs: dict[str, Path], resolution: str
 ) -> tuple[list[jax.Array], list[jax.Array], NDArray[np.int64]]:
-    """The slides and each spot's pixel, sample by sample, and the run-to-network order.
+    """The slides, whitened over their spots' tissue, and each spot's pixel, sample by sample, and the run-to-network
+    order.
 
     Returns (images, pixels, order), with `order[i]` run spot i's index in the network's order (spots grouped by
     sample, in run order within a sample).
@@ -299,7 +316,7 @@ def he_inputs(
             ],
             axis=1,
         )
-        images.append(od)
+        images.append(whiten(od, tissue_mask(od.shape, px)))
         pixels.append(jnp.asarray(px))
         by_sample.append(idx)
     network = np.concatenate(by_sample)
