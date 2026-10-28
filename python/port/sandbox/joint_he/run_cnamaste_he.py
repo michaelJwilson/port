@@ -1,7 +1,7 @@
 """`run_cnamaste` with the H&E unary in its label step (`cnamaste_he_unary`): the same arguments, plus the unary's.
 
     run_cnamaste_he <config> [-o key=value ...] [--he_weight W] [--he_temperature T]
-        [--he_prior_num_features F]
+        [--he_prior_num_features F] [--he_seed S]
 
 `cnamaste.scripts.run_cnamaste.load_input_data` is wrapped to read the run's own spots, in the run's order: their
 coordinates and samples. Each sample's slide is `<spaceranger_dir>/spatial/tissue_hires_image.png`, at
@@ -76,6 +76,7 @@ def main() -> None:
     # NB the H&E CNN's hidden channels per layer, its capacity: 4 is 512 parameters for 4 clones, against 3,256 at 12,
     #    which fit the planted labels exactly on its training spots and reached ARI 0.762 on an unseen slice (PR- #943).
     ap.add_argument("--he_prior_num_features", type=int, default=4)
+    ap.add_argument("--he_seed", type=int, default=0)
     a = ap.parse_args()
 
     from cnamaste.io import get_sample_sheet
@@ -97,6 +98,7 @@ def main() -> None:
             images, pixels, order,
             weight=a.he_weight, temperature=a.he_temperature,
             num_features=a.he_prior_num_features,
+            seed=a.he_seed,
         )  # fmt: skip
         install(unary)
         run.update(unary=unary, output_dir=Path(config.paths.output_dir))
@@ -109,6 +111,7 @@ def main() -> None:
         "weight": a.he_weight,
         "temperature": a.he_temperature,
         "num_features": a.he_prior_num_features,
+        "seed": a.he_seed,
         "steps": unary.log,
     }
     (run["output_dir"] / "he_unary.json").write_text(json.dumps(log, indent=1))
