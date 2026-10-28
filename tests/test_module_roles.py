@@ -145,6 +145,8 @@ ROLES: dict[str, Role] = {
     "port.sim.analysis": "sim",
     "port.sim.fixtures": "sim",
     "port.sim.he_slide": "sim",
+    "port.sim.he_draw": "sim",
+    "port.sim.he_realistic": "sim",
     "port.sim.inputs": "sim",
     "port.sim.realizations": "sim",
     "port.sim.run_config": "sim",
