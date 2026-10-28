@@ -73,6 +73,10 @@ run_figures = "port.qa.scripts.run_figures:main"
 run_plots = "port.scripts.run_plots:main"
 # `run_study --<study> ...`: one of `port.studies`, run by hand (T- #673).
 run_study = "port.qa.scripts.run_study:main"
+# `run_cnamaste`'s arguments, with the H&E CNN as a further unary in its label
+# step (`port.sandbox.joint_he.cnamaste_he_unary`, PR- #943): set aside, a
+# study's runner, and needs `cnamaste` importable.
+run_cnamaste_he = "port.sandbox.joint_he.run_cnamaste_he:main"
 
 [project.optional-dependencies]
 dev = [

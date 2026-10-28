@@ -78,6 +78,20 @@ def dense(x: Any) -> NDArray[np.float64]:
     return np.asarray(a, dtype=np.float64)
 
 
+def he_tensor(image: NDArray[Any]) -> jax.Array:
+    """A hires H&E (H, W, 3 or 4) as the network reads it: averaged down `DOWNSAMPLE`-fold, in optical density,
+    standardized per channel (the stain's own linear space)."""
+    img = image[..., :3]
+    H, W = img.shape[0] // DOWNSAMPLE, img.shape[1] // DOWNSAMPLE
+    img = (
+        img[: H * DOWNSAMPLE, : W * DOWNSAMPLE]
+        .reshape(H, DOWNSAMPLE, W, DOWNSAMPLE, 3)
+        .mean(axis=(1, 3))
+    )
+    od = -np.log(np.clip(img, 1e-3, 1.0))
+    return jnp.asarray((od - od.mean(axis=(0, 1))) / (od.std(axis=(0, 1)) + 1e-6))
+
+
 def load(draw: Path, run_dir: Path) -> dict[str, Any]:
     """The run's counts, reordered to the network's spot order, with the H&E, spot graph and planted labels."""
     data = np.load(run_dir / "binned_data.npz", allow_pickle=True)
@@ -108,16 +122,8 @@ def load(draw: Path, run_dir: Path) -> dict[str, Any]:
             names=["barcode", "in_tissue", "row", "col", "px", "py"],
         )
         p = p[p["barcode"].isin(index)]
-        img = mpimg.imread(draw / sid / "spatial" / "tissue_hires_image.png")[..., :3]
-        H, W = img.shape[0] // DOWNSAMPLE, img.shape[1] // DOWNSAMPLE
-        img = (
-            img[: H * DOWNSAMPLE, : W * DOWNSAMPLE]
-            .reshape(H, DOWNSAMPLE, W, DOWNSAMPLE, 3)
-            .mean(axis=(1, 3))
-        )
-        # NB optical density, standardized: the stain's own linear space.
-        od = -np.log(np.clip(img, 1e-3, 1.0))
-        od = (od - od.mean(axis=(0, 1))) / (od.std(axis=(0, 1)) + 1e-6)
+        od = he_tensor(mpimg.imread(draw / sid / "spatial" / "tissue_hires_image.png"))
+        H, W = od.shape[:2]
         scale = 24 / DOWNSAMPLE
         px = np.stack(
             [
@@ -126,7 +132,7 @@ def load(draw: Path, run_dir: Path) -> dict[str, Any]:
             ],
             axis=1,
         )
-        images.append(jnp.asarray(od))
+        images.append(od)
         pixels.append(jnp.asarray(px))
         idx = p["barcode"].map(index).to_numpy()
         order_by_slice.append(idx)

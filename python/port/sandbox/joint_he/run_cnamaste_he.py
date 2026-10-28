@@ -1,111 +1,118 @@
-"""`cnamaste` on a draw with the H&E unary (`cnamaste_he_unary`), or without it (`--control`), scored by its own QA.
+"""`run_cnamaste` with the H&E unary in its label step (`cnamaste_he_unary`): the same arguments, plus the unary's.
 
-Staged as the baseline was: the draw by `cnamaste.sandbox.capture.stage_run` from `<repo>/zenodo_sim_config.yaml`,
-run in this process by `cnamaste.scripts.run_cnamaste.main` (so the patch is in place), scored by
-`cnamaste.qa.metrics`. Needs the `cnamaste` checkout on `PYTHONPATH` and `$CNAMASTE_OPENGM_HOME`.
+    run_cnamaste_he <config> [-o key=value ...] [--he_weight W] [--he_temperature T] [--he_block B]
 
-The H&E is read through `study.load` against `<baseline run dir>`, whose `binned_data.npz` fixes the run's spot order;
-the patched run is checked to write its labels in that order.
+`cnamaste.scripts.run_cnamaste.load_input_data` is wrapped to read the run's own spots, in the run's order: their
+coordinates and samples. Each sample's slide is `<spaceranger_dir>/spatial/tissue_hires_image.png`, at
+`tissue_hires_scalef`, and a spot at (x, y) sits at hires pixel (row y s, column x s), as `cnamaste.he.get_he_image`
+places it. The label-step patch is installed before the run, and writes its per-step log to
+`<output_dir>/he_unary.json`. Needs `cnamaste` importable and, for its default solver, `$CNAMASTE_OPENGM_HOME`.
 
 Ticket: PR- #943.
 Measurement: PR- #943.
 Exit: with the package (`port.sandbox.joint_he`).
-
-Usage: python -m port.sandbox.joint_he.run_cnamaste_he <repo> <draw> <baseline run dir> <work> <out json>
-    [--weight W] [--temperature T] [--control]
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
-import sys
-import time
 from pathlib import Path
 from typing import Any
 
+import jax.numpy as jnp
+import matplotlib.image as mpimg
 import numpy as np
-import pandas as pd
-import yaml
+from scipy.spatial import cKDTree
 
 from port.sandbox.joint_he import study as S
 from port.sandbox.joint_he.cnamaste_he_unary import HEUnary, install
 
 
+def he_inputs(
+    coords: Any, samples: Any, spaceranger_dirs: dict[str, Path]
+) -> tuple[list[Any], list[Any], Any, Any]:
+    """The slides and each spot's pixel, sample by sample; `coords` in lattice-block units; the run-to-network order.
+
+    Returns (images, pixels, block coordinates, order), with `order[i]` run spot i's index in the network's order
+    (spots grouped by sample, in run order within a sample).
+    """
+    coords, samples = np.asarray(coords, dtype=float), np.asarray(samples).astype(str)
+    images, pixels, by_sample = [], [], []
+    for sid in dict.fromkeys(samples):
+        spatial = spaceranger_dirs[sid] / "spatial"
+        scale = json.loads((spatial / "scalefactors_json.json").read_text())[
+            "tissue_hires_scalef"
+        ]
+        od = S.he_tensor(mpimg.imread(spatial / "tissue_hires_image.png"))
+        idx = np.flatnonzero(samples == sid)
+        xy = coords[idx] * scale / S.DOWNSAMPLE
+        H, W = od.shape[:2]
+        px = np.stack(
+            [
+                np.clip(xy[:, 1].astype(int), 0, H - 1),
+                np.clip(xy[:, 0].astype(int), 0, W - 1),
+            ],
+            axis=1,
+        )
+        images.append(od)
+        pixels.append(jnp.asarray(px))
+        by_sample.append(idx)
+    network = np.concatenate(by_sample)
+    order = np.empty(len(network), dtype=np.int64)
+    order[network] = np.arange(len(network))
+    # NB blocks in units of the spot pitch, the median nearest-neighbour distance, so `--he_block` counts spots.
+    pitch = float(np.median(cKDTree(coords).query(coords, k=2)[0][:, 1]))
+    return images, pixels, coords[network] / pitch, order
+
+
 def main() -> None:
-    """Stage, run and score; write the result json, with the unary's per-step log."""
-    ap = argparse.ArgumentParser()
-    for name in ("repo", "draw", "baseline_run", "work", "out"):
-        ap.add_argument(name, type=Path)
-    ap.add_argument("--weight", type=float, default=1.0)
-    ap.add_argument("--temperature", type=float, default=1.0)
-    ap.add_argument("--control", action="store_true")
+    """Parse `run_cnamaste`'s arguments and the unary's; install the patch; run."""
+    ap = argparse.ArgumentParser(
+        description="cna-maste pipeline, with the H&E CNN as a further unary"
+    )
+    ap.add_argument("config_path", type=str)
+    ap.add_argument("--over_rides", "-o", action="append", default=[])
+    ap.add_argument("--he_weight", type=float, default=1.0)
+    ap.add_argument("--he_temperature", type=float, default=1.0)
+    ap.add_argument("--he_block", type=int, default=10)
     a = ap.parse_args()
-    a.work.mkdir(parents=True, exist_ok=True)
 
-    from cnamaste.qa.metrics import metrics, read_estimate
-    from cnamaste.sandbox.capture import grch38, stage_run
-    from cnamaste.scripts import run_cnamaste
-    from cnamaste.truth import read_truth
+    from cnamaste.io import get_sample_sheet
+    from cnamaste.scripts import run_cnamaste as rc
 
-    run_order = np.asarray(
-        np.load(a.baseline_run / "binned_data.npz", allow_pickle=True)["barcodes"]
-    ).astype(str)
-    unary = None
-    if not a.control:
-        d = S.load(a.draw, a.baseline_run)
-        index = {bc: i for i, bc in enumerate(d["barcodes"])}
-        order = np.array([index[bc] for bc in run_order], dtype=np.int64)
+    loaded = rc.load_input_data
+    run: dict[str, Any] = {}
+
+    def load_input_data(config: Any, *args: Any, **kwargs: Any) -> Any:
+        out = loaded(config, *args, **kwargs)
+        coords, adata = out[0], out[2]
+        sheet = get_sample_sheet(config.paths.sample_sheet)
+        dirs = {
+            str(s): Path(d)
+            for s, d in zip(sheet["sample_id"], sheet["spaceranger_dir"], strict=True)
+        }
+        images, pixels, blocks, order = he_inputs(
+            coords, adata.obs["sample"].to_numpy(), dirs
+        )
         unary = HEUnary(
-            d["images"],
-            d["pixels"],
-            d["coords"],
-            order,
-            weight=a.weight,
-            temperature=a.temperature,
-        )
+            images, pixels, blocks, order,
+            weight=a.he_weight, temperature=a.he_temperature, block=a.he_block,
+        )  # fmt: skip
         install(unary)
+        run.update(unary=unary, output_dir=Path(config.paths.output_dir))
+        return out
 
-    os.chdir(a.work)
-    config = stage_run(
-        a.draw,
-        Path("staged_run"),
-        yaml.safe_load((a.repo / "zenodo_sim_config.yaml").read_text()),
-        grch38(),
-    )
-    t0 = time.perf_counter()
-    sys.argv = ["run_cnamaste", str(config)]
-    run_cnamaste.main()
-    result: dict[str, Any] = {
-        "arm": "control" if a.control else f"he_unary w={a.weight} T={a.temperature}",
-        "wall_s": round(time.perf_counter() - t0, 1),
+    rc.load_input_data = load_input_data
+    rc.run_cnamaste(a.config_path, over_rides=a.over_rides)
+    unary = run["unary"]
+    log = {
+        "weight": a.he_weight,
+        "temperature": a.he_temperature,
+        "block": a.he_block,
+        "steps": unary.log,
     }
-    (run_dir,) = sorted(
-        {p.parent for p in (a.work / "staged_run").rglob("clone_labels.tsv*")}
-    )
-    written = (
-        pd.read_csv(run_dir / "clone_labels.tsv.gz", sep="\t")["barcode"]
-        .astype(str)
-        .to_numpy()
-    )
-    if not np.array_equal(written, run_order):
-        msg = f"{run_dir}: the run's spot order differs from {a.baseline_run}'s, so the unary was misaligned"
-        raise RuntimeError(msg)
-    est = read_estimate(run_dir)
-    result |= {
-        "run_dir": str(run_dir),
-        "metrics": metrics(est, read_truth(a.draw)),
-        "n_clones": int(est.clones.nunique()),
-    }
-    if unary is not None:
-        result["unary_steps"] = unary.log
-    a.out.write_text(json.dumps(result, indent=1, default=float))
-    print(
-        json.dumps(
-            {k: v for k, v in result.items() if k != "unary_steps"}, default=float
-        )
-    )
+    (run["output_dir"] / "he_unary.json").write_text(json.dumps(log, indent=1))
 
 
 if __name__ == "__main__":
