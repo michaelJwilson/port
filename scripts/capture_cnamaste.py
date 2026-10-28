@@ -76,9 +76,9 @@ import yaml
 from numba import _helperlib
 from sklearn.metrics import adjusted_rand_score
 
-import cnamaste.hmrf as hmrf  # type: ignore[import-not-found]  # noqa: PLR0402
-import cnamaste.scripts.run_cnamaste as rc  # type: ignore[import-not-found]
-from cnamaste.audit.capture import (  # type: ignore[import-not-found]
+import cnamaste.hmrf as hmrf  # noqa: PLR0402
+import cnamaste.scripts.run_cnamaste as rc
+from cnamaste.audit.capture import (
     Capture,
     Writer,
     deduplicated,

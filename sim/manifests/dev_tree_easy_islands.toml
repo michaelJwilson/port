@@ -1,0 +1,15 @@
+# dev_tree_easy with normal islands carved into the tumour after placement
+# (PR- #943): small normal regions embedded in one clone, to test whether a
+# label step recovers normal at a scale below the Potts prior's smoothing.
+version = 3
+extends = "dev_tree_easy.toml"
+
+[sample]
+name = "dev_tree_easy_islands"
+# NB `tests.sim_stages.realization_hash` of r0 as drawn here; a change to this
+#    manifest or to the simulator that moves it states the new one.
+r0_hash = "8fb4f7d1"
+
+[layout.islands]
+count = 6
+radius = 1.5

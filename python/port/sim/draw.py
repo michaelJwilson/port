@@ -107,6 +107,7 @@ from typing import Any, NamedTuple
 
 import numpy as np
 import pandas as pd
+from scipy.spatial import cKDTree
 
 from port.sim.entries import COUNT_SAMPLERS, independent, nodes, snp_law
 from port.sim.files import load_ids
@@ -165,6 +166,11 @@ RADIUS_LAWS = {"normal": ("mean", "sd", "minimum")}
 """`[layout] radius` as a table in place of a number (T- #807): each drawn clone's radius, in
 fractions of the shorter extent, drawn in clone order before any placement. `normal`:
 `max(minimum, Normal(mean, sd))`. A number is every clone's radius, as before."""
+
+ISLANDS = ("count", "radius")
+"""`[layout.islands]`, optional (PR- #943): `count` islands of normal, each the spots within `radius` spot
+spacings of a centre inside one tumour clone, carved after placement (`normal_islands`). Unstated, the draw is
+unchanged."""
 
 SHAPES = ("polygons", "rectangles")
 """`[layout] shape` (T- #807): `polygons`, each clone a jittered polygon placed in turn; or
@@ -1103,7 +1109,55 @@ def layout(
         labels[claimed] = manifest.tumour.index(clone)
         shapes[clone] = vertices
 
+    islands = manifest.layout.get("islands")
+    if islands is not None:
+        count, radius = (islands[key] for key in ISLANDS)
+        radius = spacing(points) * float(radius)
+        labels = normal_islands(labels, everything, radius, int(count), rng)
     return list(np.split(labels, len(frames))), shapes
+
+
+def spacing(points: np.ndarray) -> float:
+    """The array's spot spacing: the median nearest-neighbour distance over one slice's `points`."""
+    return float(np.median(cKDTree(points).query(points, k=2)[0][:, 1]))
+
+
+def normal_islands(
+    labels: np.ndarray,
+    points: np.ndarray,
+    radius: float,
+    count: int,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Carve `count` islands of normal (`-1`) into the tumour, each the spots within `radius` of a centre.
+
+    `[layout.islands]`, drawn after every placement and only when stated, so a manifest without it draws as before.
+    A centre is a tumour spot with only spots of its own clone within `2 radius`: each island is embedded
+    in one clone, clear of normal, of the frame's edge and of every island before it. `points` is the slices' common
+    frame, so an island where slices overlap is imaged by each.
+    """
+    tree = cKDTree(points)
+    clear = 2.0 * radius
+    out = labels.copy()
+    edge = (points.min(axis=0) + clear, points.max(axis=0) - clear)
+    candidates = [
+        i
+        for i in np.flatnonzero(labels >= 0)
+        if np.all(points[i] >= edge[0]) and np.all(points[i] <= edge[1])
+        and np.all(labels[tree.query_ball_point(points[i], clear)] == labels[i])
+    ]  # fmt: skip
+    for k in range(count):
+        free = [
+            i
+            for i in candidates
+            if np.all(out[tree.query_ball_point(points[i], clear)] == out[i])
+        ]
+        if not free:
+            msg = f"[layout.islands]: no centre clear of normal for island {k + 1} of {count}"
+            raise ValueError(msg)
+        centre = int(rng.choice(free))
+        out[tree.query_ball_point(points[centre], radius)] = -1
+    return out
 
 
 def _rectangles(

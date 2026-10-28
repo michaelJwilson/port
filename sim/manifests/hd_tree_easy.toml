@@ -1,0 +1,17 @@
+# dev_tree_easy_square at Visium HD's scale (PR- #943): 16 um bins, 200 x 200
+# per slice (3.2 mm), so clones planted as fractions of the array's extent are
+# millimetres across, as on a 6.5 mm capture area. Counts per bin are
+# dev_tree_easy's per spot, not Visium HD's: the bin's read depth is not modelled.
+version = 3
+extends = "dev_tree_easy_square.toml"
+
+[sample]
+name = "hd_tree_easy"
+# NB `tests.sim_stages.realization_hash` of r0 as drawn here; a change to this
+#    manifest or to the simulator that moves it states the new one.
+r0_hash = "cbb9ea3f"
+
+[array]
+kind = "square"
+rows = 200
+columns = 200

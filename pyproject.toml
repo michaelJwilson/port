@@ -73,6 +73,10 @@ run_figures = "port.qa.scripts.run_figures:main"
 run_plots = "port.scripts.run_plots:main"
 # `run_study --<study> ...`: one of `port.studies`, run by hand (T- #673).
 run_study = "port.qa.scripts.run_study:main"
+# `run_cnamaste`'s arguments, with the H&E CNN as a further unary in its label
+# step (`port.sandbox.joint_he.run_cnamaste_he`, PR- #943): set aside, a
+# study's runner, and needs `cnamaste` importable.
+run_cnamaste_he = "port.sandbox.joint_he.run_cnamaste_he:main"
 
 [project.optional-dependencies]
 dev = [
@@ -258,6 +262,13 @@ disallow_untyped_calls = false
 # cnaster against a typed upstream, and silencing the upstream's types too
 # would lose the half that is checkable.
 module = "cnaster.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# `cnamaste/` is its own project, built separately and not installed in this
+# environment (T- #836); `port.sandbox.joint_he.combined_int` imports it only
+# to draw its page.
+module = "cnamaste.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
